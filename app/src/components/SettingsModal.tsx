@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Info, Loader2, Palette, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
@@ -10,6 +10,7 @@ import { inTauri } from '../lib/player'
 import { trendingIds } from '../lib/tmdb'
 import { Pumpkin } from './Pumpkin'
 import { checkForUpdate, installUpdate, useUpdater } from '../lib/updater'
+import { normalizeBase, testConnection } from '../lib/overseerr'
 
 const ring = 'group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white'
 
@@ -236,6 +237,42 @@ function Content() {
   )
 }
 
+function Requests({ token }: { token: string }) {
+  const { settings, update, ownOverseerrUrl, overseerrShared } = useSettings()
+  const [status, setStatus] = useState<{ kind: 'idle' | 'checking' | 'ok' | 'bad'; text?: string }>({ kind: 'idle' })
+  const input = useRef<HTMLInputElement>(null)
+  const test = async () => {
+    if (!settings.overseerrUrl) return setStatus({ kind: 'idle' })
+    setStatus({ kind: 'checking' })
+    try { setStatus({ kind: 'ok', text: `Signed in as ${await testConnection(settings.overseerrUrl, token)}` }) } catch (e) { setStatus({ kind: 'bad', text: (e as Error).message }) }
+  }
+  return (
+    <>
+      <Toggle label="Find titles to request" hint="Search also shows movies and shows that aren't in your library, with a Request button" on={settings.requests} onChange={(v) => update({ requests: v })} />
+      <Heading>Request service</Heading>
+      <div className="px-4 py-2">
+        <Focusable onEnter={() => input.current?.focus()}>
+          <div className={`flex items-center gap-3 rounded-xl bg-white/8 px-4 py-3 transition-colors focus-within:bg-white/12 group-hover/f:bg-white/12 group-data-[hl=true]/f:bg-white/15 ${ring}`}>
+            <input ref={input} value={ownOverseerrUrl} placeholder={overseerrShared ? 'Using the address shared by this server' : 'Overseerr address, e.g. requests.example.com'} spellCheck={false} autoCapitalize="off" autoCorrect="off"
+              onChange={(e) => { update({ overseerrUrl: e.target.value.trim() }); setStatus({ kind: 'idle' }) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.stopPropagation(); e.currentTarget.blur() } else if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') e.stopPropagation() }}
+              className="min-w-0 flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-white/30" />
+            <span className="shrink-0 text-xs font-bold text-white/40">{overseerrShared && !ownOverseerrUrl ? 'Shared' : settings.overseerrUrl ? '' : 'Not set'}</span>
+          </div>
+        </Focusable>
+        <div className="mt-3 flex items-center gap-4">
+          <Focusable onEnter={() => status.kind !== 'checking' && test()} title="Test connection">
+            <div className="flex items-center gap-2 rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">{status.kind === 'checking' && <Loader2 size={16} className="animate-spin" />}Test connection</div>
+          </Focusable>
+          <span className={`min-w-0 text-sm ${status.kind === 'ok' ? 'text-emerald-300' : status.kind === 'bad' ? 'text-red-300' : 'text-white/45'}`}>{status.text}</span>
+        </div>
+        <p className="mt-3 text-sm text-white/55">Requests are sent with your own Plex sign-in, so they count as yours. If that isn't possible, Chezzflix shows a QR code that opens the title on {settings.overseerrUrl ? new URL(normalizeBase(settings.overseerrUrl)).host : 'the request page'} instead.</p>
+        {!settings.tmdbKey && <p className="mt-2 text-sm text-amber-200/80">Finding titles to request also needs a TMDB key (Settings → Content).</p>}
+      </div>
+    </>
+  )
+}
+
 function About({ server }: { server: PlexServer }) {
   const u = useUpdater()
   const [copied, setCopied] = useState(false)
@@ -267,12 +304,13 @@ function About({ server }: { server: PlexServer }) {
 const PANELS = [
   { id: 'appearance', label: 'Appearance', icon: Palette }, { id: 'playback', label: 'Playback', icon: Play },
   { id: 'libraries', label: 'Libraries', icon: Film }, { id: 'home', label: 'Home', icon: Home }, { id: 'content', label: 'Content', icon: Eye },
+  { id: 'requests', label: 'Requests', icon: Inbox },
   { id: 'about', label: 'About', icon: Info },
 ] as const
 
-interface Props { server: PlexServer; sections: PlexSection[]; profileName: string; profileThumb?: string; onClose: () => void }
+interface Props { server: PlexServer; token: string; sections: PlexSection[]; profileName: string; profileThumb?: string; onClose: () => void }
 
-export function SettingsModal({ server, sections, profileName, profileThumb, onClose }: Props) {
+export function SettingsModal({ server, token, sections, profileName, profileThumb, onClose }: Props) {
   const [panel, setPanel] = useState<(typeof PANELS)[number]['id']>('appearance')
   return (
     <Layer onClose={onClose} className="absolute left-1/2 top-1/2 h-[min(680px,90vh)] w-[min(980px,95vw)] -translate-x-1/2 -translate-y-1/2">
@@ -295,6 +333,7 @@ export function SettingsModal({ server, sections, profileName, profileThumb, onC
           {panel === 'libraries' && <Libraries sections={sections} />}
           {panel === 'home' && <HomeEditor server={server} sections={sections} />}
           {panel === 'content' && <Content />}
+          {panel === 'requests' && <Requests token={token} />}
           {panel === 'about' && <About server={server} />}
           <div className="mt-6 rounded-xl bg-white/5 px-4 py-3 text-sm text-white/55">Connected to <b className="text-white">{server.name}</b>. These settings belong to <b className="text-white">{profileName}</b>.</div>
         </section>

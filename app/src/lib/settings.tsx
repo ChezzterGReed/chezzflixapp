@@ -31,6 +31,10 @@ export interface Settings {
   setupDone: boolean
   /** Genres picked during setup (in order). They become the default genre rows on Home, Movies and Shows. Empty = built-in defaults. */
   genres: string[]
+  /** Show titles that aren't in the library (from TMDB) in search, so they can be requested. */
+  requests: boolean
+  /** Address of the request service (Overseerr), e.g. https://requests.example.com */
+  overseerrUrl: string
   /** TMDB key (v3 key or v4 read token) for the Trending tab. */
   tmdbKey: string
   /** Continue Watching items you removed: ratingKey -> when (epoch seconds). They return once you watch more. */
@@ -45,7 +49,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoplayNext: true, autoSkipIntro: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoplayNext: true, autoSkipIntro: false,
 }
 
 export const PUMPKIN = '#ff7a1a'
@@ -79,14 +83,16 @@ interface SettingsCtx {
   ownTmdbKey: string
   /** True when the TMDB key in `settings` is the one shared by this server's owner. */
   tmdbShared: boolean
+  ownOverseerrUrl: string
+  overseerrShared: boolean
 }
-const Ctx = createContext<SettingsCtx>({ settings: DEFAULTS, update: () => {}, ownTmdbKey: '', tmdbShared: false })
+const Ctx = createContext<SettingsCtx>({ settings: DEFAULTS, update: () => {}, ownTmdbKey: '', tmdbShared: false, ownOverseerrUrl: '', overseerrShared: false })
 export const useSettings = () => useContext(Ctx)
 /** The active seasonal theme for this profile (null when off or out of season). */
 export function useSeason(): Season { const { settings } = useContext(Ctx); return settings.seasonal ? currentSeason() : null }
 
 /** Settings are stored per Plex profile, so each person gets their own accent, name, rows and libraries. */
-export function SettingsProvider({ profileKey, sharedTmdbKey, children }: { profileKey: string; sharedTmdbKey?: string; children: ReactNode }) {
+export function SettingsProvider({ profileKey, shared: sharedValues, children }: { profileKey: string; shared?: { tmdbKey?: string; overseerrUrl?: string }; children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(() => load(profileKey))
   const loadedFor = useRef(profileKey)
 
@@ -104,8 +110,9 @@ export function SettingsProvider({ profileKey, sharedTmdbKey, children }: { prof
     if (loadedFor.current === profileKey) { try { localStorage.setItem(keyFor(profileKey), JSON.stringify(settings)) } catch { /* private mode */ } }
   }, [settings, profileKey])
 
-  // The shared key is applied on top, never saved into this person's own settings.
-  const shared = !settings.tmdbKey && !!sharedTmdbKey
-  const effective = shared ? { ...settings, tmdbKey: sharedTmdbKey! } : settings
-  return <Ctx.Provider value={{ settings: effective, update: (p) => setSettings((s) => ({ ...s, ...p })), ownTmdbKey: settings.tmdbKey, tmdbShared: shared }}>{children}</Ctx.Provider>
+  // Values shared by this server's owner are applied on top, never saved into this person's own settings.
+  const tmdbShared = !settings.tmdbKey && !!sharedValues?.tmdbKey
+  const overseerrShared = !settings.overseerrUrl && !!sharedValues?.overseerrUrl
+  const effective = { ...settings, ...(tmdbShared ? { tmdbKey: sharedValues!.tmdbKey! } : {}), ...(overseerrShared ? { overseerrUrl: sharedValues!.overseerrUrl! } : {}) }
+  return <Ctx.Provider value={{ settings: effective, update: (p) => setSettings((s) => ({ ...s, ...p })), ownTmdbKey: settings.tmdbKey, tmdbShared, ownOverseerrUrl: settings.overseerrUrl, overseerrShared }}>{children}</Ctx.Provider>
 }

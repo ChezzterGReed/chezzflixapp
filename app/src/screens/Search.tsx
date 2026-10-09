@@ -1,34 +1,74 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search as SearchIcon } from 'lucide-react'
 import { PosterCard } from '../components/Card'
-import { search, type PlexMedia, type PlexServer } from '../lib/plex'
+import { RequestCard } from '../components/RequestCard'
+import { RequestDetail } from '../components/RequestDetail'
+import { search, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
+import { guidIndex, searchTmdb } from '../lib/tmdb'
+import { normalizeBase, type RequestItem } from '../lib/overseerr'
+import { useSettings } from '../lib/settings'
 
-export function Search({ server, onOpen }: { server: PlexServer; onOpen: (m: PlexMedia) => void }) {
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+/** How close a title is to what was typed: exact, starts with, contains, or just related. */
+function closeness(title: string, q: string): number {
+  const t = norm(title), n = norm(q)
+  if (t === n) return 4
+  if (t.startsWith(n)) return 3
+  if (t.split(' ').some((w) => w.startsWith(n))) return 2.5
+  return t.includes(n) ? 2 : 1
+}
+
+type Entry = { kind: 'local'; m: PlexMedia; score: number; order: number } | { kind: 'remote'; r: RequestItem; score: number; order: number }
+
+export function Search({ server, token, sections, onOpen }: { server: PlexServer; token: string; sections: PlexSection[]; onOpen: (m: PlexMedia) => void }) {
+  const { settings } = useSettings()
+  const canRequest = settings.requests && !!settings.tmdbKey && !!settings.overseerrUrl
   const [q, setQ] = useState('')
-  const [results, setResults] = useState<PlexMedia[]>()
+  const [local, setLocal] = useState<PlexMedia[]>()
+  const [remote, setRemote] = useState<RequestItem[]>([])
+  const [requesting, setRequesting] = useState<RequestItem>()
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => { input.current?.focus() }, [])
   useEffect(() => {
-    if (q.trim().length < 2) return setResults(undefined)
-    const t = setTimeout(() => search(server, q.trim()).then(setResults).catch(() => setResults([])), 220)
+    if (q.trim().length < 2) { setLocal(undefined); setRemote([]); return }
+    const t = setTimeout(() => {
+      const term = q.trim()
+      search(server, term).then(setLocal).catch(() => setLocal([]))
+      if (canRequest) {
+        // Titles TMDB knows about, minus anything already in the library.
+        Promise.all([searchTmdb(settings.tmdbKey, term), guidIndex(server, sections)])
+          .then(([hits, idx]) => setRemote(hits.filter((h) => !idx.has(`${h.type}:${h.tmdbId}`))))
+          .catch(() => setRemote([]))
+      } else setRemote([])
+    }, 260)
     return () => clearTimeout(t)
-  }, [q, server])
+  }, [q, server, sections, canRequest, settings.tmdbKey])
+
+  const term = q.trim()
+  const entries: Entry[] = [
+    ...(local ?? []).map((m, order): Entry => ({ kind: 'local', m, score: closeness(m.title, term) + 0.2, order })),   // your own library wins ties
+    ...remote.map((r, order): Entry => ({ kind: 'remote', r, score: closeness(r.title, term), order })),
+  ].sort((a, b) => b.score - a.score || a.order - b.order)
+  const scroll = (el: HTMLElement) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })
 
   return (
     <div className="px-[var(--gutter)] pb-24 pt-14">
       <div className="relative mb-10 max-w-3xl">
         <SearchIcon size={28} className="absolute left-0 top-1/2 -translate-y-1/2 text-white/50" />
-        <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies and shows"
+        <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={canRequest ? 'Search movies and shows' : 'Search movies and shows'}
           className="w-full border-b-2 border-white/15 bg-transparent py-4 pl-12 text-[2rem] font-bold tracking-tight outline-none transition-colors placeholder:text-white/25 focus:border-accent" />
       </div>
-      {results === undefined && <p className="text-white/45">Start typing to search your libraries.</p>}
-      {results && results.length === 0 && <p className="text-white/55">Nothing matches “{q}”. Check the spelling or try a shorter title.</p>}
-      {results && results.length > 0 && (
+      {local === undefined && <p className="text-white/45">{canRequest ? 'Start typing to search your library and find titles to request.' : 'Start typing to search your libraries.'}</p>}
+      {local && entries.length === 0 && <p className="text-white/55">Nothing matches “{q}”. Check the spelling or try a shorter title.</p>}
+      {entries.length > 0 && (
         <div className="fade-in grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
-          {results.map((m) => <div key={m.ratingKey} className="[--card-w:100%]"><PosterCard m={m} server={server} onEnter={() => onOpen(m)} onFocus={(el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })} /></div>)}
+          {entries.map((e) => e.kind === 'local'
+            ? <div key={e.m.ratingKey} className="[--card-w:100%]"><PosterCard m={e.m} server={server} onEnter={() => onOpen(e.m)} onFocus={scroll} /></div>
+            : <div key={`${e.r.type}:${e.r.tmdbId}`} className="[--card-w:100%]"><RequestCard item={e.r} onEnter={() => setRequesting(e.r)} onFocus={scroll} /></div>)}
         </div>
       )}
+      {requesting && <RequestDetail item={requesting} base={normalizeBase(settings.overseerrUrl)} plexToken={token} tmdbKey={settings.tmdbKey} onClose={() => setRequesting(undefined)} />}
     </div>
   )
 }

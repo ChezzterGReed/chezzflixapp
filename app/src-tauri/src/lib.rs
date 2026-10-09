@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, State};
 
 #[cfg(target_os = "macos")]
 mod native;
+mod net;
 #[cfg(target_os = "macos")]
 use native::NativeState;
 #[cfg(not(target_os = "macos"))]
@@ -150,7 +151,8 @@ pub fn run() {
     builder
         .manage(Player::default())
         .manage(NativeState::default())
-        .invoke_handler(tauri::generate_handler![play, stop, mpv_start, mpv_cmd, mpv_set, mpv_tracks])
+        .manage(net::NetState::default())
+        .invoke_handler(tauri::generate_handler![play, stop, mpv_start, mpv_cmd, mpv_set, mpv_tracks, net::requests_http])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }

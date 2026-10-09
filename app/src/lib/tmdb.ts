@@ -1,6 +1,7 @@
 // Trending lists come from TMDB (free API key, non-commercial use; attribution shown in Settings).
 // We only ever show titles that exist in the user's own Plex library, matched through Plex's stored tmdb:// ids.
 import { getSectionWithGuids, type PlexMedia, type PlexSection, type PlexServer } from './plex'
+import type { RequestItem, SeasonInfo } from './overseerr'
 
 export type TmdbKind = 'movie' | 'tv'
 export const DEMO_TMDB_KEY = 'demo'
@@ -42,4 +43,42 @@ export function guidIndex(server: PlexServer, sections: PlexSection[]): Promise<
 export async function trendingInLibrary(server: PlexServer, sections: PlexSection[], key: string, kind: TmdbKind, window: 'day' | 'week' = 'week'): Promise<PlexMedia[]> {
   const [ids, index] = await Promise.all([trendingIds(key, kind, window), guidIndex(server, sections)])
   return ids.map((id) => index.get(`${kind}:${id}`)).filter((m): m is PlexMedia => !!m)
+}
+
+// ---------- Search beyond the library (titles you can request) ----------
+const IMG = 'https://image.tmdb.org/t/p'
+const yearOf = (d?: string) => (d && d.length >= 4 ? Number(d.slice(0, 4)) : undefined)
+
+interface TmdbHit { id: number; media_type?: string; title?: string; name?: string; release_date?: string; first_air_date?: string; overview?: string; poster_path?: string | null; backdrop_path?: string | null; vote_average?: number }
+const toItem = (x: TmdbHit, type: 'movie' | 'tv'): RequestItem => ({
+  tmdbId: x.id, type, title: (type === 'movie' ? x.title : x.name) ?? '', year: yearOf(type === 'movie' ? x.release_date : x.first_air_date), overview: x.overview || undefined,
+  poster: x.poster_path ? `${IMG}/w500${x.poster_path}` : undefined, backdrop: x.backdrop_path ? `${IMG}/w1280${x.backdrop_path}` : undefined, rating: x.vote_average || undefined,
+})
+
+async function tmdbGet<T>(key: string, path: string, params: Record<string, string> = {}): Promise<T> {
+  const bearer = key.length > 40
+  const q = new URLSearchParams({ ...params, ...(bearer ? {} : { api_key: key }) })
+  const r = await fetch(`https://api.themoviedb.org/3${path}?${q}`, bearer ? { headers: { Authorization: `Bearer ${key}` } } : undefined)
+  if (!r.ok) throw new Error(r.status === 401 ? 'TMDB rejected the key.' : `TMDB error ${r.status}`)
+  return r.json()
+}
+
+const DEMO_HITS: RequestItem[] = [
+  { tmdbId: 9999, type: 'movie', title: 'Midnight Express Lane', year: 2023, overview: 'A night-shift train conductor finds one passenger who was never on the manifest, and the route stops matching the map.', rating: 7.6 },
+  { tmdbId: 8888, type: 'tv', title: 'The Understudies: Abroad', year: 2025, overview: 'The second-string cast takes the show on the road, where nobody has heard of the first string.', rating: 8.1 },
+  { tmdbId: 7777, type: 'movie', title: 'Harbor Lights II', year: 2026, overview: 'The ferry pilot and the island doctor get a second crossing, and a lot more to say.', rating: 6.8 },
+  { tmdbId: 7776, type: 'movie', title: 'Static: Reception', year: 2026, overview: 'The late-night host is back on air, and so are the callers.', rating: 6.4 },
+]
+
+export async function searchTmdb(key: string, query: string): Promise<RequestItem[]> {
+  if (key === DEMO_TMDB_KEY) { const q = query.toLowerCase(); return DEMO_HITS.filter((h) => h.title.toLowerCase().includes(q.slice(0, 4)) || q.length < 5).slice(0, 6) }
+  const r = await tmdbGet<{ results: TmdbHit[] }>(key, '/search/multi', { query, include_adult: 'false' })
+  return r.results.filter((x) => x.media_type === 'movie' || x.media_type === 'tv').map((x) => toItem(x, x.media_type as 'movie' | 'tv')).filter((x) => x.title)
+}
+
+/** A show's seasons (without specials), for the request picker. */
+export async function tmdbSeasons(key: string, tmdbId: number): Promise<SeasonInfo[]> {
+  if (key === DEMO_TMDB_KEY) return [1, 2, 3].map((n) => ({ n, name: `Season ${n}`, episodes: 8, state: 'none' as const }))
+  const r = await tmdbGet<{ seasons?: { season_number: number; name: string; episode_count: number }[] }>(key, `/tv/${tmdbId}`)
+  return (r.seasons ?? []).filter((s) => s.season_number > 0).map((s) => ({ n: s.season_number, name: s.name, episodes: s.episode_count, state: 'none' as const }))
 }

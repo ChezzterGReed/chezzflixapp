@@ -153,7 +153,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
           {view.type === 'library' && <Library server={server} section={view.section} onOpen={open}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
-          {view.type === 'search' && <Search server={server} onOpen={open} />}
+          {view.type === 'search' && <Search server={server} token={token} sections={allSections} onOpen={open} />}
         </main>
       </FocusContext.Provider>
 
@@ -161,7 +161,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
         onClose={() => setDetails((d) => d.slice(0, -1))} onPlay={play} onOpen={open} onCollection={openCollection} />}
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
-      {layer === 'settings' && <SettingsModal server={server} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
+      {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
       {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} onClose={() => setMenu(undefined)}
         onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)} />}
       {playing && <Player key={playing.ratingKey} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} />}
@@ -191,12 +191,20 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
   const [me, setMe] = useState<Me>()
   const [error, setError] = useState<string>()
   const [needsPick, setNeedsPick] = useState(false)
-  const [sharedTmdb, setSharedTmdb] = useState<string>()
+  const [shared, setShared] = useState<{ tmdbKey?: string; overseerrUrl?: string }>({})
   const demoPick = useRef<PlexProfile | undefined>(undefined)
 
   // A TMDB key sealed for this particular server unlocks only when you're connected to it.
   const serverId = server?.id
-  useEffect(() => { let alive = true; unseal((sealedKeys as { tmdb?: Sealed }).tmdb, serverId, 'tmdb').then((k) => alive && setSharedTmdb(k ?? undefined)); return () => { alive = false } }, [serverId])
+  useEffect(() => {
+    let alive = true
+    const sealed = sealedKeys as { tmdb?: Sealed; overseerr?: Sealed }
+    // `?demo&requests` previews the request flow with a fake service.
+    if (serverId === 'demo-server' && location.search.includes('requests')) { setShared({ tmdbKey: 'demo', overseerrUrl: 'https://requests.demo' }); return }
+    Promise.all([unseal(sealed.tmdb, serverId, 'tmdb'), unseal(sealed.overseerr, serverId, 'overseerr')])
+      .then(([tmdbKey, overseerrUrl]) => alive && setShared({ tmdbKey: tmdbKey ?? undefined, overseerrUrl: overseerrUrl ?? undefined }))
+    return () => { alive = false }
+  }, [serverId])
 
   const connect = useCallback(async () => {
     setError(undefined); setServer(undefined); setBooted(false)
@@ -252,7 +260,7 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
   if (!server || !me) return null // the animated loading screen (rendered by App) covers this
 
   return (
-    <SettingsProvider profileKey={me.key} sharedTmdbKey={sharedTmdb}>
+    <SettingsProvider profileKey={me.key} shared={shared}>
       <Gate key={me.key} token={token} server={server} allSections={sections} profiles={profiles} me={me} onSwitch={switchTo} onSignOut={onSignOut} />
     </SettingsProvider>
   )
