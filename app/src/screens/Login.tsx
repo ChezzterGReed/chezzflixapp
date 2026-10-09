@@ -5,6 +5,8 @@ import { Focusable } from '../components/Focusable'
 import { BrandMark, OnboardingShell } from '../components/OnboardingShell'
 import { authUrl, checkPin, requestPin } from '../lib/plex'
 
+const ANDROID = /Android/i.test(navigator.userAgent)
+
 async function openExternal(url: string) {
   if ('__TAURI_INTERNALS__' in window) {
     const { openUrl } = await import('@tauri-apps/plugin-opener')
@@ -48,7 +50,7 @@ export function Login({ onToken }: { onToken: (t: string) => void }) {
   }, [poll])
 
   useEffect(() => { start(); return () => { run.current++ } }, [start])
-  useEffect(() => { const t = setTimeout(() => setFocus('login-browser'), 250); return () => clearTimeout(t) }, []) // a remote needs somewhere to start
+  useEffect(() => { if (ANDROID) return; const t = setTimeout(() => setFocus('login-browser'), 250); return () => clearTimeout(t) }, []) // a remote needs somewhere to start
 
   const signInHere = async () => {
     const gen = run.current
@@ -96,13 +98,18 @@ export function Login({ onToken }: { onToken: (t: string) => void }) {
           </div>
         )}
 
-        <div className="my-8 flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.2em] text-white/30"><i className="h-px flex-1 bg-white/10" />or<i className="h-px flex-1 bg-white/10" /></div>
+        {/* Android TV boxes usually have no web browser, so there the code on another device is the way in. */}
+        {!ANDROID && (
+          <>
+            <div className="my-8 flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.2em] text-white/30"><i className="h-px flex-1 bg-white/10" />or<i className="h-px flex-1 bg-white/10" /></div>
 
-        <Focusable focusKey="login-browser" onEnter={signInHere}>
-          <div className="mx-auto inline-flex items-center gap-2.5 rounded-full bg-white/10 px-6 py-3.5 text-[0.98rem] font-semibold transition-all group-hover/f:bg-white/20 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
-            <ExternalLink size={18} />Sign in on this device instead
-          </div>
-        </Focusable>
+            <Focusable focusKey="login-browser" onEnter={signInHere}>
+              <div className="mx-auto inline-flex items-center gap-2.5 rounded-full bg-white/10 px-6 py-3.5 text-[0.98rem] font-semibold transition-all group-hover/f:bg-white/20 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
+                <ExternalLink size={18} />Sign in on this device instead
+              </div>
+            </Focusable>
+          </>
+        )}
       </div>
     </OnboardingShell>
   )

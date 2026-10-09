@@ -1,6 +1,6 @@
 fn main() {
-    #[cfg(target_os = "macos")]
-    {
+    // The build script runs on the host, so ask Cargo which OS we're building FOR (Android builds happen on a Mac).
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         use std::path::PathBuf;
 
         // Native video surface (NSView + OpenGL context) that libmpv renders into.

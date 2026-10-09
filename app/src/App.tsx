@@ -33,7 +33,7 @@ import { SeasonalAmbient } from './components/SeasonalAmbient'
 init({ debug: false, visualDebug: false })
 if (import.meta.env.DEV) (window as unknown as { __nav: unknown }).__nav = { getCurrentFocusKey }
 
-const DEMO = new URLSearchParams(location.search).has('demo')
+const DEMO = new URLSearchParams(location.search).has('demo') || import.meta.env.VITE_DEMO === '1'   // VITE_DEMO=1 builds a demo-mode app (for testing without a Plex account)
 const CHOSEN_KEY = 'plex_profile_chosen'
 const store = DEMO ? sessionStorage : localStorage
 const isChosen = () => store.getItem(CHOSEN_KEY) === '1'

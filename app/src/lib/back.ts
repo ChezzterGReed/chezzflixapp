@@ -14,6 +14,9 @@ function bind() {
   })
 }
 
+/** Android: the Back button asks the app first. Returns true when something handled it (so the app stays open). */
+if (typeof window !== 'undefined') (window as unknown as { __chezzBack: () => boolean }).__chezzBack = () => { if (!stack.length) return false; stack[stack.length - 1](); return true }
+
 export function useBack(handler: () => void, active = true) {
   const ref = useRef(handler)
   ref.current = handler

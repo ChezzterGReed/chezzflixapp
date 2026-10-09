@@ -51,3 +51,18 @@ The player engine is an LGPL-only build; license notices ship inside the app (`C
 - Windows and Android builds (they use the browser-style player until native engines are added).
 - Auto-update (Tauri's updater plugin + a hosted release feed).
 - A custom app icon (currently Tauri's default).
+
+## Android / Android TV
+
+Build a signed APK (64-bit + 32-bit ARM) with `scripts/release-android.sh` → `releases/<version>/Chezzflix_<version>_android.apk`.
+Needs JDK 17, the Android SDK + NDK 27 (see the script header) and the signing key `~/.tauri/chezzflix-android.jks`
+(password in `~/.tauri/chezzflix-android.pw`; `gen/android/keystore.properties` points at them and is git-ignored).
+**Back that key up**: Android only installs an update over an app signed with the same key.
+
+Sideload on a device (Shield, Onn, Fire TV, phones):
+1. Turn on developer options + ADB debugging (Fire TV: Settings → My Fire TV → Developer options, also allow Apps from Unknown Sources).
+2. `adb connect <device-ip>:5555` (approve the prompt on the TV once), then `adb install -r Chezzflix_<version>_android.apk`.
+   (Or host the APK and use the "Downloader" app on the TV.)
+
+Testing without a TV: `avdmanager create avd -n chezz_tv -k "system-images;android-36;android-tv;arm64-v8a" -d tv_1080p`, run the emulator,
+and build with `VITE_DEMO=1 npx tauri android build --debug --target aarch64 --apk` for a demo-mode app (no Plex account needed).

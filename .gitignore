@@ -2,7 +2,7 @@
 node_modules/
 dist/
 app/src-tauri/target/
-app/src-tauri/gen/
+app/src-tauri/gen/schemas/
 native-deps/work/
 native-deps/out/
 # release artifacts live on GitHub Releases, not in git
@@ -14,3 +14,10 @@ releases/
 .DS_Store
 *.log
 .claude/
+# Android
+app/src-tauri/gen/android/keystore.properties
+app/src-tauri/gen/android/local.properties
+app/src-tauri/gen/android/.gradle/
+app/src-tauri/gen/android/build/
+app/src-tauri/gen/android/app/build/
+*.jks
