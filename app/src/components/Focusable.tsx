@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from 'react'
 import { setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { setFocusedKey, useIsFocused } from '../lib/input'
+import { revealInPanel } from '../lib/scroll'
 
 const LONG_PRESS_MS = 550
 
@@ -16,11 +17,13 @@ interface Props {
   leftToRail?: boolean
   /** Pressing Right here hands focus to the main content (used by the nav rail). */
   rightToContent?: boolean
+  /** Called before the default move; return false to handle the arrow yourself (e.g. jump somewhere specific). */
+  onArrow?: (dir: 'left' | 'right' | 'up' | 'down') => boolean | void
   children: ReactNode | ((focused: boolean) => ReactNode)
 }
 
 /** A D-pad/keyboard/mouse focus target. Style with `group-data-[hl=true]/f:`. */
-export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className = '', title, leftToRail, rightToContent, children }: Props) {
+export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className = '', title, leftToRail, rightToContent, onArrow, children }: Props) {
   const keyRef = useRef('')
   const keyTimer = useRef<number>(0)
   const keyLong = useRef(false)
@@ -43,8 +46,9 @@ export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className =
           keyLong.current = false
         }
       : undefined,
-    onFocus: () => { setFocusedKey(keyRef.current); if (ref.current) onFocus?.(ref.current as HTMLElement) },
+    onFocus: () => { setFocusedKey(keyRef.current); if (ref.current) { revealInPanel(ref.current as HTMLElement); onFocus?.(ref.current as HTMLElement) } },
     onArrowPress: (dir) => {
+      if (onArrow && onArrow(dir as 'left' | 'right' | 'up' | 'down') === false) return false
       if (dir === 'left' && leftToRail) { setFocus('SIDEBAR'); return false }
       if (dir === 'right' && rightToContent) { setFocus('MAIN'); return false }
       return true

@@ -53,13 +53,20 @@ export interface Settings {
   /** Lifts the center (dialogue) channel of surround audio (desktop player). */
   dialogueBoost: boolean
   autoplayNext: boolean
+  /** Seconds the player's back / forward buttons and left / right keys jump. */
+  seekBack: number
+  seekForward: number
+  /** Continue Watching tiles: the episode's own thumbnail, or the show's poster with the season and episode underneath. */
+  continueStyle: 'episode' | 'poster'
+  /** Per library: show only titles you haven't watched. */
+  unwatchedOnly: Record<string, boolean>
   autoSkipIntro: boolean
 }
 
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, autoSkipIntro: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', unwatchedOnly: {}, autoSkipIntro: false,
 }
 
 export const PUMPKIN = '#ff7a1a'
@@ -116,7 +123,11 @@ export function SettingsProvider({ profileKey, shared: sharedValues, children }:
     document.documentElement.style.setProperty('--accent', season === 'halloween' ? PUMPKIN : settings.accent)
     document.documentElement.dataset.season = season ?? ''
     document.title = brandName(settings)
-    try { localStorage.setItem('chezzflix_last_brand', brandName(settings)) } catch { /* ignore */ }
+    try {
+      localStorage.setItem('chezzflix_last_brand', brandName(settings))
+      localStorage.setItem('chezzflix_last_accent', season === 'halloween' ? PUMPKIN : settings.accent)
+      localStorage.setItem('chezzflix_last_season', season ? '1' : '0')
+    } catch { /* ignore */ }
     if (loadedFor.current === profileKey) { try { localStorage.setItem(keyFor(profileKey), JSON.stringify(settings)) } catch { /* private mode */ } }
   }, [settings, profileKey])
 

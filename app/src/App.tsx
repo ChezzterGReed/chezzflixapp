@@ -84,9 +84,24 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
   useBack(() => {
     if (history.length > 0) return back()
-    if (!isAndroid) return
-    if (view.type !== 'home') navigate({ type: 'home' }); else toggleRail()
+    if (isAndroid) toggleRail()   // nothing to go back to: the remote's Back opens / closes the side menu (Home is in the menu)
   })
+  // Left with nothing further left to select always opens the side menu.
+  const railKeyRef = useRef(railKey()); railKeyRef.current = railKey()
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      const before = getCurrentFocusKey()
+      if (!before || before === 'SN:ROOT' || before.startsWith('nav-')) return
+      setTimeout(() => {
+        if (getCurrentFocusKey() !== before || document.querySelector('[data-layer], [data-player]')) return   // it moved, or a popup / the player owns the keys
+        const k = railKeyRef.current
+        setFocus(doesFocusableExist(k) ? k : 'SIDEBAR')
+      }, 130)
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [])
   // The focused button can vanish when a screen changes or reloads; put focus back so the remote never goes dead.
   useEffect(() => { rescueSoon() }, [view])
   useEffect(() => {

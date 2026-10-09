@@ -7,6 +7,7 @@ import { ACCENTS, brandName, cleanBrand, currentSeason, useSettings, type HomeRo
 import { getCollections, getGenres, getPlaylists, type PlexSection, type PlexServer } from '../lib/plex'
 import { listPlexHubs, mergeRows, rowCatalog } from '../lib/homeData'
 import { inTauri } from '../lib/player'
+import { isAndroid } from '../lib/native'
 import { trendingIds } from '../lib/tmdb'
 import { Pumpkin } from './Pumpkin'
 import { checkForUpdate, installUpdate, useUpdater } from '../lib/updater'
@@ -98,17 +99,35 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
   )
 }
 
+const SEEK_BACK = [5, 10, 15, 30]
+const SEEK_FWD = [10, 15, 30, 60]
+
 function Playback() {
   const { settings, update } = useSettings()
   return (
     <>
-      <Heading>Player</Heading>
-      <div className="flex gap-2 px-4 py-2">
-        <Pill active={settings.player === 'app'} onEnter={() => update({ player: 'app' })}>Built-in player</Pill>
-        {inTauri && <Pill active={settings.player === 'mpv'} onEnter={() => update({ player: 'mpv' })}>mpv (separate window)</Pill>}
-      </div>
-      <p className="px-4 pb-2 text-sm text-white/55">{inTauri ? 'In the desktop app, the built-in mpv engine plays your original files inside the window — MKV, DTS, TrueHD and image subtitles included — with no transcoding.' : 'In a browser, the player direct-plays what it can and falls back to Direct Stream or Transcoding, and says which in the corner.'} {inTauri ? 'The external option opens mpv in its own window instead.' : ''}</p>
-      {inTauri && <>
+      {isAndroid ? (
+        <>
+          <Heading>Player</Heading>
+          <p className="px-4 pb-2 text-sm text-white/55">Chezzflix plays your original files directly with Android's own player, using your device's hardware decoders. If something can't play that way, it falls back to Plex repackaging it and says so in the corner.</p>
+        </>
+      ) : (
+        <>
+          <Heading>Player</Heading>
+          <div className="flex gap-2 px-4 py-2">
+            <Pill active={settings.player === 'app'} onEnter={() => update({ player: 'app' })}>Built-in player</Pill>
+            {inTauri && <Pill active={settings.player === 'mpv'} onEnter={() => update({ player: 'mpv' })}>mpv (separate window)</Pill>}
+          </div>
+          <p className="px-4 pb-2 text-sm text-white/55">{inTauri ? 'In the desktop app, the built-in mpv engine plays your original files inside the window — MKV, DTS, TrueHD and image subtitles included — with no transcoding.' : 'In a browser, the player direct-plays what it can and falls back to Direct Stream or Transcoding, and says which in the corner.'} {inTauri ? 'The external option opens mpv in its own window instead.' : ''}</p>
+        </>
+      )}
+      <Heading>Skipping</Heading>
+      <div className="px-4 pt-2 text-sm font-semibold text-white/60">Skip back</div>
+      <div className="flex flex-wrap gap-2 px-4 py-2">{SEEK_BACK.map((n) => <Pill key={n} active={settings.seekBack === n} onEnter={() => update({ seekBack: n })}>{n} sec</Pill>)}</div>
+      <div className="px-4 pt-2 text-sm font-semibold text-white/60">Skip forward</div>
+      <div className="flex flex-wrap gap-2 px-4 py-2">{SEEK_FWD.map((n) => <Pill key={n} active={settings.seekForward === n} onEnter={() => update({ seekForward: n })}>{n} sec</Pill>)}</div>
+      <p className="px-4 pb-2 text-sm text-white/55">Used by the back and forward buttons and by Left and Right on the remote while the controls are hidden.</p>
+      {inTauri && !isAndroid && <>
         <Heading>Volume</Heading>
         <Toggle label="Auto volume leveling" hint="Measures how loud each title is and applies one steady boost to all of it, so quiet movies don't need the TV turned way up. Remembered per movie and show." on={settings.autoLevel} onChange={(v) => update({ autoLevel: v })} />
         <Toggle label="Dialogue boost for surround" hint="On 5.1 and 7.1 audio, lifts the center channel where dialogue lives, so voices stand out from effects." on={settings.dialogueBoost} onChange={(v) => update({ dialogueBoost: v })} />
@@ -117,6 +136,20 @@ function Playback() {
       <Heading>Episodes</Heading>
       <Toggle label="Autoplay next episode" hint="Continue to the next episode after a short countdown" on={settings.autoplayNext} onChange={(v) => update({ autoplayNext: v })} />
       <Toggle label="Skip intros automatically" hint="Jump past the intro whenever Plex has marked one" on={settings.autoSkipIntro} onChange={(v) => update({ autoSkipIntro: v })} />
+    </>
+  )
+}
+
+function ContinueStyle() {
+  const { settings, update } = useSettings()
+  return (
+    <>
+      <Heading>Continue Watching</Heading>
+      <div className="flex gap-2 px-4 py-2">
+        <Pill active={settings.continueStyle === 'episode'} onEnter={() => update({ continueStyle: 'episode' })}>Episode thumbnail</Pill>
+        <Pill active={settings.continueStyle === 'poster'} onEnter={() => update({ continueStyle: 'poster' })}>Show poster</Pill>
+      </div>
+      <p className="px-4 pb-3 text-sm text-white/55">{settings.continueStyle === 'poster' ? 'Shows appear as their poster, with the season and episode underneath.' : 'Each tile is a wide picture from the episode or movie you were watching.'}</p>
     </>
   )
 }
@@ -360,7 +393,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           {panel === 'appearance' && <Appearance profileName={profileName} profileThumb={profileThumb} />}
           {panel === 'playback' && <Playback />}
           {panel === 'libraries' && <Libraries sections={sections} />}
-          {panel === 'home' && <HomeEditor server={server} sections={sections} />}
+          {panel === 'home' && <><ContinueStyle /><HomeEditor server={server} sections={sections} /></>}
           {panel === 'content' && <Content />}
           {panel === 'recs' && <Recommendations />}
           {panel === 'requests' && <Requests token={token} />}

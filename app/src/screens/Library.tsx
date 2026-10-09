@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { reveal } from '../lib/scroll'
-import { Layers, Tags } from 'lucide-react'
+import { Eye, EyeOff, Layers, Tags } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
 import { Focusable } from '../components/Focusable'
-import { getAllSectionItems, getCollections, getSectionItems, getYears, type PlexCollectionRef, type PlexMedia, type PlexSection, type PlexServer, type SortKey } from '../lib/plex'
+import { getAllSectionItems, getCollections, getSectionItems, getYears, isWatched, type PlexCollectionRef, type PlexMedia, type PlexSection, type PlexServer, type SortKey } from '../lib/plex'
 import { useSettings } from '../lib/settings'
 
 const PAGE = 120
@@ -36,6 +36,7 @@ interface Props {
 export function Library({ server, section, onOpen, onBrowse, onCollection }: Props) {
   const { settings, update } = useSettings()
   const collapse = !!settings.collapseCollections[section.key]
+  const unwatched = !!settings.unwatchedOnly[section.key]
   const [sort, setSort] = useState<SortKey>('titleAsc')
   const [year, setYear] = useState<number>()
   const [years, setYears] = useState<number[]>([])
@@ -51,16 +52,16 @@ export function Library({ server, section, onOpen, onBrowse, onCollection }: Pro
     let alive = true
     setLoading(true); setItems([])
     if (collapse) {
-      Promise.all([getAllSectionItems(server, section.key, sort, year), getCollections(server, section.key)]).then(([all, cols]) => {
+      Promise.all([getAllSectionItems(server, section.key, sort, year, 5000, unwatched), getCollections(server, section.key)]).then(([all, cols]) => {
         if (!alive) return
-        const grouped = groupByCollection(all, cols)
+        const grouped = groupByCollection(all, cols).filter((m) => !unwatched || m.type === 'collection' || !isWatched(m))
         setItems(grouped); setTotal(grouped.length); setLoading(false)
       })
     } else {
-      getSectionItems(server, section.key, sort, 0, PAGE, year).then((r) => { if (alive) { setItems(r.items); setTotal(r.total); setLoading(false) } })
+      getSectionItems(server, section.key, sort, 0, PAGE, year, unwatched).then((r) => { if (alive) { setItems(r.items); setTotal(r.total); setLoading(false) } })
     }
     return () => { alive = false }
-  }, [server, section.key, sort, year, collapse])
+  }, [server, section.key, sort, year, collapse, unwatched])
 
   useEffect(() => {
     const el = sentinel.current
@@ -68,15 +69,15 @@ export function Library({ server, section, onOpen, onBrowse, onCollection }: Pro
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting && !loading && items.length < total) {
         setLoading(true)
-        getSectionItems(server, section.key, sort, items.length, PAGE, year).then((r) => { setItems((x) => [...x, ...r.items]); setLoading(false) })
+        getSectionItems(server, section.key, sort, items.length, PAGE, year, unwatched).then((r) => { setItems((x) => [...x, ...r.items]); setLoading(false) })
       }
     }, { rootMargin: '600px' })
     io.observe(el)
     return () => io.disconnect()
-  }, [items.length, total, loading, server, section.key, sort, year, collapse])
+  }, [items.length, total, loading, server, section.key, sort, year, collapse, unwatched])
 
   const noun = section.type === 'movie' ? 'movies' : 'shows'
-  const count = useMemo(() => (collapse ? `${total.toLocaleString()} tiles · collections grouped` : `${total.toLocaleString()} ${noun}`) + (year ? ` from ${year}` : ''), [collapse, total, noun, year])
+  const count = useMemo(() => (collapse ? `${total.toLocaleString()} tiles · collections grouped` : `${total.toLocaleString()} ${unwatched ? `unwatched ${noun}` : noun}`) + (year ? ` from ${year}` : ''), [collapse, total, noun, year, unwatched])
   const toolBtn = 'flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black'
 
   return (
@@ -86,7 +87,10 @@ export function Library({ server, section, onOpen, onBrowse, onCollection }: Pro
           <h1 className="text-[2.6rem] font-extrabold tracking-[-0.03em]">{section.title}</h1>
           <p className="mt-1 text-white/55">{loading && !items.length ? '\u00a0' : count}</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Focusable onEnter={() => onBrowse('genres')} title="Browse genres" leftToRail><div className={`${toolBtn} bg-white/8 text-white/80`}><Tags size={15} />Genres</div></Focusable>
+            <Focusable onEnter={() => update({ unwatchedOnly: { ...settings.unwatchedOnly, [section.key]: !unwatched } })} title="Show unwatched only" leftToRail>
+              <div className={`${toolBtn} ${unwatched ? 'bg-accent text-black' : 'bg-white/8 text-white/80'}`}>{unwatched ? <EyeOff size={15} /> : <Eye size={15} />}{unwatched ? 'Unwatched only' : 'All titles'}</div>
+            </Focusable>
+            <Focusable onEnter={() => onBrowse('genres')} title="Browse genres"><div className={`${toolBtn} bg-white/8 text-white/80`}><Tags size={15} />Genres</div></Focusable>
             <Focusable onEnter={() => onBrowse('collections')} title="Browse collections"><div className={`${toolBtn} bg-white/8 text-white/80`}><Layers size={15} />Collections</div></Focusable>
             <Focusable onEnter={() => update({ collapseCollections: { ...settings.collapseCollections, [section.key]: !collapse } })} title="Group collections">
               <div className={`${toolBtn} ${collapse ? 'bg-accent text-black' : 'bg-white/8 text-white/80'}`}>
@@ -105,7 +109,7 @@ export function Library({ server, section, onOpen, onBrowse, onCollection }: Pro
         ))}
         {loading && Array.from({ length: items.length ? 6 : 18 }, (_, i) => <div key={'s' + i} className="skeleton aspect-[2/3] rounded-xl" />)}
       </div>
-      {!loading && items.length === 0 && <p className="py-16 text-white/55">{year ? `Nothing from ${year} here. Try another year.` : 'This library is empty.'}</p>}
+      {!loading && items.length === 0 && <p className="py-16 text-white/55">{year ? `Nothing from ${year} here. Try another year.` : (unwatched ? 'Nothing unwatched here. You\'ve seen it all!' : 'This library is empty.')}</p>}
       <div ref={sentinel} className="h-px" />
     </div>
   )

@@ -62,7 +62,7 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
           <span className="grid w-[52px] shrink-0 place-items-center">
             <span className="relative">
               {avatarLogo ? <Avatar name={profileName} thumb={profileThumb} size={34} /> : <Logo size={52} />}
-              {season === 'halloween' && <Pumpkin size={17} className="absolute -right-2 -top-2 drop-shadow" />}
+              {season === 'halloween' && <Pumpkin size={21} className="absolute right-0.5 top-0 drop-shadow" />}
             </span>
           </span>
           <span className={`whitespace-nowrap text-[0.95rem] font-extrabold tracking-[0.2em] transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>{brand}</span>

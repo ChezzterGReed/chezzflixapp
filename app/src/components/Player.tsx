@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, AudioLines, Captions, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
-import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
+import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { isAndroid, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
@@ -44,6 +44,11 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const [muted, setMuted] = useState(false)
   const [controls, setControls] = useState(true)
   const [panel, setPanel] = useState<null | { col: 0 | 1; idx: number }>(null)
+  // Remote: once the controls are up, Left/Right move between buttons (Up reaches the seek bar). Hidden controls: Left/Right just skip.
+  const [ctlRow, setCtlRow] = useState<null | 'seek' | 'buttons'>(null)
+  const [ctlIdx, setCtlIdx] = useState(0)
+  const [panelTick, setPanelTick] = useState(0)
+  const [prev, setPrev] = useState<PlexMedia | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [next, setNext] = useState<PlexMedia | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -86,7 +91,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const poke = useCallback(() => {
     setControls(true)
     clearTimeout(idle.current)
-    idle.current = window.setTimeout(() => setControls(false), 3200)
+    idle.current = window.setTimeout(() => { setControls(false); if (!pausedRef.current) setCtlRow(null) }, 3200)
   }, [])
 
   // ----- load / reload the source -----
@@ -278,11 +283,11 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   }, [server, media, mode])
 
   // ----- next episode lookup -----
-  useEffect(() => { getNextEpisode(server, media).then(setNext).catch(() => setNext(null)) }, [server, media])
+  useEffect(() => { getNextEpisode(server, media).then(setNext).catch(() => setNext(null)); getPreviousEpisode(server, media).then(setPrev).catch(() => setPrev(null)) }, [server, media])
 
   // ----- keep spatial-nav out of the way; the player owns the keys -----
   useEffect(() => { pauseNav(); return () => resumeNav() }, [])
-  useBack(() => { if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else close() })
+  useBack(() => { if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
   useEffect(() => { poke(); return () => clearTimeout(idle.current) }, [poke])
 
   const seek = useCallback((t: number) => {
@@ -321,6 +326,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
   const showNext = !!next && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
+  const goPrev = useCallback(() => { if (prev) fadeOut(() => { continuing = true; onPlayNext(prev) }) }, [prev, onPlayNext, fadeOut])
   endedRef.current = () => (next && settings.autoplayNext ? goNext() : close())
 
   // Up Next countdown (only if autoplay is on)
@@ -356,13 +362,32 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     else setChoice((c) => ({ ...c, subtitleId: idx === 0 ? null : subs[idx - 1].id }))
     setPanel(null)
   }
-  const activeAudio = audio.find((r) => r.on)?.id
   const activeSub = subs.find((r) => r.on)?.id ?? null
+
+  // ----- the control bar, in order, for remote navigation -----
+  const hasBoost = mode === 'native' || location.search.includes('levels')
+  const order = ['play', ...(prev ? ['prev'] : []), 'back', 'fwd', 'mute', ...(next ? ['next'] : []), ...(hasBoost ? ['boost'] : []), 'subs', 'full']
+  const acts: Record<string, () => void> = {
+    play: toggle, prev: goPrev, next: goNext, mute: () => setMuted((m) => !m), full: toggleFullscreen,
+    back: () => seek(timeRef.current - settings.seekBack), fwd: () => seek(timeRef.current + settings.seekForward),
+    boost: () => setLevelPanel(levelPanel === null ? 0 : null), subs: () => setPanel(panel ? null : { col: 0, idx: 0 }),
+  }
+  const cur = order[Math.min(ctlIdx, order.length - 1)]
+  const cf = (id: string) => ctlRow === 'buttons' && cur === id
+
+  // Menus (audio & subtitles, volume) close by themselves after a few idle seconds.
+  useEffect(() => {
+    if (!panel && levelPanel === null) return
+    const t = setTimeout(() => { setPanel(null); setLevelPanel(null) }, 5000)
+    return () => clearTimeout(t)
+  }, [panel, levelPanel, panelTick])
+  const menuLeave = useRef<number>(0)
 
   // ----- keyboard / remote -----
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
+      if (panel || levelPanel !== null) setPanelTick((n) => n + 1)
       if (panel) {
         const rows = [audio.length, subs.length + 1]
         if (e.key === 'ArrowDown') setPanel({ ...panel, idx: Math.min(rows[panel.col] - 1, panel.idx + 1) })
@@ -382,17 +407,37 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         else return
         e.preventDefault(); e.stopPropagation(); poke(); return
       }
+      // On-screen actions (skip intro, up next...) answer to OK first.
+      if (e.key === 'Enter' && primary && ctlRow !== 'buttons') { primary(); e.preventDefault(); return }
+      // Controls up and focused: the remote moves around them.
+      if (controls && ctlRow) {
+        const last = order.length - 1
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          const d = e.key === 'ArrowLeft' ? -1 : 1
+          if (ctlRow === 'seek') seek(timeRef.current + (d < 0 ? -settings.seekBack : settings.seekForward))
+          else setCtlIdx((i) => Math.max(0, Math.min(last, Math.min(i, last) + d)))
+          poke()
+        } else if (e.key === 'ArrowUp') { if (ctlRow === 'buttons') setCtlRow('seek'); poke() }
+        else if (e.key === 'ArrowDown') {
+          if (ctlRow === 'seek') { setCtlRow('buttons'); poke() }
+          else if (showNext && countdown !== null) setCountdown(null)
+          else { setCtlRow(null); setControls(false) }
+        } else if (e.key === 'Enter' || e.key === ' ') { if (ctlRow === 'seek') toggle(); else acts[cur]?.(); poke() }
+        else if (!['k', 'MediaPlayPause', 'm', 'v', 'f', 'n', 'p', 'c', 's', 'j', 'l'].includes(e.key)) return
+        else { /* fall through to the shortcuts below */ }
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', ' '].includes(e.key)) { e.preventDefault(); e.stopPropagation(); return }
+      }
       switch (e.key) {
-        case 'Enter': if (primary) primary(); else toggle(); break
+        case 'Enter': toggle(); break
         case ' ': case 'k': case 'MediaPlayPause': toggle(); break
-        case 'ArrowLeft': case 'j': seek(timeRef.current - 10); break
-        case 'ArrowRight': case 'l': seek(timeRef.current + 10); break
-        case 'ArrowUp': if (controls) setPanel({ col: 0, idx: Math.max(0, audio.findIndex((s) => s.id === activeAudio)) }); else poke(); break
-        case 'ArrowDown': if (showNext && countdown !== null) setCountdown(null); else poke(); break
+        case 'ArrowLeft': case 'j': seek(timeRef.current - settings.seekBack); break
+        case 'ArrowRight': case 'l': seek(timeRef.current + settings.seekForward); break
+        case 'ArrowUp': case 'ArrowDown': setCtlIdx(0); setCtlRow('buttons'); poke(); break   // bring up the controls and put the remote on them
         case 'm': setMuted((x) => !x); break
-        case 'v': if (mode === 'native' || location.search.includes('levels')) { setLevelPanel(0); poke() } break
+        case 'v': if (hasBoost) { setLevelPanel(0); poke() } break
         case 'f': toggleFullscreen(); break
         case 'n': if (next) goNext(); break
+        case 'p': if (prev) goPrev(); break
         case 'c': case 's': setPanel({ col: 1, idx: 0 }); break
         default: return
       }
@@ -409,7 +454,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   return (
     <div data-player className={`fixed inset-0 z-[70] text-white transition-[opacity,transform] duration-700 ease-[cubic-bezier(.65,.05,.25,1)] ${mode === 'native' ? 'bg-transparent' : 'bg-black'} ${revealing ? 'scale-[1.08] opacity-0' : ''}`} onMouseMove={poke} style={{ cursor: controls ? 'default' : 'none' }}
       // The native (mpv) picture is behind the page, so clicks on the picture land here: click = pause/play, double-click = fullscreen.
-      onClick={(e) => { if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggle() }}
+      onClick={(e) => { if ((panel || levelPanel !== null) && !(e.target as HTMLElement).closest('[data-menu]')) { setPanel(null); setLevelPanel(null); return }
+        if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggle() }}
       onDoubleClick={(e) => { if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggleFullscreen() }}>
       {mode !== 'native' && <video ref={video} loop={server.uri === DEMO_URI} className="absolute inset-0 size-full bg-black object-contain" playsInline
         onClick={toggle} onDoubleClick={toggleFullscreen}
@@ -478,28 +524,29 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         </div>
 
         <div data-nopause className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/90 via-black/50 to-transparent px-8 pb-7 pt-24">
-          <SeekBar pct={pct} buffered={duration ? (buffered / duration) * 100 : 0} duration={duration} onSeek={seek} intro={intro} credits={credits} />
+          <SeekBar focused={ctlRow === 'seek'} pct={pct} buffered={duration ? (buffered / duration) * 100 : 0} duration={duration} onSeek={seek} intro={intro} credits={credits} />
           <div className="mt-1.5 flex justify-between text-sm tabular-nums text-white/70"><span>{fmt(time)}</span><span>-{fmt(duration - time)}</span></div>
           <div className="mt-2 flex items-center gap-2">
-            <Ctl label={paused ? 'Play' : 'Pause'} onClick={toggle} big>{paused ? <Play size={28} fill="currentColor" /> : <Pause size={28} fill="currentColor" />}</Ctl>
-            <Ctl label="Back 10 seconds" onClick={() => seek(timeRef.current - 10)}><RotateCcw size={24} /></Ctl>
-            <Ctl label="Forward 10 seconds" onClick={() => seek(timeRef.current + 10)}><RotateCw size={24} /></Ctl>
+            <Ctl label={paused ? 'Play' : 'Pause'} onClick={toggle} big focused={cf('play')}>{paused ? <Play size={28} fill="currentColor" /> : <Pause size={28} fill="currentColor" />}</Ctl>
+            {prev && <Ctl label="Previous episode" onClick={goPrev} focused={cf('prev')}><SkipBack size={24} /></Ctl>}
+            <Ctl label={`Back ${settings.seekBack} seconds`} onClick={acts.back} focused={cf('back')}><span className="relative grid place-items-center"><RotateCcw size={28} /><b className="absolute text-[0.6rem] font-extrabold">{settings.seekBack}</b></span></Ctl>
+            <Ctl label={`Forward ${settings.seekForward} seconds`} onClick={acts.fwd} focused={cf('fwd')}><span className="relative grid place-items-center"><RotateCw size={28} /><b className="absolute text-[0.6rem] font-extrabold">{settings.seekForward}</b></span></Ctl>
             <div className="group/vol ml-1 flex items-center">
-              <Ctl label="Mute" onClick={() => setMuted((m) => !m)}>{muted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}</Ctl>
+              <Ctl label="Mute" onClick={() => setMuted((m) => !m)} focused={cf('mute')}>{muted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}</Ctl>
               <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} aria-label="Volume"
                 onChange={(e) => { setVolume(+e.target.value); setMuted(false) }}
                 className="h-1 w-0 cursor-pointer appearance-none overflow-hidden rounded-full bg-white/30 accent-white opacity-0 transition-all group-hover/vol:w-24 group-hover/vol:opacity-100" />
             </div>
             <div className="flex-1" />
-            {next && <Ctl label="Next episode" onClick={goNext}><SkipForward size={24} /></Ctl>}
-            {(mode === 'native' || location.search.includes('levels')) && <Ctl label="Volume boost" onClick={() => setLevelPanel(levelPanel === null ? 0 : null)}><span className="relative grid place-items-center"><AudioLines size={24} />{levelActive && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>}
-            <Ctl label="Audio & subtitles" onClick={() => setPanel(panel ? null : { col: 0, idx: 0 })}><Captions size={26} /></Ctl>
-            <Ctl label="Fullscreen" onClick={toggleFullscreen}>{fullscreen ? <Minimize size={24} /> : <Maximize size={24} />}</Ctl>
+            {next && <Ctl label="Next episode" onClick={goNext} focused={cf('next')}><SkipForward size={24} /></Ctl>}
+            {hasBoost && <Ctl label="Volume boost" onClick={() => setLevelPanel(levelPanel === null ? 0 : null)} focused={cf('boost')}><span className="relative grid place-items-center"><AudioLines size={24} />{levelActive && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>}
+            <Ctl label="Audio & subtitles" onClick={() => setPanel(panel ? null : { col: 0, idx: 0 })} focused={cf('subs')}><Captions size={26} /></Ctl>
+            <Ctl label="Fullscreen" onClick={toggleFullscreen} focused={cf('full')}>{fullscreen ? <Minimize size={24} /> : <Maximize size={24} />}</Ctl>
           </div>
         </div>
 
         {levelPanel !== null && (
-          <div data-nopause className="pop absolute bottom-32 right-24 w-[24rem] rounded-2xl bg-[#17171c]/95 p-2.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+          <div data-nopause data-menu onMouseEnter={() => clearTimeout(menuLeave.current)} onMouseLeave={() => { menuLeave.current = window.setTimeout(() => { setPanel(null); setLevelPanel(null) }, 1000) }} className="pop absolute bottom-32 right-24 w-[24rem] rounded-2xl bg-[#17171c]/95 p-2.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
             <div className="px-3 pb-1 pt-1.5 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Volume boost</div>
             {levelRows.map((r, i) => (
               <div key={r.label} onMouseEnter={() => setLevelPanel(i)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${levelPanel === i ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
@@ -519,7 +566,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         )}
 
         {panel && (
-          <div data-nopause className="pop absolute bottom-32 right-8 flex w-[520px] max-w-[92vw] gap-1 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+          <div data-nopause data-menu onMouseEnter={() => clearTimeout(menuLeave.current)} onMouseLeave={() => { menuLeave.current = window.setTimeout(() => { setPanel(null); setLevelPanel(null) }, 1000) }} className="pop absolute bottom-32 right-8 flex w-[520px] max-w-[92vw] gap-1 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
             {[{ t: 'Audio', rows: audio },
               { t: 'Subtitles', rows: [{ id: -1, label: 'Off', on: activeSub === null }, ...subs] }].map((c, col) => (
               <div key={c.t} className="min-w-0 flex-1">
@@ -551,11 +598,11 @@ function VolumeSync({ video, volume, muted }: { video: React.RefObject<HTMLVideo
   return null
 }
 
-function Ctl({ children, label, onClick, big }: { children: React.ReactNode; label: string; onClick: () => void; big?: boolean }) {
-  return <button aria-label={label} title={label} onClick={onClick} className={`grid shrink-0 place-items-center rounded-full transition hover:bg-white/15 active:scale-95 ${big ? 'size-14' : 'size-12'}`}>{children}</button>
+function Ctl({ children, label, onClick, big, focused }: { children: React.ReactNode; label: string; onClick: () => void; big?: boolean; focused?: boolean }) {
+  return <button aria-label={label} title={label} onClick={onClick} className={`grid shrink-0 place-items-center rounded-full transition hover:bg-white/15 active:scale-95 ${focused ? 'scale-110 bg-white text-black ring-4 ring-accent/70' : ''} ${big ? 'size-14' : 'size-12'}`}>{children}</button>
 }
 
-function SeekBar({ pct, buffered, duration, onSeek, intro, credits }: { pct: number; buffered: number; duration: number; onSeek: (t: number) => void; intro?: { startTimeOffset: number; endTimeOffset: number }; credits?: { startTimeOffset: number; endTimeOffset: number } }) {
+function SeekBar({ focused, pct, buffered, duration, onSeek, intro, credits }: { focused?: boolean; pct: number; buffered: number; duration: number; onSeek: (t: number) => void; intro?: { startTimeOffset: number; endTimeOffset: number }; credits?: { startTimeOffset: number; endTimeOffset: number } }) {
   const bar = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<number | null>(null)
   const at = (e: React.PointerEvent | PointerEvent) => { const r = bar.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) }
@@ -569,11 +616,11 @@ function SeekBar({ pct, buffered, duration, onSeek, intro, credits }: { pct: num
   return (
     <div ref={bar} role="slider" aria-label="Seek" aria-valuenow={Math.round(pct)} className="group/seek relative flex h-6 cursor-pointer items-center"
       onPointerDown={drag} onPointerMove={(e) => setHover(at(e))} onPointerLeave={() => setHover(null)}>
-      <div className="relative h-1 w-full rounded-full bg-white/25 transition-all group-hover/seek:h-1.5">
+      <div className={`relative w-full rounded-full bg-white/25 transition-all group-hover/seek:h-1.5 ${focused ? 'h-2 ring-2 ring-white/70' : 'h-1'}`}>
         <div className="absolute inset-y-0 left-0 rounded-full bg-white/30" style={{ width: `${buffered}%` }} />
         {[intro, credits].map((m, i) => mark(m) && <div key={i} className="absolute inset-y-0 rounded-full bg-white/50" style={mark(m)} />)}
         <div className="absolute inset-y-0 left-0 rounded-full bg-accent" style={{ width: `${pct}%` }} />
-        <div className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 scale-0 rounded-full bg-white shadow transition-transform group-hover/seek:scale-100" style={{ left: `${pct}%` }} />
+        <div className={`absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow transition-transform group-hover/seek:scale-100 ${focused ? 'scale-125' : 'scale-0'}`} style={{ left: `${pct}%` }} />
       </div>
       {hover !== null && duration > 0 && <div className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold tabular-nums" style={{ left: `${hover * 100}%` }}>{fmt(hover * duration)}</div>}
     </div>

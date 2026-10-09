@@ -8,6 +8,9 @@ import { search, type PlexMedia, type PlexSection, type PlexServer } from '../li
 import { guidIndex, searchTmdb } from '../lib/tmdb'
 import { normalizeBase, type RequestItem } from '../lib/overseerr'
 import { useSettings } from '../lib/settings'
+import { Focusable } from '../components/Focusable'
+import { isAndroid } from '../lib/native'
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
 /** How close a title is to what was typed: exact, starts with, contains, or just related. */
@@ -28,7 +31,8 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
   const [requesting, setRequesting] = useState<RequestItem>()
   const input = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { input.current?.focus() }, [])
+  // On a computer, start typing right away. On a TV, focus the search bar like any other button: OK opens the on-screen keyboard.
+  useEffect(() => { if (isAndroid) { const t = setTimeout(() => setFocus('search-field'), 200); return () => clearTimeout(t) } input.current?.focus() }, [])
   useEffect(() => {
     if (q.trim().length < 2) { setLocal(undefined); setRemote([]); return }
     const t = setTimeout(() => {
@@ -49,16 +53,22 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
   const rank = <T,>(list: T[], title: (x: T) => string) => list.map((x, i) => ({ x, i, c: closeness(title(x), term) })).sort((p, r) => r.c - p.c || p.i - r.i).map((e) => e.x)
   const available = rank(local ?? [], (m) => m.title)
   const requestable = rank(remote, (r) => r.title)
-  const scroll = (el: HTMLElement) => reveal(el)
+  const scroll = (el: HTMLElement) => { input.current?.blur(); reveal(el) }   // moving onto a result releases the text field, so OK opens the title (not the keyboard)
   const grid = 'fade-in grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]'
 
   return (
     <div className="px-[var(--gutter)] pb-24 pt-14">
-      <div className="relative mb-10 max-w-3xl">
-        <SearchIcon size={28} className="absolute left-0 top-1/2 -translate-y-1/2 text-white/50" />
-        <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={canRequest ? 'Search movies and shows' : 'Search movies and shows'}
-          className="w-full border-b-2 border-white/15 bg-transparent py-4 pl-12 text-[2rem] font-bold tracking-tight outline-none transition-colors placeholder:text-white/25 focus:border-accent" />
-      </div>
+      <Focusable focusKey="search-field" onEnter={() => input.current?.focus()} title="Search">
+        <div className="relative mb-10 max-w-3xl">
+          <SearchIcon size={28} className="absolute left-0 top-1/2 -translate-y-1/2 text-white/50" />
+          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies and shows" enterKeyHint="search"
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') e.currentTarget.blur()   // leave the text field; the remote then moves focus as usual
+              else if (e.key === 'Enter' || e.key === 'Escape') { e.currentTarget.blur(); setFocus('search-field') }
+            }}
+            className="w-full border-b-2 border-white/15 bg-transparent py-4 pl-12 text-[2rem] font-bold tracking-tight outline-none transition-colors placeholder:text-white/25 focus:border-accent group-data-[hl=true]/f:border-accent" />
+        </div>
+      </Focusable>
       {local === undefined && <p className="text-white/45">{canRequest ? 'Start typing to search your library and find titles to request.' : 'Start typing to search your libraries.'}</p>}
       {local && available.length === 0 && requestable.length === 0 && <p className="text-white/55">Nothing matches “{q}”. Check the spelling or try a shorter title.</p>}
       {available.length > 0 && (

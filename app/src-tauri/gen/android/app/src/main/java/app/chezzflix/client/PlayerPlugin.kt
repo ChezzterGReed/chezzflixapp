@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package app.chezzflix.client
 
 import android.app.Activity
@@ -52,6 +54,8 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   private var userVolume = 1.0
   private var muted = false
   private var gainDb = 0.0
+  private var watchdogToken = 0
+  private var nudges = 0
 
   override fun load(webView: WebView) { web = webView }
 
@@ -120,6 +124,28 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     override fun onAudioSessionIdChanged(audioSessionId: Int) { rebuildEnhancer(audioSessionId) }
   }
 
+  /**
+   * Some TV decoders show the first frame and then stop drawing while the audio carries on (it cures itself with a seek).
+   * A moment after playback starts, if time moved but almost no new frames were drawn, nudge the player exactly as a seek would.
+   */
+  private fun armWatchdog() {
+    val token = ++watchdogToken
+    val p = player ?: return
+    val frames0 = p.videoDecoderCounters?.renderedOutputBufferCount ?: -1
+    val pos0 = p.currentPosition
+    ui.postDelayed({
+      val pl = player ?: return@postDelayed
+      if (token != watchdogToken || !pl.playWhenReady || pl.playbackState != Player.STATE_READY) return@postDelayed
+      val frames1 = pl.videoDecoderCounters?.renderedOutputBufferCount ?: -1
+      // Only for real video (not audio-only files), and never more than a few nudges per title.
+      if (pl.videoFormat != null && frames0 >= 0 && nudges < 3 && pl.currentPosition - pos0 > 900 && frames1 - frames0 <= 2) {
+        nudges++
+        pl.seekTo(pl.currentPosition)
+        armWatchdog()   // check again after the nudge
+      }
+    }, 1600)
+  }
+
   private fun rebuildEnhancer(session: Int) {
     try { enhancer?.release() } catch (_: Throwable) {}
     enhancer = null
@@ -144,7 +170,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     val a = invoke.parseArgs(LoadArgs::class.java)
     onUi(invoke) {
       val p = ensure()
-      loadedFired = false
+      loadedFired = false; nudges = 0
       view?.visibility = View.VISIBLE
       val item = MediaItem.Builder().setUri(a.url).apply {
         val subs = a.subs?.map { s ->
@@ -166,7 +192,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     else -> MimeTypes.APPLICATION_SUBRIP
   }
 
-  @Command fun setPause(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { player?.playWhenReady = !a.value } }
+  @Command fun setPause(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { player?.playWhenReady = !a.value; if (!a.value) armWatchdog() } }
   @Command fun seek(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.seekTo((a.value * 1000).toLong()) } }
   @Command fun setVolume(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { userVolume = a.value; applyVolume(); emit("volume", userVolume * 100) } }
   @Command fun setMute(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { muted = a.value; applyVolume(); emit("mute", muted) } }

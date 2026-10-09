@@ -18,9 +18,11 @@ interface Props {
   subtitle?: string
   /** Personalized row: titles can be dismissed with "Not interested". */
   fromRecs?: boolean
+  /** Continue Watching row (gives titles the "Remove from Continue Watching" menu). */
+  fromContinue?: boolean
 }
 
-export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs }: Props) {
+export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs, fromContinue }: Props) {
   const { ref, focusKey } = useFocusable({ saveLastFocusedChild: true, autoRestoreFocus: false })
   const track = useRef<HTMLDivElement>(null)
 
@@ -37,7 +39,7 @@ export function Row({ title, items, server, variant = 'poster', onSelect, themed
           <div ref={track} className="flex gap-4 overflow-x-auto px-[var(--gutter)] py-5 -my-5">
             {items.map((m, idx) => variant === 'landscape'
               ? <LandscapeCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} />
-              : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} fromRecs={fromRecs} />)}
+              : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} fromRecs={fromRecs} fromContinue={fromContinue} />)}
           </div>
           {([-1, 1] as const).map((d) => (
             <button key={d} aria-label={d < 0 ? 'Scroll left' : 'Scroll right'} onClick={() => nudge(d)} tabIndex={-1}

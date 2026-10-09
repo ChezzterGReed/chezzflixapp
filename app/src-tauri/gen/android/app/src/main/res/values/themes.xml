@@ -1,6 +1,10 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.chezzflix" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+    <!-- Always dark: the window shows this colour until the page paints, so launching never flashes white. -->
+    <style name="Theme.chezzflix" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/chezz_bg</item>
+        <item name="android:colorBackground">@color/chezz_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/chezz_bg</item>
     </style>
 </resources>

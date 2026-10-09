@@ -95,7 +95,9 @@ export interface PlexHub {
   Metadata?: PlexMedia[]
 }
 
-export interface PlexSection { key: string; title: string; type: string }
+export interface PlexSection { key: string; title: string; type: string; agent?: string; scanner?: string }
+/** "Other Videos" / personal-media libraries (home videos, concerts, clips): Plex files them under movies but they have no metadata agent. */
+export const isOtherSection = (s: PlexSection) => /\.none$/i.test(s.agent ?? '') || /video files/i.test(s.scanner ?? '')
 export interface PlexProfile { id: number; uuid: string; title: string; thumb?: string; protected?: boolean; admin?: boolean }
 
 // ---------- Auth (PIN flow) ----------
@@ -286,6 +288,21 @@ export async function getCollectionItems(server: PlexServer, id: string): Promis
   return c.Metadata ?? []
 }
 
+/** The episode before `ep` (rolls back into the previous season's last episode). */
+export async function getPreviousEpisode(server: PlexServer, ep: PlexMedia): Promise<PlexMedia | null> {
+  if (ep.type !== 'episode' || !ep.parentRatingKey) return null
+  const siblings = await getChildren(server, ep.parentRatingKey)
+  const i = siblings.findIndex((e) => e.ratingKey === ep.ratingKey)
+  if (i > 0) return siblings[i - 1]
+  if (!ep.grandparentRatingKey) return null
+  const seasons = (await getChildren(server, ep.grandparentRatingKey)).filter((s) => s.index !== 0)
+  const si = seasons.findIndex((s) => s.ratingKey === ep.parentRatingKey)
+  const before = si > 0 ? seasons[si - 1] : undefined
+  if (!before) return null
+  const eps = await getChildren(server, before.ratingKey)
+  return eps[eps.length - 1] ?? null
+}
+
 /** The episode that follows `ep` (rolls over into the next season). */
 export async function getNextEpisode(server: PlexServer, ep: PlexMedia): Promise<PlexMedia | null> {
   if (ep.type !== 'episode' || !ep.parentRatingKey) return null
@@ -329,18 +346,18 @@ export const SORTS = {
 } as const
 export type SortKey = keyof typeof SORTS
 
-export async function getSectionItems(server: PlexServer, key: string, sort: SortKey | string, start = 0, size = 120, year?: number) {
+export async function getSectionItems(server: PlexServer, key: string, sort: SortKey | string, start = 0, size = 120, year?: number, unwatched = false) {
   const sortQ = (SORTS as Record<string, { q: string }>)[sort]?.q ?? sort
-  const q = `sort=${encodeURIComponent(sortQ)}&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${size}${year ? `&year=${year}` : ''}`
+  const q = `sort=${encodeURIComponent(sortQ)}&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${size}${year ? `&year=${year}` : ''}${unwatched ? '&unwatched=1' : ''}`
   const c = await get<{ Metadata?: PlexMedia[]; totalSize?: number }>(server, `/library/sections/${key}/all?${q}`)
   return { items: c.Metadata ?? [], total: c.totalSize ?? c.Metadata?.length ?? 0 }
 }
 
 /** The whole library (paged in chunks) — used when collections are grouped client-side. */
-export async function getAllSectionItems(server: PlexServer, key: string, sort: SortKey | string, year?: number, cap = 5000): Promise<PlexMedia[]> {
+export async function getAllSectionItems(server: PlexServer, key: string, sort: SortKey | string, year?: number, cap = 5000, unwatched = false): Promise<PlexMedia[]> {
   const out: PlexMedia[] = []
   for (let start = 0; start < cap; start += 500) {
-    const r = await getSectionItems(server, key, sort, start, 500, year)
+    const r = await getSectionItems(server, key, sort, start, 500, year, unwatched)
     out.push(...r.items)
     if (out.length >= r.total || r.items.length === 0) break
   }

@@ -110,7 +110,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
       <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
         <div className="flex gap-1 rounded-full bg-black/35 p-1 backdrop-blur-xl">
           {TABS.filter((t) => (t.id !== 'anime' || showAnime) && (t.id !== 'foryou' || settings.recs)).map((t) => (
-            <Focusable key={t.id} focusKey={`tab-${t.id}`} onEnter={() => switchTab(t.id)} title={t.label} leftToRail={t.id === 'all'}>
+            <Focusable key={t.id} focusKey={`tab-${t.id}`} onEnter={() => switchTab(t.id)} title={t.label} leftToRail={t.id === 'all'} onArrow={(d) => { if (d === 'down' && hero?.length && activeTab !== 'trending') { setFocus('hero-play'); return false } }}>
               <div className={`rounded-full px-5 py-2 text-[0.92rem] font-semibold transition-colors group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${activeTab === t.id ? 'bg-accent text-black' : 'text-white/65'}`}>{t.label}</div>
             </Focusable>
           ))}
@@ -120,14 +120,14 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
       {activeTab === 'trending'
         ? <TrendingBanner server={server} posters={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).flatMap((r) => r.items)} count={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).reduce((n, r) => n + r.items.length, 0)} loading={!rows} />
         : !settings.hero ? <div className="h-28" />
-        : hero?.length ? <Hero key={activeTab} items={hero} server={server} rotate={settings.heroRotate} onPlay={onPlay} onInfo={onOpen} />
+        : hero?.length ? <Hero key={activeTab} tabKey={`tab-${activeTab}`} items={hero} server={server} rotate={settings.heroRotate} onPlay={onPlay} onInfo={onOpen} />
           : hero ? <div className="h-28" /> : <HeroSkeleton />}
       <div className="relative z-10 pt-2">
         {!rows
           ? <><RowSkeleton landscape /><RowSkeleton /><RowSkeleton /></>
           : <>
               {merged.length === 0 && recsReady && <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>}
-              {merged.map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} items={r.items} server={server} variant={r.continue ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onSelect={(m) => r.continue ? onPlay(m) : onOpen(m)} />)}
+              {merged.map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onSelect={(m) => r.continue ? onPlay(m) : onOpen(m)} />)}
               {wantsRecs && !recsReady && (activeTab === 'foryou' || shownRecs.length === 0) && <RowSkeleton />}
               {activeTab === 'foryou' && recsReady && recRows.length === 0 && (
                 <div className="mx-[var(--gutter)] mb-8 max-w-3xl rounded-2xl bg-white/6 p-6 ring-1 ring-white/10">

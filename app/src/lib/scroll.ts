@@ -62,3 +62,8 @@ export function reveal(el: HTMLElement, { block = 'center', inline = 'none', mar
     else if (a1 > box.end - margin) scrollTo(s, axis, cur + (a1 - (box.end - margin)))
   }
 }
+
+/** If `el` sits inside a scrolling panel (Settings, a popup, the side menu's library list), keep it visible there. Does nothing for the page itself. */
+export function revealInPanel(el: HTMLElement) {
+  if (scroller(el, 'y') !== window) reveal(el, { block: 'nearest', inline: 'none', margin: 56 })
+}

@@ -1,6 +1,6 @@
 import {
   getCollectionItems, getCollections, getGenreItems, getGenreRandom, getGenres, getHubs, getMetadata, getOnDeck, getPlaylistItems,
-  getRandomItems, getRecentShows, getSectionItems, isWatched, type PlexMedia, type PlexSection, type PlexServer,
+  getRandomItems, getRecentShows, getSectionItems, isOtherSection, isWatched, type PlexMedia, type PlexSection, type PlexServer,
 } from './plex'
 import type { HomeRowCfg, HomeTab, Season, Settings } from './settings'
 import { trendingInLibrary } from './tmdb'
@@ -258,7 +258,10 @@ export async function loadHero(server: PlexServer, sections: PlexSection[], tab:
   const hidden = new Set(settings.hiddenLibraries)
   const visible = sections.filter((s) => !hidden.has(s.key))
   const art = (m: PlexMedia) => !!(m.art || m.grandparentArt)
-  const ok = (m: PlexMedia) => art(m) && tabOk(tab, m, anime)
+  // The banner features movies and shows only: not clips, home videos, concerts or other personal media.
+  const others = new Set(sections.filter(isOtherSection).map((x) => x.key))
+  const feature = (m: PlexMedia) => (m.type === 'movie' || m.type === 'show' || m.type === 'episode') && !others.has(String(m.librarySectionID))
+  const ok = (m: PlexMedia) => art(m) && feature(m) && tabOk(tab, m, anime)
 
   const cont = (rows.find((r) => r.continue)?.items ?? []).filter(ok)
   const fresh = rows.filter((r) => !r.continue && r.id === 'builtin:released').flatMap((r) => r.items)

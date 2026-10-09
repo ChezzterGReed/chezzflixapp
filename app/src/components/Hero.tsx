@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { scrollTo } from '../lib/scroll'
 import { BIG_IMAGE } from '../lib/perf'
 import { Info, Play } from 'lucide-react'
-import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { backdropPath, episodeLabel, formatRuntime, imageUrl, logoPath, type PlexMedia, type PlexServer } from '../lib/plex'
 
@@ -27,9 +27,9 @@ function Meta({ m }: { m: PlexMedia }) {
   )
 }
 
-interface Props { items: PlexMedia[]; server: PlexServer; rotate: boolean; onPlay: (m: PlexMedia) => void; onInfo: (m: PlexMedia) => void }
+interface Props { items: PlexMedia[]; server: PlexServer; rotate: boolean; /** Focus key of the active tab, so Up from the banner reaches the tab bar. */ tabKey: string; onPlay: (m: PlexMedia) => void; onInfo: (m: PlexMedia) => void }
 
-export function Hero({ items, server, rotate, onPlay, onInfo }: Props) {
+export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
   const [i, setI] = useState(0)
   // Pauses only while the pointer rests on the title/buttons (so you can read or click) — never because the Play button happens to hold focus.
   const [hover, setHover] = useState(false)
@@ -46,6 +46,8 @@ export function Hero({ items, server, rotate, onPlay, onInfo }: Props) {
 
   const m = items[i]
   const logo = logoPath(m)
+  // The tab bar floats over the banner, so spatial navigation can't tell it's "above": go there directly.
+  const up = (dir: string) => { if (dir === 'up') { setFocus(tabKey); return false } }
   const toTop = () => { if (!auto.current) scrollTo(window, 'y', 0) }
 
   return (
@@ -68,12 +70,12 @@ export function Hero({ items, server, rotate, onPlay, onInfo }: Props) {
           <Meta m={m} />
           <p className="clamp-3 mt-4 max-w-[34rem] text-[1.05rem] leading-relaxed text-white/80">{m.summary}</p>
           <div className="mt-7 flex items-center gap-3">
-            <Focusable focusKey="hero-play" onEnter={() => onPlay(m)} onFocus={toTop} title="Play" leftToRail>
+            <Focusable focusKey="hero-play" onEnter={() => onPlay(m)} onFocus={toTop} onArrow={up} title="Play" leftToRail>
               <div className="flex h-13 items-center gap-2.5 rounded-full bg-white px-8 text-[1.05rem] font-bold text-black transition-all duration-200 group-hover/f:bg-white/90 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                 <Play size={20} fill="currentColor" />{playLabel(m)}
               </div>
             </Focusable>
-            <Focusable focusKey="hero-info" onEnter={() => onInfo(m)} onFocus={toTop} title="More info">
+            <Focusable focusKey="hero-info" onEnter={() => onInfo(m)} onFocus={toTop} onArrow={up} title="More info">
               <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-7 text-[1.05rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                 <Info size={20} />More info
               </div>
@@ -84,10 +86,11 @@ export function Hero({ items, server, rotate, onPlay, onInfo }: Props) {
         {items.length > 1 && (
           <div className="absolute bottom-[11%] right-[var(--gutter)] flex items-center">
             {items.map((it, n) => (
-              <button key={it.ratingKey} aria-label={`Show ${it.title}`} aria-current={n === i} tabIndex={-1} onClick={() => setI(n)}
-                className="group/dot grid size-8 place-items-center">
-                <span className={`block rounded-full transition-all duration-300 group-hover/dot:scale-125 ${n === i ? 'size-3 bg-accent shadow-[0_0_12px_var(--accent)]' : 'size-2 bg-white/40 group-hover/dot:bg-white/80'}`} />
-              </button>
+              <Focusable key={it.ratingKey} onEnter={() => setI(n)} onFocus={() => setI(n)} onArrow={up} title={`Show ${it.title}`}>
+                <div className="group/dot grid size-8 place-items-center" aria-current={n === i}>
+                  <span className={`block rounded-full transition-all duration-300 group-hover/dot:scale-125 group-data-[hl=true]/f:scale-150 group-data-[hl=true]/f:bg-white ${n === i ? 'size-3 bg-accent shadow-[0_0_12px_var(--accent)]' : 'size-2 bg-white/40 group-hover/dot:bg-white/80'}`} />
+                </div>
+              </Focusable>
             ))}
           </div>
         )}
