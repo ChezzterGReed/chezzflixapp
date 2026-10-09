@@ -368,7 +368,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const subtitle = media.type === 'episode' ? `${episodeLabel(media)} · ${media.title}` : media.year?.toString()
 
   return (
-    <div data-player className={`fixed inset-0 z-[70] text-white transition-[opacity,transform] duration-700 ease-[cubic-bezier(.65,.05,.25,1)] ${mode === 'native' ? 'bg-transparent' : 'bg-black'} ${revealing ? 'scale-[1.08] opacity-0' : ''}`} onMouseMove={poke} style={{ cursor: controls ? 'default' : 'none' }}>
+    <div data-player className={`fixed inset-0 z-[70] text-white transition-[opacity,transform] duration-700 ease-[cubic-bezier(.65,.05,.25,1)] ${mode === 'native' ? 'bg-transparent' : 'bg-black'} ${revealing ? 'scale-[1.08] opacity-0' : ''}`} onMouseMove={poke} style={{ cursor: controls ? 'default' : 'none' }}
+      // The native (mpv) picture is behind the page, so clicks on the picture land here: click = pause/play, double-click = fullscreen.
+      onClick={(e) => { if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggle() }}
+      onDoubleClick={(e) => { if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggleFullscreen() }}>
       {mode !== 'native' && <video ref={video} loop={server.uri === DEMO_URI} className="absolute inset-0 size-full bg-black object-contain" playsInline
         onClick={toggle} onDoubleClick={toggleFullscreen}
         onPlay={() => setPaused(false)} onPause={() => setPaused(true)}
@@ -403,7 +406,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
       {/* Up next */}
       {showNext && next && (
-        <div className="pop absolute bottom-40 right-12 w-80 overflow-hidden rounded-2xl bg-[#17171c]/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+        <div data-nopause className="pop absolute bottom-40 right-12 w-80 overflow-hidden rounded-2xl bg-[#17171c]/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
           <div className="relative aspect-video"><img src={imageUrl(server, next.thumb, 640, 360)} alt="" className="size-full object-cover" />
             <div className="absolute inset-0 bg-linear-to-t from-black/80 to-transparent" />
             <div className="absolute bottom-3 left-4 right-4"><div className="text-xs font-bold uppercase tracking-widest text-white/60">Up next{countdown !== null ? ` · ${Math.max(0, countdown)}s` : ''}</div>
@@ -417,13 +420,13 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
       {/* Chrome */}
       <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
-        <div className="absolute inset-x-0 top-0 flex items-start gap-4 bg-linear-to-b from-black/80 to-transparent px-8 pb-16 pt-6">
+        <div data-nopause className="absolute inset-x-0 top-0 flex items-start gap-4 bg-linear-to-b from-black/80 to-transparent px-8 pb-16 pt-6">
           <button onClick={close} aria-label="Back" className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/25"><ArrowLeft size={22} /></button>
           <div className="min-w-0 flex-1 pt-0.5"><div className="truncate text-xl font-bold">{title}</div><div className="truncate text-sm text-white/65">{subtitle}</div></div>
           {plan && <div className={`rounded-full px-3.5 py-1.5 text-xs font-bold ring-1 ${KIND_STYLE[plan.kind]}`}>{plan.summary}</div>}
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/90 via-black/50 to-transparent px-8 pb-7 pt-24">
+        <div data-nopause className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/90 via-black/50 to-transparent px-8 pb-7 pt-24">
           <SeekBar pct={pct} buffered={duration ? (buffered / duration) * 100 : 0} duration={duration} onSeek={seek} intro={intro} credits={credits} />
           <div className="mt-1.5 flex justify-between text-sm tabular-nums text-white/70"><span>{fmt(time)}</span><span>-{fmt(duration - time)}</span></div>
           <div className="mt-2 flex items-center gap-2">
@@ -445,7 +448,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         </div>
 
         {panel && (
-          <div className="pop absolute bottom-32 right-8 flex w-[520px] max-w-[92vw] gap-1 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+          <div data-nopause className="pop absolute bottom-32 right-8 flex w-[520px] max-w-[92vw] gap-1 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
             {[{ t: 'Audio', rows: audio },
               { t: 'Subtitles', rows: [{ id: -1, label: 'Off', on: activeSub === null }, ...subs] }].map((c, col) => (
               <div key={c.t} className="min-w-0 flex-1">
