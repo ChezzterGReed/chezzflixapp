@@ -17,6 +17,7 @@ import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home } from './screens/Home'
 import { Library } from './screens/Library'
 import { Search } from './screens/Search'
+import { Dashboard } from './screens/Dashboard'
 import { BrowseIndex } from './screens/BrowseIndex'
 import { ListView } from './screens/ListView'
 import { Detail } from './screens/Detail'
@@ -50,7 +51,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   onSwitch: (p: PlexProfile, pin?: string) => Promise<void>; onSignOut: () => void
 }) {
   const { settings, update } = useSettings()
-  const [menu, setMenu] = useState<{ item: PlexMedia; fromContinue?: boolean }>()
+  const [menu, setMenu] = useState<{ item: PlexMedia; fromContinue?: boolean; fromRecs?: boolean }>()
   const [view, setView] = useState<View>({ type: 'home' })
   const [history, setHistory] = useState<View[]>([])
   const [details, setDetails] = useState<string[]>([])
@@ -120,6 +121,10 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   }
 
   // ----- per-title menu (right-click / long-press) -----
+  const notInterested = (m: PlexMedia) => {
+    update({ notInterested: { ...settings.notInterested, [m.ratingKey]: Math.floor(Date.now() / 1000) } })
+    say("Got it. We'll show fewer titles like this.")
+  }
   const toggleWatched = async (m: PlexMedia) => {
     const next = !isWatched(m)
     await setWatched(server, m.ratingKey, next)
@@ -138,10 +143,10 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
   void token
   return (
-    <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue })}>
+    <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs })}>
       <SeasonalAmbient />
       <Sidebar sections={sections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
-        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} />
+        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} />
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
@@ -153,6 +158,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
           {view.type === 'library' && <Library server={server} section={view.section} onOpen={open}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
+          {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
           {view.type === 'search' && <Search server={server} token={token} sections={allSections} onOpen={open} />}
         </main>
       </FocusContext.Provider>
@@ -162,7 +168,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
-      {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} onClose={() => setMenu(undefined)}
+      {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onClose={() => setMenu(undefined)}
         onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)} />}
       {playing && <Player key={playing.ratingKey} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} />}
 

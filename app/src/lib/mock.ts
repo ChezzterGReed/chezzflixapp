@@ -88,9 +88,16 @@ const WORDS = ['Departures', 'The Long Way Round', 'Fault Lines', 'Ghost Light',
 // Which collections each demo title belongs to (shown on the info screen).
 const COLLECTIONS: Record<number, string[]> = { 1: ['_Trending Movies', 'Edge-of-Your-Seat Thrillers'], 5: ['_Trending Movies', 'Edge-of-Your-Seat Thrillers'], 12: ['Edge-of-Your-Seat Thrillers'], 16: ['_Trending Movies', 'Edge-of-Your-Seat Thrillers'], 3: ['Feel-Good Favorites'], 10: ['Feel-Good Favorites'], 15: ['Feel-Good Favorites'], 7: ['_Trending Movies'], 2: ['Prestige Drama'], 11: ['Prestige Drama'] }
 
+// Demo watch history: what this fake profile has seen (movie id -> days ago). Shows count as watched when some episodes are.
+const WATCHED_MOVIES: Record<number, number> = { 3: 4, 8: 9, 15: 15, 16: 3, 5: 40, 12: 60 }
+const showDaysAgo = (id: number) => (id % 9) + 1
+
 function item(s: Seed, extra: Partial<PlexMedia> = {}): PlexMedia {
   const isShow = s.type === 'show'
+  const seen = !isShow && WATCHED_MOVIES[s.id] != null
   return {
+    ...(seen ? { viewCount: 1, lastViewedAt: NOW - WATCHED_MOVIES[s.id] * 86400 } : {}),
+    ...(isShow && (s.id * 3) % ((s.seasons ?? 1) * 8) > 0 ? { lastViewedAt: NOW - showDaysAgo(s.id) * 86400 } : {}),
     ratingKey: String(s.id), title: s.title, type: s.type, year: s.year, summary: s.summary, librarySectionID: s.type === 'movie' ? 1 : 2,
     audienceRating: s.rating, contentRating: s.cr, duration: s.min * 60000, addedAt: NOW - s.id * 86400,
     thumb: `demo:poster:${s.title}`, art: `demo:art:${s.title}`,
@@ -141,6 +148,25 @@ function hubs(): PlexHub[] {
 export function mockGet(rawPath: string): unknown {
   const [path, query = ''] = rawPath.split('?')
   const q = new URLSearchParams(query)
+  if (path === '/status/sessions') {
+    const t = Date.now() / 1000
+    return { Metadata: [
+      { sessionKey: '1', ratingKey: '1', type: 'movie', title: 'Midnight Meridian', year: 2024, thumb: 'demo:poster:Midnight Meridian', duration: 8280000, viewOffset: 3100000 + Math.round((t % 60) * 1000),
+        User: { title: 'Alex', thumb: 'demo:avatar:Alex' }, Player: { title: 'Living Room TV', product: 'Plex for Android TV', platform: 'Android', state: 'playing', local: true }, Session: { id: 's1', bandwidth: 14200, location: 'lan' }, Media: [{ videoResolution: '4k', bitrate: 14200 }] },
+      { sessionKey: '2', ratingKey: 'e-2-2-4', type: 'episode', title: 'Departures', grandparentTitle: 'The Salt Road', grandparentRatingKey: '2', parentIndex: 2, index: 4, grandparentThumb: 'demo:poster:The Salt Road', duration: 3240000, viewOffset: 1500000,
+        User: { title: 'Mom', thumb: 'demo:avatar:Mom' }, Player: { title: "Mom's iPad", product: 'Chezzflix', platform: 'iOS', state: 'paused', local: false }, Session: { id: 's2', bandwidth: 4100, location: 'wan' }, TranscodeSession: { videoDecision: 'transcode', audioDecision: 'transcode' }, Media: [{ videoResolution: '1080', bitrate: 4100 }] },
+      { sessionKey: '3', ratingKey: 'e-6-1-3', type: 'episode', title: 'The Lighthouse Strike', grandparentTitle: 'Quiet Harbor', grandparentRatingKey: '6', parentIndex: 1, index: 3, grandparentThumb: 'demo:poster:Quiet Harbor', duration: 1680000, viewOffset: 420000,
+        User: { title: 'Jordan', thumb: 'demo:avatar:Jordan' }, Player: { title: 'Fire TV', product: 'Plex for Fire TV', platform: 'Android', state: 'playing', local: false }, Session: { id: 's3', bandwidth: 8800, location: 'wan' }, TranscodeSession: { videoDecision: 'copy', audioDecision: 'transcode' }, Media: [{ videoResolution: '1080', bitrate: 8800 }] },
+    ] }
+  }
+  if (path === '/accounts') return { Account: [{ id: 1, name: 'Chezz' }, { id: 2, name: 'Alex' }, { id: 3, name: 'Mom' }, { id: 4, name: 'Jordan' }] }
+  if (path === '/status/sessions/history/all') {
+    const now = Math.floor(Date.now() / 1000)
+    const rows = [[2, 'Velocity', 'movie', 600], [3, 'Quiet Harbor', 'episode', 3500], [4, 'Glass Houses', 'episode', 9000], [1, 'Static', 'movie', 26000], [2, 'Iron Orchard', 'episode', 50000], [3, 'Paper Lanterns', 'movie', 90000], [4, 'Sunday Drivers', 'movie', 130000], [1, 'Cold Equations', 'episode', 200000]] as const
+    return { Metadata: rows.map(([acct, title, type, ago], i) => ({ historyKey: `h${i}`, ratingKey: String(i), type, title: type === 'episode' ? `Episode ${i + 1}` : title, grandparentTitle: type === 'episode' ? title : undefined, parentIndex: 1, index: i + 1, viewedAt: now - ago, accountID: acct, thumb: `demo:poster:${title}`, grandparentThumb: `demo:poster:${title}` })) }
+  }
+  if (path === '/statistics/resources') return { StatisticsResources: [{ hostCpuUtilization: 18.4, hostMemoryUtilization: 41.2 }] }
+  if (path === '/') return { version: '1.41.3.9314', platform: 'Windows', friendlyName: 'Demo Server' }
   if (path === '/profiles') return [
     { id: 1, uuid: 'u1', title: 'Chezz', admin: true, thumb: 'demo:avatar:Chezz' }, { id: 2, uuid: 'u2', title: 'Alex', thumb: 'demo:avatar:Alex' }, { id: 3, uuid: 'u3', title: 'Kids', protected: true, thumb: 'demo:avatar:Kids' },
   ]
@@ -186,7 +212,9 @@ export function mockGet(rawPath: string): unknown {
     const genre = q.get('genre')
     const year = q.get('year')
     let list = S.filter((s) => s.type === type && (!genre || s.genres.includes(genre)) && (!year || String(s.year) === year)).map((s) => item(s))
+    if (q.get('unwatched') === '1') list = list.filter((m) => m.type === 'movie' ? !m.viewCount : (m.viewedLeafCount ?? 0) < (m.leafCount ?? 0))
     const sort = q.get('sort') ?? 'titleSort'
+    if (sort.startsWith('lastViewedAt')) { list.sort((a, b) => (b.lastViewedAt ?? 0) - (a.lastViewedAt ?? 0)); return { Metadata: list, totalSize: list.length } }
     if (sort === 'random') { list = list.sort(() => Math.random() - 0.5); return { Metadata: list, totalSize: list.length } }
     if (sort.startsWith('titleSort')) { list.sort((a, b) => a.title.localeCompare(b.title)); if (sort.endsWith(':desc')) list.reverse() }
     else if (sort.startsWith('addedAt')) list.sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0))

@@ -49,7 +49,7 @@ const isAnime = (a: AnimeInfo | undefined, m: PlexMedia) => !!a && (a.keys.has(s
 export function tabOk(tab: Tab, m: PlexMedia, anime?: AnimeInfo): boolean {
   const on = animeEnabled(anime)
   if (tab === 'anime') return on && isAnime(anime, m)
-  if (tab === 'trending') return true
+  if (tab === 'trending' || tab === 'foryou') return true
   if (tab !== 'all' && on && isAnime(anime, m)) return false
   return tab === 'all' || (tab === 'movie' ? m.type === 'movie' : m.type !== 'movie')
 }
@@ -66,6 +66,7 @@ const MAX_GENRE_ROWS = 6
 export function defaultRows(tab: Tab, genres: string[] = []): HomeRowCfg[] {
   const mine = genres.slice(0, MAX_GENRE_ROWS).map((x) => g(x))
   switch (tab) {
+    case 'foryou': return [b('continue', 'Continue Watching')]
     case 'trending': return [b('tmdb-movie', 'Trending Movies This Week'), b('tmdb-tv', 'Trending Shows This Week'), b('trending', 'From Your Trending Collection')]
     case 'show': return [b('continue', 'Continue Watching'), b('recent', 'Recently Added Shows'), b('quick', 'Quick Watch · 30 min or less'), b('trending', 'Trending'), ...(mine.length ? mine : [g('Comedy'), g('Drama'), g('Crime')])]
     case 'anime': return [b('continue', 'Continue Watching'), b('recent', 'Recently Added'), g('Action'), g('Fantasy'), g('Comedy')]
@@ -215,7 +216,7 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
   const keep = (m: PlexMedia) => tabOk(tab, m, anime) && secOk(m)
   // Built-in rows look where the tab implies; "All" is movie-led by default but custom rows can come from anywhere.
   const builtinSecs = visible.filter((s) => (tab === 'show' ? s.type === 'show' : tab === 'anime' || tab === 'trending' ? true : s.type === 'movie'))
-  const customSecs = visible.filter((s) => (tab === 'all' || tab === 'anime' || tab === 'trending' ? true : s.type === tab))
+  const customSecs = visible.filter((s) => (tab === 'all' || tab === 'foryou' || tab === 'anime' || tab === 'trending' ? true : s.type === tab))
 
   const hubs = await getHubs(server).catch(() => [])
   const plexHubs = hubs.filter((h) => !isContinueHub(h))
@@ -251,7 +252,7 @@ const PATTERN = ['new', 'cont', 'new', 'rand', 'cont', 'new', 'new', 'cont', 'ra
 /** Ten featured titles: a blend of what's new, what you're mid-way through, and a couple of random picks. */
 export async function loadHero(server: PlexServer, sections: PlexSection[], tab: Tab, settings: Settings, rows: HomeRow[], anime?: AnimeInfo): Promise<PlexMedia[]> {
   const hidden = new Set(settings.hiddenLibraries)
-  const pool = sections.filter((s) => !hidden.has(s.key) && (tab === 'all' || tab === 'anime' || tab === 'trending' || s.type === tab))
+  const pool = sections.filter((s) => !hidden.has(s.key) && (tab === 'all' || tab === 'foryou' || tab === 'anime' || tab === 'trending' || s.type === tab))
   const art = (m: PlexMedia) => !!(m.art || m.grandparentArt)
 
   const cont = rows.find((r) => r.continue)?.items.filter(art) ?? []

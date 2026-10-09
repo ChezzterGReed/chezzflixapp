@@ -13,9 +13,13 @@ interface Props {
   onSelect: (m: PlexMedia) => void
   /** Seasonal styling for the title (e.g. Spooky Season). */
   themed?: boolean
+  /** A short line under the title saying why these are here. */
+  subtitle?: string
+  /** Personalized row: titles can be dismissed with "Not interested". */
+  fromRecs?: boolean
 }
 
-export function Row({ title, items, server, variant = 'poster', onSelect, themed }: Props) {
+export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs }: Props) {
   const { ref, focusKey } = useFocusable({ saveLastFocusedChild: true, autoRestoreFocus: false })
   const track = useRef<HTMLDivElement>(null)
 
@@ -26,12 +30,13 @@ export function Row({ title, items, server, variant = 'poster', onSelect, themed
   return (
     <FocusContext.Provider value={focusKey}>
       <section ref={ref} className="group/row relative mb-9">
-        <h2 className={`mb-3 px-[var(--gutter)] text-[1.35rem] font-bold tracking-tight ${themed ? 'text-accent drop-shadow-[0_0_14px_var(--accent)]' : ''}`}>{themed && <Pumpkin size={26} className="mr-2 inline-block -translate-y-0.5" />}{title}</h2>
+        <h2 className={`${subtitle ? 'mb-0.5' : 'mb-3'} px-[var(--gutter)] text-[1.35rem] font-bold tracking-tight ${themed ? 'text-accent drop-shadow-[0_0_14px_var(--accent)]' : ''}`}>{themed && <Pumpkin size={26} className="mr-2 inline-block -translate-y-0.5" />}{title}</h2>
+        {subtitle && <p className="mb-3 px-[var(--gutter)] text-sm text-white/45">{subtitle}</p>}
         <div className="relative">
           <div ref={track} className="flex snap-x gap-4 overflow-x-auto scroll-smooth px-[var(--gutter)] py-5 -my-5 [scroll-padding-inline:var(--gutter)]">
             {items.map((m, idx) => variant === 'landscape'
               ? <LandscapeCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={reveal} leftEdge={idx === 0} />
-              : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={reveal} leftEdge={idx === 0} />)}
+              : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={reveal} leftEdge={idx === 0} fromRecs={fromRecs} />)}
           </div>
           {([-1, 1] as const).map((d) => (
             <button key={d} aria-label={d < 0 ? 'Scroll left' : 'Scroll right'} onClick={() => nudge(d)} tabIndex={-1}

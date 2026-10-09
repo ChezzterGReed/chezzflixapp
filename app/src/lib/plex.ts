@@ -32,6 +32,8 @@ export interface PlexServer {
   uri: string
   accessToken: string
   local: boolean
+  /** This account owns the server (so it may see the dashboard). */
+  owned?: boolean
   /** Connected through Plex's relay (bandwidth-limited) because no direct route was reachable. */
   relay?: boolean
 }
@@ -73,6 +75,8 @@ export interface PlexMedia {
   Genre?: PlexTag[]
   Collection?: PlexTag[]
   Role?: PlexTag[]
+  Director?: PlexTag[]
+  userRating?: number
   Image?: { type: string; url: string }[]
   OnDeck?: { Metadata?: PlexMedia }
   librarySectionID?: number | string
@@ -137,7 +141,7 @@ export async function getCurrentUser(token: string): Promise<{ title: string; th
 
 // ---------- Servers ----------
 export function demoServer(): PlexServer {
-  return { id: 'demo-server', name: 'Demo Server', uri: DEMO_URI, accessToken: 'demo', local: true }
+  return { id: 'demo-server', owned: true, name: 'Demo Server', uri: DEMO_URI, accessToken: 'demo', local: true }
 }
 
 interface PlexConnection { uri: string; local: boolean; relay: boolean }
@@ -177,7 +181,7 @@ export async function getServers(token: string): Promise<PlexServer[]> {
     if (!res.provides?.includes('server')) continue
     const conns: PlexConnection[] = res.connections ?? []
     const chosen = (await pickConnection(conns, res.accessToken, res.clientIdentifier)) ?? conns.find((c) => !c.relay) ?? conns[0]
-    if (chosen) out.push({ id: res.clientIdentifier, name: res.name, uri: chosen.uri, accessToken: res.accessToken, local: chosen.local, relay: chosen.relay })
+    if (chosen) out.push({ id: res.clientIdentifier, owned: !!res.owned, name: res.name, uri: chosen.uri, accessToken: res.accessToken, local: chosen.local, relay: chosen.relay })
   }
   return out
 }
@@ -343,6 +347,23 @@ export async function getAllSectionItems(server: PlexServer, key: string, sort: 
   return out
 }
 
+/** What this profile has watched or is watching, newest first (movies with a play or progress, shows with any episode watched). */
+export async function getWatchedItems(server: PlexServer, sectionKey: string, size = 160): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/sections/${sectionKey}/all?sort=lastViewedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=${size}`, 300_000)
+  return (c.Metadata ?? []).filter((m) => (m.type === 'movie' ? (m.viewCount ?? 0) > 0 || (m.viewOffset ?? 0) > 0 : (m.viewedLeafCount ?? 0) > 0))
+}
+
+/** Titles this profile hasn't started (up to `cap`, newest added first). */
+export async function getUnwatchedItems(server: PlexServer, sectionKey: string, cap = 1500): Promise<PlexMedia[]> {
+  const out: PlexMedia[] = []
+  for (let start = 0; start < cap; start += 500) {
+    const c = await get<{ Metadata?: PlexMedia[]; totalSize?: number }>(server, `/library/sections/${sectionKey}/all?unwatched=1&sort=addedAt:desc&X-Plex-Container-Start=${start}&X-Plex-Container-Size=500`, 300_000)
+    out.push(...(c.Metadata ?? []))
+    if (out.length >= (c.totalSize ?? 0) || !(c.Metadata ?? []).length) break
+  }
+  return out.filter((m) => m.type === 'movie' ? (m.viewOffset ?? 0) === 0 : (m.viewedLeafCount ?? 0) === 0)
+}
+
 /** Years that have content in a library (for the year filter). */
 export async function getYears(server: PlexServer, sectionKey: string): Promise<number[]> {
   try {
@@ -472,4 +493,64 @@ export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'p
   })
   await fetch(`${server.uri}/:/timeline?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => {})
   invalidateCache()
+}
+
+// ---------- Server dashboard (owner) ----------
+export type StreamKind = 'direct' | 'stream' | 'transcode'
+export interface PlexSession {
+  id: string; ratingKey: string; type: string; title: string; subtitle: string; thumb?: string
+  user: { name: string; thumb?: string }
+  device: { name: string; product?: string; platform?: string; state: 'playing' | 'paused' | 'buffering' | string; local: boolean }
+  bandwidth: number            // kbps
+  location: string             // 'lan' | 'wan'
+  kind: StreamKind
+  detail: string               // e.g. "1080p · 8.2 Mbps"
+  progress: number             // 0..1
+}
+export interface PlexHistoryEntry { key: string; title: string; subtitle: string; type: string; viewedAt: number; user: string; userThumb?: string; thumb?: string }
+export interface ServerInfo { version?: string; platform?: string; name?: string; cpu?: number; memory?: number }
+
+export async function getSessions(server: PlexServer): Promise<PlexSession[]> {
+  const c = await get<{ Metadata?: any[] }>(server, '/status/sessions', 0) // eslint-disable-line @typescript-eslint/no-explicit-any
+  return (c.Metadata ?? []).map((m) => {
+    const t = m.TranscodeSession
+    const kind: StreamKind = t ? (t.videoDecision === 'transcode' ? 'transcode' : 'stream') : 'direct'
+    const media = m.Media?.[0]
+    const res = media?.videoResolution ? (/^\d+$/.test(media.videoResolution) ? `${media.videoResolution}p` : String(media.videoResolution).toUpperCase()) : ''
+    const bw: number = m.Session?.bandwidth ?? media?.bitrate ?? 0
+    const ep = m.type === 'episode'
+    return {
+      id: String(m.Session?.id ?? m.sessionKey ?? m.ratingKey), ratingKey: String(ep ? m.grandparentRatingKey ?? m.ratingKey : m.ratingKey), type: ep ? 'show' : m.type,
+      title: ep ? m.grandparentTitle ?? m.title : m.title,
+      subtitle: ep ? `S${m.parentIndex} · E${m.index} · ${m.title}` : [m.year, m.type === 'movie' ? 'Movie' : ''].filter(Boolean).join(' · '),
+      thumb: ep ? m.grandparentThumb ?? m.thumb : m.thumb,
+      user: { name: m.User?.title ?? 'Someone', thumb: m.User?.thumb },
+      device: { name: m.Player?.title ?? 'Unknown device', product: m.Player?.product, platform: m.Player?.platform, state: m.Player?.state ?? 'playing', local: m.Player?.local ?? m.Session?.location === 'lan' },
+      bandwidth: bw, location: m.Session?.location ?? 'lan', kind,
+      detail: [res, bw ? `${(bw / 1000).toFixed(1)} Mbps` : ''].filter(Boolean).join(' · '),
+      progress: m.duration ? Math.min(1, (m.viewOffset ?? 0) / m.duration) : 0,
+    }
+  })
+}
+
+export async function getHistory(server: PlexServer, size = 30): Promise<PlexHistoryEntry[]> {
+  const [h, a] = await Promise.all([
+    get<{ Metadata?: any[] }>(server, `/status/sessions/history/all?sort=viewedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=${size}`, 20_000), // eslint-disable-line @typescript-eslint/no-explicit-any
+    get<{ Account?: { id: number; name: string; thumb?: string }[] }>(server, '/accounts', 300_000).catch(() => ({ Account: [] as { id: number; name: string; thumb?: string }[] })),
+  ])
+  const who = new Map((a.Account ?? []).map((x) => [x.id, x]))
+  return (h.Metadata ?? []).map((m) => {
+    const ep = m.type === 'episode'
+    const acct = who.get(m.accountID)
+    return { key: `${m.historyKey ?? m.ratingKey}-${m.viewedAt}`, title: ep ? m.grandparentTitle ?? m.title : m.title, subtitle: ep ? `S${m.parentIndex} · E${m.index} · ${m.title}` : String(m.year ?? ''), type: m.type, viewedAt: m.viewedAt, user: acct?.name || 'Someone', userThumb: acct?.thumb, thumb: ep ? m.grandparentThumb ?? m.thumb : m.thumb }
+  })
+}
+
+export async function getServerInfo(server: PlexServer): Promise<ServerInfo> {
+  const [id, res] = await Promise.all([
+    get<{ version?: string; platform?: string; friendlyName?: string }>(server, '/', 60_000).catch(() => ({}) as { version?: string; platform?: string; friendlyName?: string }),
+    get<{ StatisticsResources?: { hostCpuUtilization?: number; hostMemoryUtilization?: number }[] }>(server, '/statistics/resources?timespan=6', 0).catch(() => ({}) as { StatisticsResources?: { hostCpuUtilization?: number; hostMemoryUtilization?: number }[] }),
+  ])
+  const last = res.StatisticsResources?.[res.StatisticsResources.length - 1]
+  return { version: id.version, platform: id.platform, name: id.friendlyName, cpu: last?.hostCpuUtilization, memory: last?.hostMemoryUtilization }
 }

@@ -6,7 +6,7 @@ export const ACCENTS: { name: string; value: string }[] = [
   { name: 'Violet', value: '#b06bff' }, { name: 'Rose', value: '#ff5c99' },
 ]
 
-export type HomeTab = 'all' | 'trending' | 'movie' | 'show' | 'anime'
+export type HomeTab = 'all' | 'foryou' | 'trending' | 'movie' | 'show' | 'anime'
 
 /**
  * One row on a Home tab.
@@ -35,6 +35,10 @@ export interface Settings {
   requests: boolean
   /** Address of the request service (Overseerr), e.g. https://requests.example.com */
   overseerrUrl: string
+  /** Personalized rows ("Recommended for you", "Because you watched…") built on this device from your watch history. */
+  recs: boolean
+  /** Titles you told us you're not interested in: ratingKey -> when. */
+  notInterested: Record<string, number>
   /** TMDB key (v3 key or v4 read token) for the Trending tab. */
   tmdbKey: string
   /** Continue Watching items you removed: ratingKey -> when (epoch seconds). They return once you watch more. */
@@ -53,7 +57,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, autoSkipIntro: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, autoSkipIntro: false,
 }
 
 export const PUMPKIN = '#ff7a1a'

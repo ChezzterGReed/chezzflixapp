@@ -6,7 +6,7 @@ import type { AnimeInfo } from '../lib/homeData'
 import type { HomeTab } from '../lib/settings'
 
 const hue = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 11)
-const TAB_NAME: Record<HomeTab, string> = { all: 'Everything', trending: 'Everything', movie: 'Movies', show: 'Shows', anime: 'Anime' }
+const TAB_NAME: Record<HomeTab, string> = { all: 'Everything', foryou: 'For You', trending: 'Everything', movie: 'Movies', show: 'Shows', anime: 'Anime' }
 
 interface Props {
   server: PlexServer; sections: PlexSection[]; tab: HomeTab; kind: 'genres' | 'collections'; anime?: AnimeInfo

@@ -7,12 +7,13 @@ import { Layers, Settings as Cog, Tags, TrendingUp } from 'lucide-react'
 import { Focusable } from '../components/Focusable'
 import { setBooted } from '../lib/boot'
 import { animeEnabled, loadAnime, loadHero, loadRows, type AnimeInfo, type HomeNotice, type HomeRow, type Tab } from '../lib/homeData'
+import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
 import { useSeason, useSettings } from '../lib/settings'
 
 interface Props { server: PlexServer; sections: PlexSection[]; refreshKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onOpenSettings: () => void }
 
-const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
+const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'foryou', label: 'For You' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
 const TAB_KEY = 'chezzflix_home_tab'
 
 export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, onOpenSettings }: Props) {
@@ -25,6 +26,8 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
   const [error, setError] = useState<string>()
   const [rowsAnime, setRowsAnime] = useState<AnimeInfo>()
   const [notices, setNotices] = useState<HomeNotice[]>([])
+  const [recRows, setRecRows] = useState<(HomeRow & { subtitle?: string })[]>([])
+  const [recsReady, setRecsReady] = useState(false)
   const focusedOnce = useRef(false)
   const heroFor = useRef('')
 
@@ -33,7 +36,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
   // Only this profile's visible libraries count towards the anime tab.
   const visible = sections.filter((s) => !settings.hiddenLibraries.includes(s.key))
   const showAnime = animeEnabled(anime)
-  const activeTab: Tab = tab === 'anime' && anime && !showAnime ? 'all' : tab
+  const activeTab: Tab = tab === 'anime' && anime && !showAnime ? 'all' : tab === 'foryou' && !settings.recs ? 'all' : tab
 
   // Rows
   useEffect(() => {
@@ -46,6 +49,19 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
       .catch((e) => { if (alive) { setError(String(e)); setBooted(true) } })
     return () => { alive = false }
   }, [server, sections, activeTab, settings.homeRows, settings.hiddenLibraries, settings.hideWatched, settings.tmdbKey, settings.dismissedContinue, season, refreshKey])
+
+  // Personalized rows: built on this device from the profile's watch history (shown after Continue Watching).
+  const wantsRecs = settings.recs && (activeTab === 'all' || activeTab === 'movie' || activeTab === 'show' || activeTab === 'foryou')
+  useEffect(() => {
+    if (!wantsRecs) { setRecRows([]); setRecsReady(true); return }
+    let alive = true
+    setRecsReady(false)
+    loadRecs(server, visible, { tab: activeTab, anime, seedGenres: settings.genres, notInterested: settings.notInterested, bust: refreshKey, maxRows: 12 })
+      .then((r) => { if (alive) { setRecRows(r.map((x) => ({ id: x.id, title: x.title, subtitle: x.subtitle, items: x.items }))); setRecsReady(true) } })
+      .catch(() => { if (alive) { setRecRows([]); setRecsReady(true) } })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server, sections, wantsRecs, activeTab, anime, settings.genres, settings.notInterested, settings.hiddenLibraries, refreshKey])
 
   // Hero (re-rolled when the tab or library set changes, not on every row tweak)
   useEffect(() => {
@@ -74,13 +90,18 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
 
   const switchTab = (t: Tab) => { if (t === activeTab) return; setRows(undefined); setHero(undefined); heroFor.current = ''; setTab(t) }
 
+  // Home shows the first couple of personalized rows under Continue Watching; the For You tab shows them all.
+  const shownRecs = wantsRecs ? recRows.slice(0, activeTab === 'foryou' ? 12 : 2) : []
+  const ci = (rows ?? []).findIndex((r) => r.continue)
+  const merged: (HomeRow & { subtitle?: string; recs?: boolean })[] = rows ? [...rows.slice(0, ci + 1), ...shownRecs.map((r) => ({ ...r, recs: true })), ...rows.slice(ci + 1)] : []
+
   if (error) return <div className="grid h-screen place-items-center px-8 text-center text-white/70">Couldn't load your library.<br />{error}</div>
 
   return (
     <div className="relative pb-24">
       <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
         <div className="flex gap-1 rounded-full bg-black/35 p-1 backdrop-blur-xl">
-          {TABS.filter((t) => t.id !== 'anime' || showAnime).map((t) => (
+          {TABS.filter((t) => (t.id !== 'anime' || showAnime) && (t.id !== 'foryou' || settings.recs)).map((t) => (
             <Focusable key={t.id} focusKey={`tab-${t.id}`} onEnter={() => switchTab(t.id)} title={t.label} leftToRail={t.id === 'all'}>
               <div className={`rounded-full px-5 py-2 text-[0.92rem] font-semibold transition-colors group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${activeTab === t.id ? 'bg-accent text-black' : 'text-white/65'}`}>{t.label}</div>
             </Focusable>
@@ -95,9 +116,17 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
       <div className="relative z-10 pt-2">
         {!rows
           ? <><RowSkeleton landscape /><RowSkeleton /><RowSkeleton /></>
-          : rows.length === 0
-            ? <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>
-            : rows.map((r) => <Row key={r.id} title={r.title} items={r.items} server={server} variant={r.continue ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onSelect={(m) => r.continue ? onPlay(m) : onOpen(m)} />)}
+          : <>
+              {merged.length === 0 && recsReady && <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>}
+              {merged.map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} items={r.items} server={server} variant={r.continue ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onSelect={(m) => r.continue ? onPlay(m) : onOpen(m)} />)}
+              {wantsRecs && !recsReady && (activeTab === 'foryou' || shownRecs.length === 0) && <RowSkeleton />}
+              {activeTab === 'foryou' && recsReady && recRows.length === 0 && (
+                <div className="mx-[var(--gutter)] mb-8 max-w-3xl rounded-2xl bg-white/6 p-6 ring-1 ring-white/10">
+                  <div className="text-lg font-bold">Your recommendations are warming up</div>
+                  <p className="mt-1.5 text-white/60">Watch a few movies or episodes and this page fills with picks based on what you enjoy: the genres, eras and people you keep coming back to. It all happens on this device.</p>
+                </div>
+              )}
+            </>}
 
         {rows && activeTab === 'trending' && notices.map((n) => (
           <div key={n.kind} className="mx-[var(--gutter)] mb-8 flex max-w-3xl items-center gap-5 rounded-2xl bg-white/6 p-5 ring-1 ring-white/10">
@@ -116,7 +145,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
         ))}
 
         {/* Explore: under the last row of content */}
-        {rows && activeTab !== 'trending' && (
+        {rows && activeTab !== 'trending' && activeTab !== 'foryou' && (
           <div className="mt-4 flex flex-wrap gap-3 px-[var(--gutter)]">
             <Focusable focusKey="explore-genres" onEnter={() => onBrowse('genres', activeTab)} title="Explore genres" leftToRail>
               <div className="flex items-center gap-2.5 rounded-2xl bg-white/8 px-6 py-4 text-[1.02rem] font-bold transition-all group-hover/f:bg-white/16 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black group-data-[hl=true]/f:scale-105"><Tags size={20} className="text-accent group-data-[hl=true]/f:text-black" />Explore Genres</div>

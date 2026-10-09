@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Film, Home, Search, Tv } from 'lucide-react'
+import { Film, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useInputMode, useTyping } from '../lib/input'
@@ -11,7 +11,7 @@ import type { HomeTab } from '../lib/settings'
 
 export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string }
 export type View =
-  | { type: 'home' } | { type: 'search' } | { type: 'library'; section: PlexSection }
+  | { type: 'home' } | { type: 'search' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
   | { type: 'list'; title: string; subtitle?: string; source: ListSource }
 
@@ -36,9 +36,11 @@ interface Props {
   brand: string
   avatarLogo: boolean
   onProfile: () => void
+  /** Server owner only. */
+  showDashboard?: boolean
 }
 
-export function Sidebar({ sections, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile }: Props) {
+export function Sidebar({ sections, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard }: Props) {
   const mode = useInputMode()
   const typing = useTyping()
   const season = useSeason()
@@ -80,6 +82,7 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
         </div>
 
         <div className="mt-3 shrink-0">
+          {showDashboard && <div className="mb-1"><NavItem focusKey="nav-dashboard" icon={<LayoutDashboard size={22} />} label="Dashboard" active={view.type === 'dashboard'} onEnter={() => onNavigate({ type: 'dashboard' })} /></div>}
           <Focusable focusKey="nav-profile" onEnter={onProfile} title="Profile" rightToContent>
             <div className="flex h-14 items-center overflow-hidden rounded-xl transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
               <span className="grid w-[52px] shrink-0 place-items-center"><Avatar name={profileName} thumb={profileThumb} size={32} /></span>
@@ -93,6 +96,7 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
           { label: 'Home', icon: <Home size={22} />, active: view.type === 'home', go: () => onNavigate({ type: 'home' }) },
           { label: 'Search', icon: <Search size={22} />, active: view.type === 'search', go: () => onNavigate({ type: 'search' }) },
           ...sections.map((s) => ({ label: s.title, icon: s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />, active: isLib(s.key), go: () => onNavigate({ type: 'library', section: s }) })),
+          ...(showDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={22} />, active: view.type === 'dashboard', go: () => onNavigate({ type: 'dashboard' }) }] : []),
           { label: 'You', icon: <Avatar name={profileName} thumb={profileThumb} size={24} />, active: false, go: onProfile },
         ]).map((t) => (
           <button key={t.label} onClick={t.go} className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[0.68rem] font-semibold ${t.active ? 'text-white' : 'text-white/50'}`}>

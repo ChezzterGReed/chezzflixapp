@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
@@ -133,7 +133,7 @@ function Libraries({ sections }: { sections: PlexSection[] }) {
   )
 }
 
-const TAB_LABEL: Record<HomeTab, string> = { all: 'Home', trending: 'Trending', movie: 'Movies', show: 'Shows', anime: 'Anime' }
+const TAB_LABEL: Record<HomeTab, string> = { all: 'Home', foryou: 'For You', trending: 'Trending', movie: 'Movies', show: 'Shows', anime: 'Anime' }
 
 function HomeEditor({ server, sections }: { server: PlexServer; sections: PlexSection[] }) {
   const { settings, update } = useSettings()
@@ -168,7 +168,7 @@ function HomeEditor({ server, sections }: { server: PlexServer; sections: PlexSe
     <>
       <p className="px-4 pb-3 text-sm text-white/55">Each tab has its own layout. Turn rows on or off, reorder them, and add your own from genres, playlists and collections.</p>
       <div className="flex flex-wrap gap-2 px-4 pb-3">
-        {(Object.keys(TAB_LABEL) as HomeTab[]).map((t) => <Pill key={t} active={tab === t} onEnter={() => setTab(t)}>{TAB_LABEL[t]}</Pill>)}
+        {(Object.keys(TAB_LABEL) as HomeTab[]).filter((t) => t !== 'foryou').map((t) => <Pill key={t} active={tab === t} onEnter={() => setTab(t)}>{TAB_LABEL[t]}</Pill>)}
       </div>
       <div className="space-y-0.5">
         {rows.map((r, i) => (
@@ -243,6 +243,26 @@ function Content() {
   )
 }
 
+function Recommendations() {
+  const { settings, update } = useSettings()
+  const hidden = Object.keys(settings.notInterested).length
+  return (
+    <>
+      <Toggle label="Personalized recommendations" hint="Adds Recommended for you and Because you watched… to Home, and a For You tab" on={settings.recs} onChange={(v) => update({ recs: v })} />
+      <div className="mx-4 mt-3 rounded-2xl bg-white/5 p-5 text-[0.92rem] leading-relaxed text-white/65 ring-1 ring-white/10">
+        <div className="mb-1.5 font-bold text-white">How it works</div>
+        Chezzflix looks at what <b className="text-white">this profile</b> has watched or is watching, and notices the genres, release years, people and ratings you gravitate to. Things you're partway through and things you watched lately count the most. It then picks unwatched titles from your own library that fit.
+        <div className="mt-2">It's worked out on this device from your Plex watch history. Nothing extra is sent anywhere. Hold OK or right-click a recommended title and choose <b className="text-white">Not interested</b> to tune it.</div>
+      </div>
+      <Heading>Tuning</Heading>
+      <Row label="Hidden from recommendations" hint={hidden ? `${hidden} title${hidden === 1 ? '' : 's'} you marked "Not interested"` : 'Nothing hidden'} onEnter={hidden ? () => update({ notInterested: {} }) : undefined}>
+        {hidden > 0 && <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">Show again</span>}
+      </Row>
+      <p className="px-4 pt-2 text-sm text-white/45">New profiles start from the genres picked during setup, then learn from what's watched.</p>
+    </>
+  )
+}
+
 function Requests({ token }: { token: string }) {
   const { settings, update, ownOverseerrUrl, overseerrShared } = useSettings()
   const [status, setStatus] = useState<{ kind: 'idle' | 'checking' | 'ok' | 'bad'; text?: string }>({ kind: 'idle' })
@@ -310,6 +330,7 @@ function About({ server }: { server: PlexServer }) {
 const PANELS = [
   { id: 'appearance', label: 'Appearance', icon: Palette }, { id: 'playback', label: 'Playback', icon: Play },
   { id: 'libraries', label: 'Libraries', icon: Film }, { id: 'home', label: 'Home', icon: Home }, { id: 'content', label: 'Content', icon: Eye },
+  { id: 'recs', label: 'Recommendations', icon: Sparkles },
   { id: 'requests', label: 'Requests', icon: Inbox },
   { id: 'about', label: 'About', icon: Info },
 ] as const
@@ -339,6 +360,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           {panel === 'libraries' && <Libraries sections={sections} />}
           {panel === 'home' && <HomeEditor server={server} sections={sections} />}
           {panel === 'content' && <Content />}
+          {panel === 'recs' && <Recommendations />}
           {panel === 'requests' && <Requests token={token} />}
           {panel === 'about' && <About server={server} />}
           <div className="mt-6 rounded-xl bg-white/5 px-4 py-3 text-sm text-white/55">Connected to <b className="text-white">{server.name}</b>. These settings belong to <b className="text-white">{profileName}</b>.</div>
