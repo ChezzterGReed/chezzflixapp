@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { reveal } from '../lib/scroll'
 import { Focusable } from '../components/Focusable'
 import { BackButton } from '../components/BackButton'
 import { getCollections, getGenres, imageUrl, type PlexCollectionRef, type PlexSection, type PlexServer } from '../lib/plex'
@@ -51,7 +52,7 @@ export function BrowseIndex({ server, sections, tab, kind, anime, section, onBac
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
           {loading ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[16/9] rounded-2xl" />)
             : genres!.map((g) => (
-              <Focusable key={g} onEnter={() => onGenre(g)} title={g} onFocus={(el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+              <Focusable key={g} onEnter={() => onGenre(g)} title={g} onFocus={(el) => reveal(el)}>
                 <div className="relative aspect-[16/9] overflow-hidden rounded-2xl p-4 shadow-lg transition-[transform,box-shadow] duration-300 ease-out-expo group-hover/f:scale-[1.04] group-data-[hl=true]/f:scale-[1.06] group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"
                   style={{ background: `linear-gradient(135deg, hsl(${hue(g)} 55% 34%), hsl(${(hue(g) + 50) % 360} 60% 14%))` }}>
                   <div className="absolute -right-6 -top-6 size-28 rounded-full bg-white/10 blur-sm" />
@@ -64,7 +65,7 @@ export function BrowseIndex({ server, sections, tab, kind, anime, section, onBac
         <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
           {loading ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[2/3] rounded-xl" />)
             : collections!.map((c) => (
-              <Focusable key={c.ratingKey} onEnter={() => onCollection(c)} title={c.title} onFocus={(el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+              <Focusable key={c.ratingKey} onEnter={() => onCollection(c)} title={c.title} onFocus={(el) => reveal(el)}>
                 <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-surface transition-[transform,box-shadow] duration-300 ease-out-expo group-hover/f:scale-[1.03] group-data-[hl=true]/f:scale-[1.06] group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"
                   style={{ background: `linear-gradient(160deg, hsl(${hue(c.title)} 50% 30%), hsl(${(hue(c.title) + 40) % 360} 55% 12%))` }}>
                   {c.thumb && <img src={imageUrl(server, c.thumb, 360, 540)} alt="" loading="lazy" draggable={false} className="absolute inset-0 size-full object-cover" />}

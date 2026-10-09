@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { reveal } from '../lib/scroll'
 import { Search as SearchIcon } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { RequestCard } from '../components/RequestCard'
@@ -48,7 +49,7 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
   const rank = <T,>(list: T[], title: (x: T) => string) => list.map((x, i) => ({ x, i, c: closeness(title(x), term) })).sort((p, r) => r.c - p.c || p.i - r.i).map((e) => e.x)
   const available = rank(local ?? [], (m) => m.title)
   const requestable = rank(remote, (r) => r.title)
-  const scroll = (el: HTMLElement) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const scroll = (el: HTMLElement) => reveal(el)
   const grid = 'fade-in grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]'
 
   return (

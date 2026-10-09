@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Aurora } from './Aurora'
+import { Logo } from './Logo'
 
 /** Full-screen stage for sign-in and setup screens: animated backdrop, content truly centred (and scrollable on tiny windows). */
 export function OnboardingShell({ children }: { children: ReactNode }) {
@@ -17,7 +18,7 @@ export function BrandMark({ size = 'md' }: { size?: 'md' | 'lg' }) {
   const brand = (() => { try { return localStorage.getItem('chezzflix_last_brand') || 'CHEZZFLIX' } catch { return 'CHEZZFLIX' } })()
   return (
     <div className="flex items-center justify-center gap-3">
-      <span className={`grid place-items-center rounded-xl bg-accent font-extrabold text-black shadow-[0_0_34px_-6px_var(--accent)] ${size === 'lg' ? 'size-12 text-2xl' : 'size-9 text-lg'}`}>{brand[0]}</span>
+      <Logo size={size === 'lg' ? 96 : 76} className="drop-shadow-[0_6px_18px_rgba(0,0,0,.5)]" />
       <span className={`font-extrabold tracking-[0.3em] ${size === 'lg' ? 'text-lg' : 'text-sm'}`}>{brand}</span>
     </div>
   )

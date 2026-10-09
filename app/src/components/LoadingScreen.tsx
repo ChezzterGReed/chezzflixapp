@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Aurora } from './Aurora'
+import { Logo } from './Logo'
 
 const MESSAGES = ['Connecting to your server…', 'Gathering your libraries…', 'Dimming the lights…', 'Cueing up something good…']
 
@@ -22,10 +23,10 @@ export function LoadingScreen({ visible }: { visible: boolean }) {
       <Aurora />
       <div className="relative z-10 grid h-full place-items-center">
         <div className="text-center">
-          <div className="relative mx-auto mb-7 grid size-24 place-items-center">
+          <div className="relative mx-auto mb-7 grid size-32 place-items-center">
             <span className="ring-spin absolute inset-0 rounded-full" />
             <span className="absolute inset-[5px] rounded-full bg-[#07070a]" />
-            <span className="logo-breathe relative grid size-14 place-items-center rounded-2xl bg-accent text-3xl font-extrabold text-black shadow-[0_0_50px_-4px_var(--accent)]">{brand[0]}</span>
+            <span className="logo-breathe relative grid place-items-center drop-shadow-[0_0_28px_var(--accent)]"><Logo size={86} /></span>
           </div>
           <div className="mb-3 flex justify-center text-[1.05rem] font-extrabold tracking-[0.34em]">
             {[...brand].map((ch, n) => <span key={n} className="letter-in" style={{ animationDelay: `${n * 70}ms` }}>{ch}</span>)}

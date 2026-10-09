@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { reveal } from '../lib/scroll'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
 import { BackButton } from '../components/BackButton'
@@ -43,7 +44,7 @@ export function ListView({ server, title, subtitle, load, onOpen, onBack }: Prop
         {!items ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[2/3] rounded-xl" />)
           : shown.map((m) => (
             <div key={m.ratingKey} className="[--card-w:100%]">
-              <PosterCard m={m} server={server} onEnter={() => onOpen(m)} onFocus={(el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
+              <PosterCard m={m} server={server} onEnter={() => onOpen(m)} onFocus={(el) => reveal(el)} />
             </div>
           ))}
       </div>

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { reveal } from '../lib/scroll'
+import { BIG_IMAGE } from '../lib/perf'
 import { ArrowLeft, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Play } from 'lucide-react'
 import { useSettings } from '../lib/settings'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
@@ -26,7 +28,7 @@ function Episode({ ep, server, spoiler, onReveal, onPlay, onRecap }: { ep: PlexM
   return (
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
-        <Focusable focusKey={`ep-${ep.ratingKey}`} onEnter={() => onPlay(ep)} onFocus={(el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+        <Focusable focusKey={`ep-${ep.ratingKey}`} onEnter={() => onPlay(ep)} onFocus={(el) => reveal(el)}>
           <div className="flex gap-5 rounded-2xl p-3 transition-all duration-200 group-hover/f:bg-white/6 group-data-[hl=true]/f:bg-white/12 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white">
             <div className="relative aspect-video w-[min(280px,32vw)] shrink-0 overflow-hidden rounded-xl bg-surface-2">
               <img src={imageUrl(server, ep.thumb, 560, 315)} alt="" loading="lazy" draggable={false} className={`h-full w-full object-cover transition-all duration-500 ${spoiler ? 'scale-125 blur-2xl brightness-75' : ''}`} />
@@ -135,7 +137,7 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
       {!m ? <div className="grid h-full place-items-center"><div className="skeleton size-14 rounded-full" /></div> : (
         <div className="relative pb-24">
           <div className="absolute inset-x-0 top-0 h-[78vh] min-h-[560px] overflow-hidden">
-            <img src={imageUrl(server, backdropPath(m), 1920, 1080)} alt="" draggable={false} className="fade-in h-full w-full object-cover object-[50%_20%]" />
+            <img src={imageUrl(server, backdropPath(m), BIG_IMAGE.w, BIG_IMAGE.h)} alt="" draggable={false} className="fade-in h-full w-full object-cover object-[50%_20%]" />
             <div className="absolute inset-0 bg-linear-to-r from-bg via-bg/75 via-40% to-bg/10" />
             <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/30 via-45% to-transparent" />
           </div>

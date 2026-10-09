@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { reveal } from '../lib/scroll'
 import { Layers, Tags } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
@@ -99,7 +100,7 @@ export function Library({ server, section, onOpen, onBrowse, onCollection }: Pro
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {items.map((m) => (
           <div key={m.ratingKey} className="[--card-w:100%]">
-            <PosterCard m={m} server={server} onEnter={() => (m.type === 'collection' ? onCollection(m) : onOpen(m))} onFocus={(el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
+            <PosterCard m={m} server={server} onEnter={() => (m.type === 'collection' ? onCollection(m) : onOpen(m))} onFocus={(el) => reveal(el)} />
           </div>
         ))}
         {loading && Array.from({ length: items.length ? 6 : 18 }, (_, i) => <div key={'s' + i} className="skeleton aspect-[2/3] rounded-xl" />)}

@@ -36,7 +36,7 @@ export function PosterCard({ m, server, onEnter, onFocus, leftEdge, fromRecs }: 
   const sub = m.type === 'episode' ? `${episodeLabel(m)}` : m.type === 'collection' ? 'Collection' : [m.year, m.type === 'show' ? 'Series' : m.contentRating].filter(Boolean).join(' · ')
   const openMenu = useItemMenu()
   return (
-    <Focusable onEnter={onEnter} onLongPress={m.type === 'collection' ? undefined : () => openMenu(m, { fromRecs })} onFocus={onFocus} title={title} leftToRail={leftEdge} className="w-[var(--card-w)] shrink-0 snap-start">
+    <Focusable onEnter={onEnter} onLongPress={m.type === 'collection' ? undefined : () => openMenu(m, { fromRecs })} onFocus={onFocus} title={title} leftToRail={leftEdge} className="w-[var(--card-w)] shrink-0">
       <div className={`relative aspect-[2/3] overflow-hidden rounded-xl bg-surface ${focusRing}`}>
         <Img src={imageUrl(server, posterPath(m), 360, 540)} alt={title} />
         <Badge m={m} />

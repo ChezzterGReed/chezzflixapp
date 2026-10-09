@@ -14,7 +14,7 @@ function setTyping(v: boolean) { if (v !== typing) { typing = v; notify() } }
 /** True while a text field has the cursor (search box, settings fields). */
 export function useTyping(): boolean { return useSyncExternalStore(subscribe, () => typing) }
 
-function setMode(next: InputMode) {
+export function setMode(next: InputMode) {
   if (next === mode) return
   mode = next
   document.documentElement.dataset.input = next

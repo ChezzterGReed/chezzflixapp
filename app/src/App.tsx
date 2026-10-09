@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FocusContext, getCurrentFocusKey, init, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { FocusContext, GetBoundingClientRectAdapter, doesFocusableExist, getCurrentFocusKey, init, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import {
   directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getProfiles, getSections, getServers, invalidateCache,
   isWatched, removeFromContinueWatching, resolvePlayable, setWatched, switchProfile, type PlexCollectionRef, type PlexMedia, type PlexProfile, type PlexSection, type PlexServer,
@@ -7,6 +7,8 @@ import {
 import { loadAnime, tabOk } from './lib/homeData'
 import { setBooted, useBooted } from './lib/boot'
 import { useBack } from './lib/back'
+import { ensureFocus, rescueSoon } from './lib/focusRescue'
+import { isAndroid } from './lib/native'
 import { inTauri, startPlayback } from './lib/player'
 import { brandName, SettingsProvider, useSettings } from './lib/settings'
 import { Login } from './screens/Login'
@@ -30,7 +32,12 @@ import { ItemMenuContext } from './lib/itemMenu'
 import { LoadingScreen } from './components/LoadingScreen'
 import { SeasonalAmbient } from './components/SeasonalAmbient'
 
-init({ debug: false, visualDebug: false })
+// Measure true on-screen positions: by default the library ignores that a list (like the side menu's libraries) has scrolled, so the
+// last item looked like it was BELOW the Dashboard button and "down" could never reach it.
+init({
+  debug: false, visualDebug: false,
+  layoutAdapter: GetBoundingClientRectAdapter,
+})
 if (import.meta.env.DEV) (window as unknown as { __nav: unknown }).__nav = { getCurrentFocusKey }
 
 const DEMO = new URLSearchParams(location.search).has('demo') || import.meta.env.VITE_DEMO === '1'   // VITE_DEMO=1 builds a demo-mode app (for testing without a Plex account)
@@ -72,7 +79,21 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const navigate = (v: View) => { setView(v); setHistory([]); setDetails([]); window.scrollTo({ top: 0 }) }
   const push = (v: View) => { setHistory((h) => [...h, view]); setView(v); setDetails([]); window.scrollTo({ top: 0 }) }
   const back = () => { setView(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); window.scrollTo({ top: 0 }) }
-  useBack(back, history.length > 0)
+  // Back: go back a screen; with nothing to go back to, a TV remote's Back goes Home, and from Home it opens/closes the side menu.
+  const railKey = () => (view.type === 'library' ? `nav-lib-${view.section.key}` : view.type === 'search' ? 'nav-search' : view.type === 'dashboard' ? 'nav-dashboard' : 'nav-home')
+  const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
+  useBack(() => {
+    if (history.length > 0) return back()
+    if (!isAndroid) return
+    if (view.type !== 'home') navigate({ type: 'home' }); else toggleRail()
+  })
+  // The focused button can vanish when a screen changes or reloads; put focus back so the remote never goes dead.
+  useEffect(() => { rescueSoon() }, [view])
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key) && !ensureFocus()) { e.preventDefault(); e.stopPropagation() } }
+    window.addEventListener('keydown', h, true)
+    return () => window.removeEventListener('keydown', h, true)
+  }, [])
 
   // Content for a genre / collection list.
   const listLoader = useMemo(() => {

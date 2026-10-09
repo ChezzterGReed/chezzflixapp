@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react'
+import { reveal } from '../lib/scroll'
 import { Film, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useInputMode, useTyping } from '../lib/input'
 import { useSeason } from '../lib/settings'
 import { Pumpkin } from './Pumpkin'
+import { Logo } from './Logo'
 import { Avatar } from './Avatar'
 import type { PlexSection } from '../lib/plex'
 import type { HomeTab } from '../lib/settings'
@@ -17,7 +19,7 @@ export type View =
 
 function NavItem({ icon, label, active, onEnter, focusKey }: { icon: ReactNode; label: string; active?: boolean; onEnter: () => void; focusKey?: string }) {
   return (
-    <Focusable focusKey={focusKey} onEnter={onEnter} title={label} rightToContent onFocus={(el) => el.scrollIntoView({ block: 'nearest' })}>
+    <Focusable focusKey={focusKey} onEnter={onEnter} title={label} rightToContent onFocus={(el) => reveal(el, { block: 'nearest' })}>
       <div className={`relative flex h-12 items-center overflow-hidden rounded-xl transition-colors duration-200 group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${active ? 'text-white' : 'text-white/60'}`}>
         {active && <i className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r bg-accent group-data-[hl=true]/f:bg-black" />}
         <span className="grid w-[52px] shrink-0 place-items-center">{icon}</span>
@@ -56,10 +58,10 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
         className={`group/nav fixed inset-y-0 left-0 z-30 flex flex-col px-3 py-6 transition-[width] duration-300 ease-out-expo max-md:hidden ${open ? 'w-[264px]' : 'w-[var(--rail)]'}`}>
         {/* Soft scrim instead of a hard panel, so the artwork behind stays part of the page */}
         <div aria-hidden className={`pointer-events-none absolute inset-y-0 left-0 -z-10 bg-linear-to-r transition-all duration-500 ease-out-expo ${open ? 'w-[520px] from-black/95 via-black/80 via-45% to-transparent' : 'w-[160px] from-black/60 to-transparent'}`} />
-        <div className="mb-8 flex h-10 items-center overflow-hidden">
+        <div className="mb-6 flex h-14 items-center overflow-hidden">
           <span className="grid w-[52px] shrink-0 place-items-center">
             <span className="relative">
-              {avatarLogo ? <Avatar name={profileName} thumb={profileThumb} size={34} /> : <span className="grid size-8 place-items-center rounded-lg bg-accent text-[1.05rem] font-extrabold text-black">{brand[0]}</span>}
+              {avatarLogo ? <Avatar name={profileName} thumb={profileThumb} size={34} /> : <Logo size={52} />}
               {season === 'halloween' && <Pumpkin size={17} className="absolute -right-2 -top-2 drop-shadow" />}
             </span>
           </span>
@@ -76,7 +78,7 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
           <div className={`mb-2 h-4 shrink-0 overflow-hidden whitespace-nowrap px-[18px] text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>Libraries</div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-1">
             {sections.map((s) => (
-              <NavItem key={s.key} icon={s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />} label={s.title} active={isLib(s.key)} onEnter={() => onNavigate({ type: 'library', section: s })} />
+              <NavItem key={s.key} focusKey={`nav-lib-${s.key}`} icon={s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />} label={s.title} active={isLib(s.key)} onEnter={() => onNavigate({ type: 'library', section: s })} />
             ))}
           </div>
         </div>

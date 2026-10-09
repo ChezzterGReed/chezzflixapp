@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { scrollTo } from '../lib/scroll'
+import { BIG_IMAGE } from '../lib/perf'
 import { Info, Play } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
@@ -44,7 +46,7 @@ export function Hero({ items, server, rotate, onPlay, onInfo }: Props) {
 
   const m = items[i]
   const logo = logoPath(m)
-  const toTop = () => { if (!auto.current) window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const toTop = () => { if (!auto.current) scrollTo(window, 'y', 0) }
 
   return (
     <FocusContext.Provider value={focusKey}>
@@ -52,7 +54,7 @@ export function Hero({ items, server, rotate, onPlay, onInfo }: Props) {
         className="relative h-[66vh] min-h-[480px] max-h-[820px] w-full overflow-hidden">
         {/* Backdrops crossfade; only neighbours are mounted so we don't pull every image up front */}
         {items.map((it, n) => Math.abs(n - i) <= 1 || (i === 0 && n === items.length - 1) ? (
-          <img key={it.ratingKey} src={imageUrl(server, backdropPath(it), 1920, 1080)} alt="" draggable={false}
+          <img key={it.ratingKey} src={imageUrl(server, backdropPath(it), BIG_IMAGE.w, BIG_IMAGE.h)} alt="" draggable={false}
             className={`absolute inset-0 h-full w-full object-cover object-[50%_20%] transition-opacity duration-[1100ms] ease-in-out ${n === i ? 'opacity-100' : 'opacity-0'}`} />
         ) : null)}
         <div className="absolute inset-0 bg-linear-to-r from-bg via-bg/70 via-35% to-transparent to-75%" />

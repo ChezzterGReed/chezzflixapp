@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { reveal, scrollTo } from '../lib/scroll'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { LandscapeCard, PosterCard } from './Card'
@@ -24,8 +25,8 @@ export function Row({ title, items, server, variant = 'poster', onSelect, themed
   const track = useRef<HTMLDivElement>(null)
 
   // Keep the focused card centred in the row and the row comfortably in view.
-  const reveal = (el: HTMLElement) => el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
-  const nudge = (dir: -1 | 1) => track.current?.scrollBy({ left: dir * track.current.clientWidth * 0.8, behavior: 'smooth' })
+  const focusReveal = (el: HTMLElement) => reveal(el, { block: 'center', inline: 'center' })
+  const nudge = (dir: -1 | 1) => { const t = track.current; if (t) scrollTo(t, 'x', t.scrollLeft + dir * t.clientWidth * 0.8) }
 
   return (
     <FocusContext.Provider value={focusKey}>
@@ -33,10 +34,10 @@ export function Row({ title, items, server, variant = 'poster', onSelect, themed
         <h2 className={`${subtitle ? 'mb-0.5' : 'mb-3'} px-[var(--gutter)] text-[1.35rem] font-bold tracking-tight ${themed ? 'text-accent drop-shadow-[0_0_14px_var(--accent)]' : ''}`}>{themed && <Pumpkin size={26} className="mr-2 inline-block -translate-y-0.5" />}{title}</h2>
         {subtitle && <p className="mb-3 px-[var(--gutter)] text-sm text-white/45">{subtitle}</p>}
         <div className="relative">
-          <div ref={track} className="flex snap-x gap-4 overflow-x-auto scroll-smooth px-[var(--gutter)] py-5 -my-5 [scroll-padding-inline:var(--gutter)]">
+          <div ref={track} className="flex gap-4 overflow-x-auto px-[var(--gutter)] py-5 -my-5">
             {items.map((m, idx) => variant === 'landscape'
-              ? <LandscapeCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={reveal} leftEdge={idx === 0} />
-              : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={reveal} leftEdge={idx === 0} fromRecs={fromRecs} />)}
+              ? <LandscapeCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} />
+              : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} fromRecs={fromRecs} />)}
           </div>
           {([-1, 1] as const).map((d) => (
             <button key={d} aria-label={d < 0 ? 'Scroll left' : 'Scroll right'} onClick={() => nudge(d)} tabIndex={-1}

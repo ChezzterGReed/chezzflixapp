@@ -5,6 +5,7 @@ import { Avatar } from '../components/Avatar'
 import { Focusable } from '../components/Focusable'
 import { BrandMark, OnboardingShell } from '../components/OnboardingShell'
 import { PinPad } from '../components/ProfileMenu'
+import { reveal } from '../lib/scroll'
 import { getGenres, type PlexProfile, type PlexSection, type PlexServer } from '../lib/plex'
 import { POPULAR_GENRES } from '../lib/homeData'
 
@@ -30,7 +31,7 @@ export function ProfilePicker({ profiles, onPick, onSignOut }: { profiles: PlexP
         <p className="mt-2 text-white/55">Pick your profile. Your row layout, libraries and look follow you.</p>
         <div className="mt-12 flex flex-wrap justify-center gap-x-9 gap-y-10">
           {profiles.map((p, n) => (
-            <Focusable key={p.uuid} focusKey={`profile-${p.uuid}`} onEnter={() => !busy && choose(p)} title={p.title}>
+            <Focusable key={p.uuid} focusKey={`profile-${p.uuid}`} onEnter={() => !busy && choose(p)} onFocus={(el) => reveal(el)} title={p.title}>
               <div className="letter-in group/tile flex w-36 flex-col items-center" style={{ animationDelay: `${n * 90}ms` }}>
                 <div className="relative transition-transform duration-300 ease-out-expo group-hover/f:scale-105 group-data-[hl=true]/f:scale-110">
                   <div className="rounded-full p-1 transition-all duration-300 group-hover/f:ring-4 group-hover/f:ring-white/40 group-data-[hl=true]/f:ring-4 group-data-[hl=true]/f:ring-accent">
@@ -45,7 +46,7 @@ export function ProfilePicker({ profiles, onPick, onSignOut }: { profiles: PlexP
           ))}
         </div>
         {error && !pinFor && <p className="mt-8 text-red-300">{error}</p>}
-        <Focusable focusKey="profile-signout" onEnter={onSignOut}>
+        <Focusable focusKey="profile-signout" onEnter={onSignOut} onFocus={(el) => reveal(el)}>
           <div className="mx-auto mt-14 inline-block rounded-full px-5 py-2.5 text-sm font-semibold text-white/45 transition-colors group-hover/f:text-white group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Use a different Plex account</div>
         </Focusable>
       </div>
@@ -77,7 +78,7 @@ export function LibrarySetup({ sections, hidden, name, thumb, onDone }: { sectio
           {sections.map((s, n) => {
             const selected = on.has(s.key)
             return (
-              <Focusable key={s.key} focusKey={`lib-${s.key}`} onEnter={() => toggle(s.key)} title={s.title}>
+              <Focusable key={s.key} focusKey={`lib-${s.key}`} onEnter={() => toggle(s.key)} onFocus={(el) => reveal(el)} title={s.title}>
                 <div className="letter-in flex items-center gap-4 rounded-2xl bg-white/[0.05] p-4 pr-5 ring-1 ring-white/10 transition-all duration-200 group-hover/f:bg-white/10 group-data-[hl=true]/f:scale-[1.02] group-data-[hl=true]/f:bg-white/15 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-accent" style={{ animationDelay: `${n * 70}ms` }}>
                   <span className={`grid size-12 shrink-0 place-items-center rounded-xl transition-colors ${selected ? 'bg-accent text-black' : 'bg-white/10 text-white/60'}`}>{s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />}</span>
                   <span className="min-w-0 flex-1"><span className="block truncate text-[1.08rem] font-bold">{s.title}</span>{s.title.toLowerCase().replace(/\s/g, '') !== (s.type === 'movie' ? 'movies' : 'tvshows') && <span className="text-sm text-white/50">{s.type === 'movie' ? 'Movies' : 'TV shows'}</span>}</span>
@@ -88,7 +89,7 @@ export function LibrarySetup({ sections, hidden, name, thumb, onDone }: { sectio
           })}
         </div>
 
-        <Focusable focusKey="lib-continue" onEnter={done} title="Continue">
+        <Focusable focusKey="lib-continue" onEnter={done} onFocus={(el) => reveal(el)} title="Continue">
           <div className="mx-auto mt-10 inline-flex min-w-56 items-center justify-center rounded-full bg-accent px-10 py-4 text-[1.05rem] font-extrabold text-black shadow-[0_18px_40px_-12px_var(--accent)] transition-transform group-hover/f:scale-105 group-data-[hl=true]/f:scale-110 group-data-[hl=true]/f:ring-4 group-data-[hl=true]/f:ring-white">Continue</div>
         </Focusable>
       </div>
@@ -128,7 +129,7 @@ export function GenreSetup({ server, sections, name, thumb, onDone }: { server: 
           {!list ? <Loader2 className="mt-12 animate-spin text-white/40" size={34} /> : list.map((g, n) => {
             const on = picked.includes(g)
             return (
-              <Focusable key={g} focusKey={`genre-${g}`} onEnter={() => toggle(g)} title={g}>
+              <Focusable key={g} focusKey={`genre-${g}`} onEnter={() => toggle(g)} onFocus={(el) => reveal(el)} title={g}>
                 <div className={`letter-in flex items-center gap-2 rounded-full px-6 py-3 text-[1.02rem] font-bold ring-1 transition-all duration-200 group-hover/f:bg-white/20 group-data-[hl=true]/f:scale-110 group-data-[hl=true]/f:ring-4 group-data-[hl=true]/f:ring-white ${on ? 'bg-accent text-black ring-accent' : 'bg-white/8 text-white/80 ring-white/10'}`} style={{ animationDelay: `${n * 35}ms` }}>
                   {on && <Check size={17} strokeWidth={3} />}{g}
                 </div>
@@ -138,10 +139,10 @@ export function GenreSetup({ server, sections, name, thumb, onDone }: { server: 
         </div>
 
         <div className="mt-10 flex items-center justify-center gap-4">
-          <Focusable focusKey="genre-continue" onEnter={() => onDone(picked)} title="Continue">
+          <Focusable focusKey="genre-continue" onEnter={() => onDone(picked)} onFocus={(el) => reveal(el)} title="Continue">
             <div className="inline-flex min-w-56 items-center justify-center rounded-full bg-accent px-10 py-4 text-[1.05rem] font-extrabold text-black shadow-[0_18px_40px_-12px_var(--accent)] transition-transform group-hover/f:scale-105 group-data-[hl=true]/f:scale-110 group-data-[hl=true]/f:ring-4 group-data-[hl=true]/f:ring-white">{picked.length ? `Continue · ${picked.length} picked` : 'Continue'}</div>
           </Focusable>
-          <Focusable focusKey="genre-skip" onEnter={() => onDone([])} title="Skip">
+          <Focusable focusKey="genre-skip" onEnter={() => onDone([])} onFocus={(el) => reveal(el)} title="Skip">
             <div className="rounded-full px-5 py-3 text-sm font-semibold text-white/50 transition-colors group-hover/f:text-white group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Skip</div>
           </Focusable>
         </div>
