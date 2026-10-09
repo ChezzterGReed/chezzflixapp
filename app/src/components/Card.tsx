@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LOW_POWER } from '../lib/perf'
 import { Check, Pin } from 'lucide-react'
 import { Focusable } from './Focusable'
 import { useSettings } from '../lib/settings'
@@ -36,7 +37,9 @@ function Progress({ p }: { p: number }) {
   return p > 0 ? <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20"><div className="h-full bg-accent" style={{ width: `${p * 100}%` }} /></div> : null
 }
 
-const focusRing = 'transition-[transform,box-shadow] duration-300 ease-out-expo group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_18px_40px_-8px_rgba(0,0,0,.8),0_0_0_3px_var(--accent)] group-hover/f:scale-[1.03]'
+export const focusRing = LOW_POWER
+  ? 'transition-transform duration-200 ease-out group-data-[hl=true]/f:scale-[1.06] group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]'
+  : 'transition-[transform,box-shadow] duration-300 ease-out-expo group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_18px_40px_-8px_rgba(0,0,0,.8),0_0_0_3px_var(--accent)] group-hover/f:scale-[1.03]'
 
 export function PosterCard({ m, server, onEnter, onFocus, leftEdge, fromRecs, fromContinue, onLongPress }: { m: PlexMedia; server: PlexServer; onEnter: () => void; onFocus: (el: HTMLElement) => void; leftEdge?: boolean; fromRecs?: boolean; fromContinue?: boolean; onLongPress?: () => void }) {
   const title = m.type === 'episode' ? m.grandparentTitle ?? m.title : m.title

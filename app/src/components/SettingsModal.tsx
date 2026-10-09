@@ -142,6 +142,34 @@ function Playback() {
       <Heading>Episodes</Heading>
       <Toggle label="Autoplay next episode" hint="Continue to the next episode after a short countdown" on={settings.autoplayNext} onChange={(v) => update({ autoplayNext: v })} />
       <Toggle label="Skip intros automatically" hint="Jump past the intro whenever Plex has marked one" on={settings.autoSkipIntro} onChange={(v) => update({ autoSkipIntro: v })} />
+      <SubtitleStyle />
+    </>
+  )
+}
+
+const SUB_PREVIEW_SIZE = { small: 0.75, medium: 1, large: 1.3, huge: 1.7 }
+function SubtitleStyle() {
+  const { settings: s, update } = useSettings()
+  const font = s.subFont === 'serif' ? 'Georgia, serif' : s.subFont === 'mono' ? 'Menlo, ui-monospace, monospace' : 'inherit'
+  const shadow = s.subEdge === 'outline' ? '-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 6px #000' : s.subEdge === 'shadow' ? '3px 3px 4px rgba(0,0,0,.9)' : 'none'
+  const row = (label: string, opts: [string, string][], key: 'subSize' | 'subFont' | 'subColor' | 'subEdge') => (
+    <>
+      <div className="px-4 pt-1 text-sm font-semibold text-white/80">{label}</div>
+      <div className="flex flex-wrap gap-2 px-4 py-2">{opts.map(([v, l]) => <Pill key={v} active={s[key] === v} onEnter={() => update({ [key]: v } as Partial<typeof s>)}>{l}</Pill>)}</div>
+    </>
+  )
+  return (
+    <>
+      <Heading>Subtitles</Heading>
+      <div className="mx-4 mb-2 grid h-24 place-items-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#2b2f3a,#12141a)]">
+        <span className="px-3 py-1 text-center font-semibold leading-tight" style={{ fontFamily: font, fontSize: `${1.15 * SUB_PREVIEW_SIZE[s.subSize]}rem`, color: s.subColor === 'yellow' ? '#ffe600' : '#fff', textShadow: shadow, background: s.subBackground ? 'rgba(0,0,0,.75)' : 'transparent' }}>Sample subtitle text</span>
+      </div>
+      {row('Size', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['huge', 'Huge']], 'subSize')}
+      {row('Font', [['sans', 'Sans'], ['serif', 'Serif'], ['mono', 'Mono']], 'subFont')}
+      {row('Colour', [['white', 'White'], ['yellow', 'Yellow']], 'subColor')}
+      {row('Edge', [['outline', 'Outline'], ['shadow', 'Shadow'], ['none', 'None']], 'subEdge')}
+      <Toggle label="Background box" hint="A dark box behind the text, easier to read over bright scenes" on={s.subBackground} onChange={(v) => update({ subBackground: v })} />
+      <p className="px-4 pb-3 text-sm text-white/55">Applies to plain-text subtitles (.srt and similar). Styled subtitles (.ass) and picture-based ones keep the look they were made with.</p>
     </>
   )
 }

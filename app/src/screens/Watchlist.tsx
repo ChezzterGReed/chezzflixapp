@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { BookmarkMinus, Info, Plus } from 'lucide-react'
 import { Focusable } from '../components/Focusable'
 import { Layer } from '../components/Layer'
-import { PosterCard } from '../components/Card'
+import { PosterCard, focusRing } from '../components/Card'
 import { RequestDetail } from '../components/RequestDetail'
 import { normalizeBase, type RequestItem } from '../lib/overseerr'
 import { reveal } from '../lib/scroll'
@@ -19,7 +19,6 @@ function MenuItem({ icon, label, onEnter, danger }: { icon: React.ReactNode; lab
   )
 }
 
-const focusRing = 'transition-[transform,box-shadow] duration-300 ease-out-expo group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_18px_40px_-8px_rgba(0,0,0,.8),0_0_0_3px_var(--accent)] group-hover/f:scale-[1.03]'
 
 /** A Watchlist title that isn't in the library. */
 function RemoteCard({ item, onEnter }: { item: WatchItem; onEnter: () => void }) {
@@ -51,6 +50,7 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   const [local, setLocal] = useState<Map<string, PlexMedia>>(new Map())
   const [error, setError] = useState(false)
   const [menu, setMenu] = useState<WatchItem>()
+  const [confirm, setConfirm] = useState<WatchItem>()
   const [requesting, setRequesting] = useState<RequestItem>()
 
   useEffect(() => {
@@ -65,7 +65,7 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   }, [server, token, sections])
 
   const remove = async (i: WatchItem) => {
-    setMenu(undefined)
+    setConfirm(undefined)
     setItems((l) => l?.filter((x) => x.key !== i.key))
     await setOnWatchlist(token, i, false).catch(() => {})
   }
@@ -99,7 +99,23 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
             <div className="space-y-0.5">
               {onList && <MenuItem icon={<Info size={20} />} label="More info" onEnter={() => { setMenu(undefined); onOpen(onList) }} />}
               {!onList && canRequest && <MenuItem icon={<Plus size={20} />} label="Request" onEnter={() => request(menu)} />}
-              <MenuItem danger icon={<BookmarkMinus size={20} />} label="Remove from Watchlist" onEnter={() => remove(menu)} />
+              <MenuItem danger icon={<BookmarkMinus size={20} />} label="Remove from Watchlist" onEnter={() => { setConfirm(menu); setMenu(undefined) }} />
+            </div>
+          </div>
+        </Layer>
+      )}
+      {confirm && (
+        <Layer onClose={() => setConfirm(undefined)} scrim="bg-black/60 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(400px,92vw)] -translate-x-1/2 -translate-y-1/2">
+          <div className="pop rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-2xl">
+            <div className="text-[1.1rem] font-bold">Remove from Watchlist?</div>
+            <p className="mt-1.5 text-sm text-white/60">“{confirm.title}” will be taken off your Plex Watchlist.</p>
+            <div className="mt-5 flex gap-2.5">
+              <Focusable focusKey="wl-no" onEnter={() => setConfirm(undefined)} title="No">
+                <div className="rounded-full bg-white/10 px-7 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">No</div>
+              </Focusable>
+              <Focusable focusKey="wl-yes" onEnter={() => remove(confirm)} title="Yes, remove">
+                <div className="rounded-full bg-red-500/20 px-7 py-2.5 text-sm font-bold text-red-200 transition-colors group-hover/f:bg-red-500/30 group-data-[hl=true]/f:bg-red-500 group-data-[hl=true]/f:text-white">Yes, remove</div>
+              </Focusable>
             </div>
           </div>
         </Layer>

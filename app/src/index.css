@@ -1,9 +1,9 @@
 @import "tailwindcss";
 @import "@fontsource-variable/plus-jakarta-sans";
-@import "@fontsource/bebas-neue";
+@import "@fontsource/anton";
 
 @theme {
-  --font-display: "Bebas Neue", "Plus Jakarta Sans Variable", sans-serif;
+  --font-display: "Anton", "Plus Jakarta Sans Variable", sans-serif;
   --font-sans: "Plus Jakarta Sans Variable", system-ui, sans-serif;
   --color-bg: #0a0a0d;
   --color-surface: #141418;
@@ -109,3 +109,7 @@ html[data-perf="low"] .orb, html[data-perf="low"] .banner-sheen, html[data-perf=
 html[data-perf="low"] .mote, html[data-perf="low"] .fog { display: none !important; }
 html[data-perf="low"] .skeleton { animation: none; background: #1a1a20; }
 html[data-perf="low"] .letter-in { filter: none; }
+
+/* Fixed overlays get their own compositor layer on weak devices, so scrolling the page behind them doesn't repaint them every frame. */
+html[data-perf="low"] nav.fixed { transform: translateZ(0); }
+html[data-perf="low"] .group\/row > div > div { will-change: scroll-position; }

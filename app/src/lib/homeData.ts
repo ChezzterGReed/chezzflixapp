@@ -4,6 +4,7 @@ import {
 } from './plex'
 import type { HomeRowCfg, HomeTab, Season, Settings } from './settings'
 import { trendingInLibrary } from './tmdb'
+import { shuffled } from './session'
 
 export type Tab = HomeTab
 export interface HomeRow { id: string; title: string; items: PlexMedia[]; continue?: boolean }
@@ -281,7 +282,8 @@ export async function loadHero(server: PlexServer, sections: PlexSection[], tab:
   const recs = recItems.filter(ok)
 
   const seen = new Set<string>()
-  const groups = [cont, newest, trend, recs].map((list) => list.filter((m) => !seen.has(showKey(m)) && !!seen.add(showKey(m))))
+  // What you're watching leads in order; the other groups are reshuffled each launch so the later slides differ.
+  const groups = [cont, shuffled(newest.slice(0, 16), 4), shuffled(trend.slice(0, 16), 5), shuffled(recs.slice(0, 16), 6)].map((list) => list.filter((m) => !seen.has(showKey(m)) && !!seen.add(showKey(m))))
   const quota = [4, 3, 2, 2]
   const take = groups.map((g, i) => Math.min(quota[i], g.length))
   let spare = HERO_SIZE - take.reduce((a, b) => a + b, 0)

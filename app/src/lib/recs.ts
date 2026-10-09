@@ -7,6 +7,7 @@
 //            Just added, Highly rated... never repeating a title, with a little daily variety so Home doesn't look frozen.
 // Keep this file free of imports from the rest of the app (only types), so it can be tested on its own.
 import type { PlexMedia } from './plex'
+import { jitter, shuffled } from './session'
 
 export interface RecRow { id: string; title: string; subtitle?: string; items: PlexMedia[] }
 
@@ -35,7 +36,6 @@ const peopleOf = (m: PlexMedia): { name: string; kind: 'director' | 'actor' }[] 
 ]
 
 const clamp = (v: number, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, v))
-const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) } return (h >>> 0) / 4294967296 }
 
 /** How much a watched title says about taste (about 0.1 for something old, up to ~3 for something you're in the middle of). */
 export function weightOf(m: PlexMedia, now: number): number {
@@ -106,7 +106,7 @@ export function scoreItem(t: Taste, m: PlexMedia, dayKey = 0, ni: PlexMedia[] = 
   let s = 0.5 * clamp(genre + overlap) + 0.18 * year + 0.12 * people + 0.1 * quality + 0.06 * rating + 0.04 * type
   // "Not interested" nudges similar titles (shared genres) down a little.
   if (ni.length) { const g = new Set(gs); const hit = ni.filter((x) => genresOf(x).some((y) => g.has(y))).length; s -= Math.min(0.12, hit * 0.03) }
-  return s + (hash(m.ratingKey + ':' + dayKey) - 0.5) * 0.06   // a little daily variety
+  return s + (jitter(m.ratingKey + ':' + dayKey) - 0.5) * 0.16   // a fresh shake-up each time the app starts
 }
 
 function similarity(a: PlexMedia, b: PlexMedia): number {
@@ -173,7 +173,9 @@ export function buildRecs(input: RecInput): RecRow[] {
   // 2) Because you watched / are watching (strongest recent signals, different titles)
   const anchors = [...history].filter((m) => genresOf(m).length && (!input.anchorType || m.type === input.anchorType)).sort((a, b) => weightOf(b, now) - weightOf(a, now))
   const chosen: PlexMedia[] = []
-  for (const a of anchors) {
+  // Pick from the strongest handful rather than always the top three, so "Because you watched…" changes between launches.
+  const anchorPool = [...shuffled(anchors.slice(0, 8), 1), ...anchors.slice(8)]
+  for (const a of anchorPool) {
     if (chosen.length >= 3) break
     if (chosen.some((u) => similarity(u, a) > 0.6)) continue   // don't anchor on three near-twins
     if (scored.filter((x) => similarity(a, x.m) > 0.25).length < 5) continue
@@ -194,7 +196,7 @@ export function buildRecs(input: RecInput): RecRow[] {
       ? { id: `recs:genre:${g}`, title: `New in ${g}`, subtitle: `${g} from the last few years`, items: recent.slice(0, 22).map((x) => x.m) }
       : { id: `recs:genre:${g}`, title: `More ${g}`, items: diversify(inG, 22) }
   }
-  const [g1, g2, g3] = topGenres(taste, 3).map(([g]) => g)
+  const [g1, g2, g3] = shuffled(topGenres(taste, 5).map(([g]) => g), 2).slice(0, 3)
 
   // 4) Just added, picked for you
   const fresh: Maker = () => ({ id: 'recs:new', title: 'New to your library, picked for you', items: free(scored).filter((x) => x.m.addedAt && now - x.m.addedAt < 45 * DAY).slice(0, 20).map((x) => x.m) })
@@ -222,5 +224,7 @@ export function buildRecs(input: RecInput): RecRow[] {
     g2 ? genreMaker(g2) : null, gems, chosen[2] ? anchorMaker(chosen[2]) : null, era, g3 ? genreMaker(g3) : null,
   ]
   for (const make of order) { const r = make?.(); if (r) add(r) }
-  return rows.slice(0, input.maxRows ?? 12)
+  // Keep "Recommended for you" on top; the rest are re-ordered each launch.
+  const [top, ...others] = rows
+  return (top ? [top, ...shuffled(others, 3)] : []).slice(0, input.maxRows ?? 12)
 }

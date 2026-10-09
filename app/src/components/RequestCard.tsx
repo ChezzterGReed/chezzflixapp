@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Focusable } from './Focusable'
+import { focusRing } from './Card'
 import type { RequestItem } from '../lib/overseerr'
 
-const focusRing = 'transition-[transform,box-shadow] duration-300 ease-out-expo group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_18px_40px_-8px_rgba(0,0,0,.8),0_0_0_3px_var(--accent)] group-hover/f:scale-[1.03]'
 
 /** A title that isn't in the library: same shape as a poster card, marked as requestable. */
 export function RequestCard({ item, onEnter, onFocus }: { item: RequestItem; onEnter: () => void; onFocus: (el: HTMLElement) => void }) {

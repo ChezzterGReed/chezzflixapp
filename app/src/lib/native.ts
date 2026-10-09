@@ -60,6 +60,26 @@ export async function mpvSet(name: string, value: string | number | boolean) {
   }
 }
 
+export interface SubStyle { subSize: string; subFont: string; subColor: string; subEdge: string; subBackground: boolean }
+export const SUB_SIZES = { small: 0.75, medium: 1, large: 1.3, huge: 1.7 } as const
+/** Applies the subtitle look to the player (plain-text subtitles; styled .ass ones keep their own). */
+export async function applySubStyle(s: SubStyle) {
+  const size = SUB_SIZES[s.subSize as keyof typeof SUB_SIZES] ?? 1
+  if (isAndroid) return droid('setSubStyle', { size, font: s.subFont, color: s.subColor, edge: s.subEdge, background: s.subBackground })
+  const set = (n: string, v: string | number) => mpvSet(n, v).catch(() => {})
+  await Promise.all([
+    set('sub-font-size', Math.round(55 * size)),
+    set('sub-font', s.subFont === 'serif' ? 'Georgia' : s.subFont === 'mono' ? 'Menlo' : 'Helvetica Neue'),
+    set('sub-color', s.subColor === 'yellow' ? '#FFE600' : '#FFFFFF'),
+    set('sub-border-style', s.subBackground ? 'background-box' : 'outline-and-shadow'),
+    set('sub-back-color', '#BF000000'),
+    set('sub-border-color', '#000000'),
+    set('sub-border-size', s.subEdge === 'outline' ? 3 : 0),
+    set('sub-shadow-offset', s.subEdge === 'shadow' ? 3 : 0),
+    set('sub-shadow-color', '#99000000'),
+  ])
+}
+
 export async function mpvGet(name: string): Promise<string | null> {
   if (!isAndroid) return (await core()).invoke<string | null>('mpv_get', { name })
   const r = await droid<{ value: string | number | null }>('getProp', { name })

@@ -4,7 +4,8 @@ package app.chezzflix.client
 
 import android.app.Activity
 import android.graphics.Color
-import android.media.audiofx.LoudnessEnhancer
+import android.content.Context
+import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -20,6 +21,10 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.tauri.annotation.Command
@@ -35,6 +40,7 @@ import kotlin.math.pow
 @InvokeArg class SubArg { var url: String = ""; var lang: String? = null; var name: String? = null }
 @InvokeArg class LoadArgs { var url: String = ""; var startMs: Long = 0; var pause: Boolean = true; var subs: Array<SubArg>? = null }
 @InvokeArg class BoolArg { var value: Boolean = false }
+@InvokeArg class SubStyleArg { var size: Double = 1.0; var font: String = "sans"; var color: String = "white"; var edge: String = "outline"; var background: Boolean = false }
 @InvokeArg class NumArg { var value: Double = 0.0 }
 @InvokeArg class NameArg { var name: String = "" }
 
@@ -49,7 +55,8 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   private var web: WebView? = null
   private var player: ExoPlayer? = null
   private var view: PlayerView? = null
-  private var enhancer: LoudnessEnhancer? = null
+  private val gain = GainProcessor()
+  private var subStyle: SubStyleArg? = null
   private var loadedFired = false
   private var userVolume = 1.0
   private var muted = false
@@ -62,8 +69,11 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   // ---- setup ----
   private fun ensure(): ExoPlayer {
     player?.let { return it }
-    val factory = DefaultRenderersFactory(activity).setEnableDecoderFallback(true)
-      .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    val gainChain = DefaultAudioSink.DefaultAudioProcessorChain(gain)
+    val factory = object : DefaultRenderersFactory(activity) {
+      override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+        DefaultAudioSink.Builder(context).setEnableFloatOutput(enableFloatOutput).setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).setAudioProcessorChain(gainChain).build()
+    }.setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     val p = ExoPlayer.Builder(activity, factory).build()
     p.addListener(listener)
     player = p
@@ -80,6 +90,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     val parent = web?.parent as? ViewGroup
     parent?.addView(v, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     web?.setBackgroundColor(Color.TRANSPARENT)
+    applySubStyle()
     ui.post(ticker)
     return p
   }
@@ -121,7 +132,6 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       event("end", "reason" to 4)
       event("error", "message" to "${error.errorCodeName}: ${error.message ?: "playback failed"}")
     }
-    override fun onAudioSessionIdChanged(audioSessionId: Int) { rebuildEnhancer(audioSessionId) }
   }
 
   /**
@@ -146,19 +156,19 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     }, 1600)
   }
 
-  private fun rebuildEnhancer(session: Int) {
-    try { enhancer?.release() } catch (_: Throwable) {}
-    enhancer = null
-    if (session == C.AUDIO_SESSION_ID_UNSET) return
-    try { enhancer = LoudnessEnhancer(session).also { applyGain(it) } } catch (_: Throwable) {}
-  }
-  private fun applyGain(e: LoudnessEnhancer? = enhancer) {
-    try { e?.setTargetGain(if (gainDb > 0) (gainDb * 100).toInt() else 0); e?.enabled = gainDb > 0 } catch (_: Throwable) {}
+  private fun applySubStyle() {
+    val st = subStyle ?: return
+    val sv = view?.subtitleView ?: return
+    val fg = if (st.color == "yellow") Color.rgb(255, 230, 0) else Color.WHITE
+    val edge = when (st.edge) { "shadow" -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW; "none" -> CaptionStyleCompat.EDGE_TYPE_NONE; else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE }
+    val face = when (st.font) { "serif" -> Typeface.SERIF; "mono" -> Typeface.MONOSPACE; else -> Typeface.SANS_SERIF }
+    sv.setApplyEmbeddedStyles(true)   // styled subtitles (.ass) keep their own look; this applies to plain text ones (.srt etc.)
+    sv.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * st.size.toFloat())
+    sv.setStyle(CaptionStyleCompat(fg, if (st.background) Color.argb(190, 0, 0, 0) else Color.TRANSPARENT, Color.TRANSPARENT, edge, Color.BLACK, face))
   }
   private fun applyVolume() {
-    // Louder than 0 dB comes from the loudness enhancer; quieter is plain attenuation.
-    val atten = if (gainDb < 0) 10.0.pow(gainDb / 20.0) else 1.0
-    player?.volume = if (muted) 0f else (userVolume.coerceIn(0.0, 1.0) * atten).toFloat()
+    // The boost (up or down) is applied to the samples themselves; this is just the volume setting.
+    player?.volume = if (muted) 0f else userVolume.coerceIn(0.0, 1.0).toFloat()
   }
 
   private fun onUi(invoke: Invoke, work: () -> Unit) {
@@ -196,7 +206,9 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   @Command fun seek(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.seekTo((a.value * 1000).toLong()) } }
   @Command fun setVolume(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { userVolume = a.value; applyVolume(); emit("volume", userVolume * 100) } }
   @Command fun setMute(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { muted = a.value; applyVolume(); emit("mute", muted) } }
-  @Command fun setGain(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { gainDb = a.value; applyGain(); applyVolume() } }
+  // 0 dB is exactly off: the samples pass through untouched.
+  @Command fun setGain(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { gainDb = a.value; gain.linear = if (kotlin.math.abs(gainDb) < 0.05) 1.0f else 10.0.pow(gainDb.coerceIn(-12.0, 12.0) / 20.0).toFloat() } }
+  @Command fun setSubStyle(invoke: Invoke) { val a = invoke.parseArgs(SubStyleArg::class.java); onUi(invoke) { subStyle = a; applySubStyle() } }
 
   @Command fun stop(invoke: Invoke) {
     onUi(invoke) {
@@ -286,5 +298,5 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   }
 
   override fun onPause() { activity.runOnUiThread { player?.playWhenReady = false } }
-  override fun onDestroy() { activity.runOnUiThread { ui.removeCallbacksAndMessages(null); enhancer?.release(); player?.release(); player = null } }
+  override fun onDestroy() { activity.runOnUiThread { ui.removeCallbacksAndMessages(null); player?.release(); player = null } }
 }

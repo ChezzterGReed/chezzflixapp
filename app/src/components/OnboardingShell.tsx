@@ -19,7 +19,7 @@ export function BrandMark({ size = 'md' }: { size?: 'md' | 'lg' }) {
   return (
     <div className="flex items-center justify-center gap-3">
       <Logo size={size === 'lg' ? 96 : 76} className="drop-shadow-[0_6px_18px_rgba(0,0,0,.5)]" />
-      <span className={`font-display tracking-[0.24em] ${size === 'lg' ? 'text-3xl' : 'text-xl'}`}>{brand}</span>
+      <span className={`font-display tracking-[0.24em] ${size === 'lg' ? 'text-2xl' : 'text-lg'}`}>{brand}</span>
     </div>
   )
 }

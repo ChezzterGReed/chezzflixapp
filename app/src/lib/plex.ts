@@ -13,13 +13,27 @@ export function clientId(): string {
   return id
 }
 
+/** What Plex shows in its dashboard for this player: the device's name and platform (not just "Web"). */
+function deviceInfo() {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  if (/Android/i.test(ua)) {
+    const model = /Android[^;)]*;\s*([^;)]+?)\s*(?:Build\/|\))/i.exec(ua)?.[1]?.trim()
+    return { name: model || 'Android TV', platform: 'Android', device: model || 'Android TV' }
+  }
+  if (/Mac/i.test(ua)) return { name: 'Mac', platform: 'macOS', device: 'Mac' }
+  return { name: 'Web browser', platform: 'Web', device: 'Browser' }
+}
+const DEVICE = deviceInfo()
+
 function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.1.0',
+    'X-Plex-Version': '0.2.6',
     'X-Plex-Client-Identifier': clientId(),
-    'X-Plex-Platform': 'Web',
+    'X-Plex-Platform': DEVICE.platform,
+    'X-Plex-Device': DEVICE.device,
+    'X-Plex-Device-Name': DEVICE.name,
   }
   if (token) h['X-Plex-Token'] = token
   return h
