@@ -18,6 +18,8 @@ export interface HomeRowCfg { id: string; kind: 'builtin' | 'hub' | 'genre' | 'p
 
 export interface Settings {
   accent: string
+  /** Show the large featured banner at the top of Home. */
+  hero: boolean
   heroRotate: boolean
   hideWatched: boolean
   hideSpoilers: boolean
@@ -56,7 +58,7 @@ export interface Settings {
 
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
-  accent: ACCENTS[0].value, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
+  accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
   hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, autoSkipIntro: false,
 }
 

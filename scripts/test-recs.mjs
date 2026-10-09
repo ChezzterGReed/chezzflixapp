@@ -81,3 +81,14 @@ const run = (history, o = {}) => { const used = new Set(history.map((h) => h.rat
   const ms = Date.now() - t
   ok('6000 candidates in under 1.5 s', ms < 1500, `${ms} ms`)
 }
+// 9) Movies tab: "Because you watched X" is only ever a movie (Shows tab: only a show)
+{
+  const h = [...watched(take(6, (m) => m.type === 'show' && genresOf(m).includes('Drama')), 2, { viewedLeafCount: 8 }), ...watched(take(6, (m) => m.type === 'movie' && genresOf(m).includes('Drama')), 4)]
+  const byKey = new Map(h.map((x) => [x.ratingKey, x]))
+  const anchors = (rows) => rows.filter((r) => r.id.startsWith('recs:because:')).map((r) => byKey.get(r.id.split(':')[2]))
+  const used = new Set(h.map((x) => x.ratingKey))
+  const cand = (type) => lib.filter((m) => !used.has(m.ratingKey) && m.type === type)
+  const mv = anchors(buildRecs({ history: h, candidates: cand('movie'), now: NOW, anchorType: 'movie' })), sh = anchors(buildRecs({ history: h, candidates: cand('show'), now: NOW, anchorType: 'show' }))
+  ok('Movies tab: every "Because you watched" is a movie', mv.length > 0 && mv.every((m) => m.type === 'movie'), `${mv.length} rows`)
+  ok('Shows tab: every "Because you watched" is a show', sh.length > 0 && sh.every((m) => m.type === 'show'), `${sh.length} rows`)
+}

@@ -63,21 +63,26 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server, sections, wantsRecs, activeTab, anime, settings.genres, settings.notInterested, settings.hiddenLibraries, refreshKey])
 
-  // Hero (re-rolled when the tab or library set changes, not on every row tweak)
+  // Hero (re-rolled when the tab or library set changes, not on every row tweak). It appears as soon as continue/new/trending are ready;
+  // recommendations fill the remaining slots once they've been worked out (they're the last priority, so nothing already shown moves).
+  const recItems = recRows.flatMap((r) => r.items)
   useEffect(() => {
     if (!rows) return
-    // Trending has a banner instead of a hero.
-    if (activeTab === 'trending') { setHero([]); return }
-    const sig = `${activeTab}|${settings.hiddenLibraries.join(',')}|${refreshKey}`
+    if (!settings.hero || activeTab === 'trending') { setHero([]); return }   // Trending has a banner instead of a hero
+    const waitingForRecs = wantsRecs && !recsReady
+    const sig = `${activeTab}|${settings.hiddenLibraries.join(',')}|${refreshKey}|${waitingForRecs ? 'p' : 'r'}`
     if (heroFor.current === sig && hero) return
     heroFor.current = sig
     let alive = true
-    loadHero(server, sections, activeTab, settings, rows, rowsAnime).then((h) => alive && setHero(h)).catch(() => alive && setHero([]))
+    loadHero(server, sections, activeTab, settings, rows, rowsAnime, waitingForRecs ? [] : recItems, !waitingForRecs)
+      .then((h) => { if (alive && !(waitingForRecs && h.length < 3)) setHero(h) })   // too thin to show yet: wait for recommendations
+      .catch(() => alive && setHero([]))
     return () => { alive = false }
-  }, [rows])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, recsReady, settings.hero])
 
   // The loading screen lifts once the first hero is ready (or we know there isn't one).
-  useEffect(() => { if (hero) setBooted(true) }, [hero])
+  useEffect(() => { if (hero || (!settings.hero && rows)) setBooted(true) }, [hero, settings.hero, rows])
   useEffect(() => { const t = setTimeout(() => setBooted(true), 20_000); return () => clearTimeout(t) }, [])
 
   useEffect(() => {
@@ -87,6 +92,9 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
   useEffect(() => {
     if (hero?.length && !focusedOnce.current) { focusedOnce.current = true; setTimeout(() => setFocus('hero-play'), 60) }
   }, [hero])
+  useEffect(() => {
+    if (!settings.hero && rows && !focusedOnce.current) { focusedOnce.current = true; setTimeout(() => setFocus(`tab-${activeTab}`), 60) }
+  }, [settings.hero, rows, activeTab])
 
   const switchTab = (t: Tab) => { if (t === activeTab) return; setRows(undefined); setHero(undefined); heroFor.current = ''; setTab(t) }
 
@@ -111,6 +119,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
 
       {activeTab === 'trending'
         ? <TrendingBanner server={server} posters={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).flatMap((r) => r.items)} count={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).reduce((n, r) => n + r.items.length, 0)} loading={!rows} />
+        : !settings.hero ? <div className="h-28" />
         : hero?.length ? <Hero key={activeTab} items={hero} server={server} rotate={settings.heroRotate} onPlay={onPlay} onInfo={onOpen} />
           : hero ? <div className="h-28" /> : <HeroSkeleton />}
       <div className="relative z-10 pt-2">

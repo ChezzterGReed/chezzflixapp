@@ -247,31 +247,41 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
   return { rows: out, notices }
 }
 
-const PATTERN = ['new', 'cont', 'new', 'rand', 'cont', 'new', 'new', 'cont', 'rand', 'new'] as const
+const HERO_SIZE = 10
+const interleaveAll = (lists: PlexMedia[][]) => { const out: PlexMedia[] = []; for (let i = 0; i < Math.max(0, ...lists.map((l) => l.length)); i++) for (const l of lists) if (l[i]) out.push(l[i]); return out }
 
-/** Ten featured titles: a blend of what's new, what you're mid-way through, and a couple of random picks. */
-export async function loadHero(server: PlexServer, sections: PlexSection[], tab: Tab, settings: Settings, rows: HomeRow[], anime?: AnimeInfo): Promise<PlexMedia[]> {
+/**
+ * Up to ten featured titles, in priority order: what you're watching, then new releases, then what's trending, then recommendations.
+ * Each group gets a share (4 / 3 / 2 / 2); unused share flows down to the next group. `recItems` can arrive later (see Home).
+ */
+export async function loadHero(server: PlexServer, sections: PlexSection[], tab: Tab, settings: Settings, rows: HomeRow[], anime?: AnimeInfo, recItems: PlexMedia[] = [], topUp = true): Promise<PlexMedia[]> {
   const hidden = new Set(settings.hiddenLibraries)
-  const pool = sections.filter((s) => !hidden.has(s.key) && (tab === 'all' || tab === 'foryou' || tab === 'anime' || tab === 'trending' || s.type === tab))
+  const visible = sections.filter((s) => !hidden.has(s.key))
   const art = (m: PlexMedia) => !!(m.art || m.grandparentArt)
-
-  const cont = rows.find((r) => r.continue)?.items.filter(art) ?? []
-  const fresh = rows.filter((r) => !r.continue && /recent|added|release/i.test(r.id + r.title)).flatMap((r) => r.items).filter(art)
   const ok = (m: PlexMedia) => art(m) && tabOk(tab, m, anime)
-  const rand = tab === 'anime'
-    ? shuffle((anime?.items ?? []).filter(art)).slice(0, 6)
-    : shuffle((await Promise.all(shuffle(pool).slice(0, 2).map((s) => getRandomItems(server, s.key, 12).catch(() => [])))).flat().filter(ok)).slice(0, 6)
-  const fallback = rows.flatMap((r) => r.items).filter(art)
 
-  const queues = { new: [...fresh], cont: [...cont], rand }
-  const seen = new Set<string>(); const picks: PlexMedia[] = []
-  const take = (q: PlexMedia[]) => { while (q.length) { const m = q.shift()!; if (!seen.has(showKey(m))) { seen.add(showKey(m)); picks.push(m); return true } } return false }
-  for (const slot of PATTERN) {
-    if (picks.length >= 10) break
-    if (!take(queues[slot])) { for (const q of [queues.new, queues.cont, queues.rand, fallback]) if (take(q)) break }
+  const cont = (rows.find((r) => r.continue)?.items ?? []).filter(ok)
+  const fresh = rows.filter((r) => !r.continue && r.id === 'builtin:released').flatMap((r) => r.items)
+  const added = rows.filter((r) => !r.continue && /recent|added/i.test(r.id + r.title) && r.id !== 'builtin:released').flatMap((r) => r.items)
+  const newest = [...fresh, ...added].filter(ok)
+  const kinds: ('movie' | 'tv')[] = tab === 'movie' ? ['movie'] : tab === 'show' ? ['tv'] : ['movie', 'tv']
+  const tmdb = settings.tmdbKey && tab !== 'anime' ? await Promise.all(kinds.map((k) => trendingInLibrary(server, visible, settings.tmdbKey, k).catch(() => [] as PlexMedia[]))) : []
+  const trend = [...interleaveAll(tmdb), ...rows.filter((r) => r.id === 'builtin:trending').flatMap((r) => r.items)].filter(ok)
+  const recs = recItems.filter(ok)
+
+  const seen = new Set<string>()
+  const groups = [cont, newest, trend, recs].map((list) => list.filter((m) => !seen.has(showKey(m)) && !!seen.add(showKey(m))))
+  const quota = [4, 3, 2, 2]
+  const take = groups.map((g, i) => Math.min(quota[i], g.length))
+  let spare = HERO_SIZE - take.reduce((a, b) => a + b, 0)
+  for (let i = 0; i < groups.length && spare > 0; i++) { const more = Math.min(spare, groups[i].length - take[i]); take[i] += more; spare -= more }
+  const picks = groups.flatMap((g, i) => g.slice(0, take[i])).slice(0, HERO_SIZE)
+
+  if (topUp && picks.length < HERO_SIZE) {
+    const have = new Set(picks.map(showKey))
+    const fallback = rows.flatMap((r) => r.items).filter((m) => ok(m) && !have.has(showKey(m)) && !!have.add(showKey(m)))
+    picks.push(...fallback.slice(0, HERO_SIZE - picks.length))
   }
-  while (picks.length < 10 && take(fallback)) { /* top up */ }
-
   const full = await Promise.all(picks.map((m) => getMetadata(server, showKey(m)).catch(() => null)))
   return full.filter((m): m is PlexMedia => !!m)
 }

@@ -26,5 +26,5 @@ export interface RecsOptions { tab: Tab; anime?: AnimeInfo; seedGenres: string[]
 export async function loadRecs(server: PlexServer, sections: PlexSection[], o: RecsOptions): Promise<RecRow[]> {
   const { history, candidates } = await raw(server, sections, o.bust)
   const inTab = (m: PlexMedia) => tabOk(o.tab, m, o.anime)
-  return buildRecs({ history, candidates: candidates.filter(inTab), seedGenres: o.seedGenres, notInterested: o.notInterested, maxRows: o.maxRows })
+  return buildRecs({ history, candidates: candidates.filter(inTab), seedGenres: o.seedGenres, notInterested: o.notInterested, maxRows: o.maxRows, anchorType: o.tab === 'movie' ? 'movie' : o.tab === 'show' ? 'show' : undefined })
 }

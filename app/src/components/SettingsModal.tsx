@@ -238,7 +238,8 @@ function Content() {
       <Heading>Trending</Heading>
       <TmdbKey />
       <Heading>Home</Heading>
-      <Toggle label="Rotate featured titles" hint="Cycle through the hero banner automatically" on={settings.heroRotate} onChange={(v) => update({ heroRotate: v })} />
+      <Toggle label="Show the featured banner" hint="The large banner at the top of Home. Turn it off for a plain, rows-first Home." on={settings.hero} onChange={(v) => update({ hero: v })} />
+      {settings.hero && <Toggle label="Rotate featured titles" hint="Cycle through the banner automatically" on={settings.heroRotate} onChange={(v) => update({ heroRotate: v })} />}
     </>
   )
 }

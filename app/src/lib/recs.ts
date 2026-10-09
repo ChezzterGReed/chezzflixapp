@@ -21,6 +21,8 @@ export interface RecInput {
   /** "Not interested" titles (ratingKey -> when): never shown, and they nudge similar titles down. */
   notInterested?: Record<string, number>
   maxRows?: number
+  /** On the Movies tab only movies can be the "because you watched X" title, on Shows only shows. */
+  anchorType?: 'movie' | 'show'
 }
 
 const DAY = 86400
@@ -169,7 +171,7 @@ export function buildRecs(input: RecInput): RecRow[] {
   const free = <T extends { m: PlexMedia }>(list: T[]) => list.filter((x) => !used.has(x.m.ratingKey))
 
   // 2) Because you watched / are watching (strongest recent signals, different titles)
-  const anchors = [...history].filter((m) => genresOf(m).length).sort((a, b) => weightOf(b, now) - weightOf(a, now))
+  const anchors = [...history].filter((m) => genresOf(m).length && (!input.anchorType || m.type === input.anchorType)).sort((a, b) => weightOf(b, now) - weightOf(a, now))
   const chosen: PlexMedia[] = []
   for (const a of anchors) {
     if (chosen.length >= 3) break

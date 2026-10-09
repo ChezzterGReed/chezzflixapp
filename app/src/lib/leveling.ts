@@ -4,14 +4,16 @@
 //  Auto leveling   measures the title's loudness while it plays, picks one gain to reach TARGET_LUFS, ramps to it gently, refines it
 //                  twice early on, and remembers it for the title (the whole show, for episodes) so next time it's right from the start.
 //  Dialogue boost  for 5.1/7.1 audio, lifts only the center channel (where dialogue lives) before the TV mixes down to stereo.
-//  Boost amount    manual override per title: Auto (follow auto leveling), Off, or a fixed +3/+6/+9/+12 dB; remembered too.
+//  Boost amount    manual override per title: Auto (follow auto leveling) or a fixed amount nudged in 1 dB steps, -10 to +10; remembered too.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mpvCmd, mpvGet, mpvSet } from './native'
 import type { PlexMedia } from './plex'
 
-export type Boost = 'auto' | 'off' | number
-export const BOOST_STEPS: Boost[] = ['auto', 'off', 3, 6, 9, 12]
-export const boostLabel = (b: Boost) => (b === 'auto' ? 'Auto' : b === 'off' ? 'Off' : `+${b} dB`)
+/** 'auto' follows auto leveling; a number is a fixed boost in dB (0 = none). */
+export type Boost = 'auto' | number
+export const MAX_BOOST = 10
+export const clampBoost = (n: number) => Math.max(-MAX_BOOST, Math.min(MAX_BOOST, Math.round(n)))
+export const dbLabel = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)} dB`
 
 export const TARGET_LUFS = -22
 const MIN_GAIN = -6, MAX_GAIN = 15
@@ -31,7 +33,11 @@ interface Mem { gain?: number; boost?: Boost }
 const MEM_KEY = 'chezzflix_levels'
 export const memKey = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : `item:${m.ratingKey}`)
 function readAll(): Record<string, Mem> { try { return JSON.parse(localStorage.getItem(MEM_KEY) ?? '{}') } catch { return {} } }
-export const readMem = (key: string): Mem => readAll()[key] ?? {}
+export function readMem(key: string): Mem {
+  const m = readAll()[key] ?? {}
+  const b = m.boost as unknown
+  return { ...m, boost: b === 'off' ? 0 : typeof b === 'number' ? clampBoost(b) : b === 'auto' ? 'auto' : undefined }   // older versions stored 'off' and +3/+6/+9/+12
+}
 function writeMem(key: string, patch: Mem) { try { const all = readAll(); all[key] = { ...all[key], ...patch }; localStorage.setItem(MEM_KEY, JSON.stringify(all)) } catch { /* private mode */ } }
 
 const clamp = (v: number) => Math.max(MIN_GAIN, Math.min(MAX_GAIN, v))
@@ -40,7 +46,7 @@ const gainFilter = (g: number) => `@g:lavfi=[volume=${g.toFixed(2)}dB:eval=frame
 /** For short clips (Preview/Recap): the steady gain this title would get, without measuring. */
 export function clipAf(media: PlexMedia, autoLevel: boolean): string {
   const m = readMem(memKey(media))
-  const g = m.boost === 'off' ? 0 : typeof m.boost === 'number' ? m.boost : autoLevel ? m.gain ?? 0 : 0
+  const g = typeof m.boost === 'number' ? m.boost : autoLevel ? m.gain ?? 0 : 0
   return Math.abs(g) < 0.1 ? '' : `lavfi=[volume=${g.toFixed(2)}dB,${LIMITER}]`
 }
 
@@ -77,8 +83,8 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
     ;(async () => {
       const mem = readMem(key)
       const measuring = boost === 'auto' && autoLevel
-      const holds = boost !== 'off' && (typeof boost === 'number' || autoLevel)
-      const want = boost === 'off' ? 0 : typeof boost === 'number' ? boost : autoLevel ? mem.gain ?? 0 : 0
+      const holds = typeof boost === 'number' || autoLevel
+      const want = typeof boost === 'number' ? boost : autoLevel ? mem.gain ?? 0 : 0
       const layout = dialogueBoost ? await mpvGet('audio-params/hr-channels').catch(() => null) : null
       const pan = layout ? dialoguePan(layout) : null
       const parts = [pan, measuring ? '@m:lavfi=[ebur128=metadata=1]' : null, holds ? 'GAIN' : null].filter(Boolean) as string[]

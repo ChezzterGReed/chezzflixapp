@@ -6,7 +6,7 @@ import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, im
 import { mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
-import { BOOST_STEPS, boostLabel, useLevelEngine } from '../lib/leveling'
+import { clampBoost, dbLabel, useLevelEngine } from '../lib/leveling'
 
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0
@@ -295,13 +295,14 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
   // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
   const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost })
-  const stepBoost = (d: 1 | -1) => level.setBoost(BOOST_STEPS[(BOOST_STEPS.findIndex((b) => b === level.boost) + d + BOOST_STEPS.length) % BOOST_STEPS.length])
+  // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +10).
+  const nudgeBoost = (d: 1 | -1) => level.setBoost(clampBoost((level.boost === 'auto' ? Math.round(level.gain) : level.boost) + d))
   const levelRows = [
     { label: 'Auto leveling', value: settings.autoLevel ? 'On' : 'Off', hint: 'Measures the title, holds one steady boost', act: () => update({ autoLevel: !settings.autoLevel }) },
     { label: 'Dialogue boost', value: settings.dialogueBoost ? 'On' : 'Off', hint: 'Lifts voices in surround audio', act: () => update({ dialogueBoost: !settings.dialogueBoost }) },
-    { label: 'Boost', value: level.boost === 'auto' ? (settings.autoLevel && level.gain ? `Auto · ${level.gain > 0 ? '+' : ''}${level.gain.toFixed(0)} dB` : 'Auto') : boostLabel(level.boost), hint: 'Set it yourself, or turn it off', act: () => stepBoost(1) },
+    { label: 'Boost', value: level.boost === 'auto' ? (settings.autoLevel && level.gain ? `Auto · ${dbLabel(Math.round(level.gain))}` : 'Auto') : dbLabel(level.boost), hint: level.boost === 'auto' ? 'Use − and + to set it yourself' : 'Set by you · press OK for Auto', act: () => level.setBoost('auto') },
   ]
-  const levelActive = settings.autoLevel || settings.dialogueBoost || (level.boost !== 'auto' && level.boost !== 'off')
+  const levelActive = settings.autoLevel || settings.dialogueBoost || (typeof level.boost === 'number' && level.boost !== 0)
 
   const showNext = !!next && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
@@ -359,8 +360,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
       if (levelPanel !== null) {
         if (e.key === 'ArrowDown') setLevelPanel(Math.min(levelRows.length - 1, levelPanel + 1))
         else if (e.key === 'ArrowUp') setLevelPanel(Math.max(0, levelPanel - 1))
-        else if (e.key === 'ArrowRight' && levelPanel === 2) stepBoost(1)
-        else if (e.key === 'ArrowLeft' && levelPanel === 2) stepBoost(-1)
+        else if (e.key === 'ArrowRight' && levelPanel === 2) nudgeBoost(1)
+        else if (e.key === 'ArrowLeft' && levelPanel === 2) nudgeBoost(-1)
         else if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') levelRows[levelPanel].act()
         else if (e.key === 'v') setLevelPanel(null)
         else return
@@ -483,14 +484,21 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         </div>
 
         {levelPanel !== null && (
-          <div data-nopause className="pop absolute bottom-32 right-24 w-[22rem] rounded-2xl bg-[#17171c]/95 p-2.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+          <div data-nopause className="pop absolute bottom-32 right-24 w-[24rem] rounded-2xl bg-[#17171c]/95 p-2.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
             <div className="px-3 pb-1 pt-1.5 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Volume boost</div>
             {levelRows.map((r, i) => (
-              <button key={r.label} onClick={() => { setLevelPanel(i); r.act() }} onMouseEnter={() => setLevelPanel(i)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${levelPanel === i ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
-                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{r.label}</span><span className={`block truncate text-xs ${levelPanel === i ? 'text-black/55' : 'text-white/45'}`}>{r.hint}</span></span>
-                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${levelPanel === i ? 'bg-black/10' : 'bg-white/10'} ${r.value === 'On' ? 'text-accent' : ''}`}>{r.value}</span>
-              </button>
+              <div key={r.label} onMouseEnter={() => setLevelPanel(i)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${levelPanel === i ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
+                <button onClick={() => { setLevelPanel(i); r.act() }} className="min-w-0 flex-1 text-left"><span className="block text-sm font-bold">{r.label}</span><span className={`block truncate text-xs ${levelPanel === i ? 'text-black/55' : 'text-white/45'}`}>{r.hint}</span></button>
+                {i === 2 ? (
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <button aria-label="Quieter by 1 dB" disabled={typeof level.boost === 'number' && level.boost <= -10} onClick={() => nudgeBoost(-1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 disabled:opacity-30 ${levelPanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>−</button>
+                    <span className="min-w-[4.6rem] text-center text-xs font-bold tabular-nums">{r.value}</span>
+                    <button aria-label="Louder by 1 dB" disabled={typeof level.boost === 'number' && level.boost >= 10} onClick={() => nudgeBoost(1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 disabled:opacity-30 ${levelPanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>+</button>
+                  </span>
+                ) : (
+                  <button onClick={() => { setLevelPanel(i); r.act() }} className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${levelPanel === i ? 'bg-black/10' : 'bg-white/10'} ${r.value === 'On' ? 'text-accent' : ''}`}>{r.value}</button>
+                )}
+              </div>
             ))}
           </div>
         )}
