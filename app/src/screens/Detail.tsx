@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { reveal } from '../lib/scroll'
 import { BIG_IMAGE } from '../lib/perf'
+import { reveal, scrollToTopOf } from '../lib/scroll'
 import { ArrowLeft, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Play } from 'lucide-react'
 import { useSettings } from '../lib/settings'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
@@ -11,24 +11,24 @@ import { Row } from '../components/Row'
 import { ClipPopup } from '../components/ClipPopup'
 import { firstEpisode, previewSegments, recapSegments, withFile, type Segment } from '../lib/clips'
 import {
-  backdropPath, episodeLabel, formatLeft, formatRuntime, getChildren, getMetadata, getRelated, imageUrl, isSpoilerRisk, isWatched, logoPath,
+  backdropPath, posterPath, episodeLabel, formatLeft, formatRuntime, getChildren, getMetadata, getRelated, imageUrl, isSpoilerRisk, isWatched, logoPath,
   progressOf, setWatched, type PlexMedia, type PlexServer,
 } from '../lib/plex'
 
-function Pill({ children, onEnter, active }: { children: React.ReactNode; onEnter: () => void; active?: boolean }) {
+function Pill({ children, onEnter, active, focusKey, onArrow }: { children: React.ReactNode; onEnter: () => void; active?: boolean; focusKey?: string; onArrow?: (d: 'left' | 'right' | 'up' | 'down') => boolean | void }) {
   return (
-    <Focusable onEnter={onEnter}>
+    <Focusable focusKey={focusKey} onEnter={onEnter} onArrow={onArrow} onFocus={(el) => reveal(el, { block: 'center' })}>
       <div className={`whitespace-nowrap rounded-full px-5 py-2 text-[0.92rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${active ? 'bg-accent text-black' : 'bg-white/8 text-white/60'}`}>{children}</div>
     </Focusable>
   )
 }
 
-function Episode({ ep, server, spoiler, onReveal, onPlay, onRecap }: { ep: PlexMedia; server: PlexServer; spoiler: boolean; onReveal: () => void; onPlay: (m: PlexMedia) => void; onRecap: (m: PlexMedia) => void }) {
+function Episode({ ep, server, spoiler, onReveal, onPlay, onRecap, upTo }: { ep: PlexMedia; server: PlexServer; spoiler: boolean; onReveal: () => void; onPlay: (m: PlexMedia) => void; onRecap: (m: PlexMedia) => void; /** First episode only: where Up goes (the season buttons). */ upTo?: string }) {
   const p = progressOf(ep)
   return (
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
-        <Focusable focusKey={`ep-${ep.ratingKey}`} onEnter={() => onPlay(ep)} onFocus={(el) => reveal(el)}>
+        <Focusable focusKey={`ep-${ep.ratingKey}`} onEnter={() => onPlay(ep)} onFocus={(el) => reveal(el)} onArrow={(d) => { if (d === 'up' && upTo) { setFocus(upTo); return false } }}>
           <div className="flex gap-5 rounded-2xl p-3 transition-all duration-200 group-hover/f:bg-white/6 group-data-[hl=true]/f:bg-white/12 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white">
             <div className="relative aspect-video w-[min(280px,32vw)] shrink-0 overflow-hidden rounded-xl bg-surface-2">
               <img src={imageUrl(server, ep.thumb, 560, 315)} alt="" loading="lazy" draggable={false} className={`h-full w-full object-cover transition-all duration-500 ${spoiler ? 'scale-125 blur-2xl brightness-75' : ''}`} />
@@ -120,7 +120,7 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
   }
   // Recap: eight short snippets spread across one episode.
   const recap = async (ep: PlexMedia) => {
-    const full = await withFile(server, ep)
+    const full = await getMetadata(server, ep.ratingKey)   // the full record carries the credits marker the last clip needs
     const segments = recapSegments(full)
     if (segments.length) setClip({ media: full, segments, heading: `${m?.title ?? full.grandparentTitle ?? ''}`, subheading: `Recap · ${episodeLabel(full)} · ${full.title}` })
   }
@@ -131,24 +131,31 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
   const sub = next ? episodeLabel(next) : ''
   const score = m?.audienceRating ?? m?.rating
   const cast = (m?.Role ?? []).slice(0, 14)
+  const minimal = settings.infoStyle === 'minimal'
 
   return (
     <Layer onClose={onClose} scrim="bg-bg" className="absolute inset-0 overflow-y-auto overflow-x-hidden">
       {!m ? <div className="grid h-full place-items-center"><div className="skeleton size-14 rounded-full" /></div> : (
         <div className="relative pb-24">
-          <div className="absolute inset-x-0 top-0 h-[78vh] min-h-[560px] overflow-hidden">
-            <img src={imageUrl(server, backdropPath(m), BIG_IMAGE.w, BIG_IMAGE.h)} alt="" draggable={false} className="fade-in h-full w-full object-cover object-[50%_20%]" />
-            <div className="absolute inset-0 bg-linear-to-r from-bg via-bg/75 via-40% to-bg/10" />
-            <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/30 via-45% to-transparent" />
-          </div>
+          {minimal
+            ? <div aria-hidden className="absolute inset-x-0 top-0 h-[70vh] bg-[radial-gradient(900px_420px_at_18%_0%,color-mix(in_oklab,var(--accent)_16%,transparent),transparent_70%)]" />
+            : (
+              <div className="absolute inset-x-0 top-0 h-[78vh] min-h-[560px] overflow-hidden">
+                <img src={imageUrl(server, backdropPath(m), BIG_IMAGE.w, BIG_IMAGE.h)} alt="" draggable={false} className="fade-in h-full w-full object-cover object-[50%_20%]" />
+                <div className="absolute inset-0 bg-linear-to-r from-bg via-bg/75 via-40% to-bg/10" />
+                <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/30 via-45% to-transparent" />
+              </div>
+            )}
 
           <div className="relative px-[var(--gutter)] pt-8">
-            <Focusable focusKey="detail-back" onEnter={onClose} title="Back">
+            <Focusable focusKey="detail-back" onEnter={onClose} title="Back" onFocus={scrollToTopOf}>
               <div className="inline-flex h-11 items-center gap-2 rounded-full bg-black/35 pl-3 pr-5 text-sm font-semibold backdrop-blur-md transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ArrowLeft size={18} />Back</div>
             </Focusable>
 
-            <div className="fade-up mt-[12vh] max-w-[46rem]">
-              {logoPath(m)
+            <div className={minimal ? 'fade-up mt-8 flex items-start gap-10 max-md:flex-col' : 'fade-up mt-[12vh] max-w-[46rem]'}>
+              {minimal && <img src={imageUrl(server, posterPath(m), 640, 960)} alt={m.title} draggable={false} className="w-[min(300px,26vw)] shrink-0 rounded-2xl bg-surface object-cover shadow-[0_24px_60px_-20px_rgba(0,0,0,.9)] max-md:w-48" />}
+              <div className={minimal ? 'min-w-0 max-w-[50rem] flex-1' : ''}>
+              {logoPath(m) && !minimal
                 ? <img src={imageUrl(server, logoPath(m), 800, 300)} alt={m.title} className="mb-5 max-h-40 max-w-[30rem] object-contain object-left" />
                 : <h1 className="mb-4 text-[clamp(2.6rem,5.2vw,5rem)] font-extrabold leading-[0.98] tracking-[-0.035em]">{m.title}</h1>}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.95rem] font-medium text-white/85">
@@ -160,17 +167,17 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
               <p className="mt-4 max-w-[40rem] text-[1.05rem] leading-relaxed text-white/80">{m.summary}</p>
 
               <div className="mt-7 flex items-center gap-3">
-                <Focusable focusKey="detail-play" onEnter={() => onPlay(resumeTarget ?? m)} title="Play">
+                <Focusable focusKey="detail-play" onEnter={() => onPlay(resumeTarget ?? m)} title="Play" onFocus={scrollToTopOf}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white px-8 text-[1.05rem] font-bold text-black transition-all duration-200 group-hover/f:bg-white/90 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     <Play size={20} fill="currentColor" />{playLabel}{sub && <span className="font-semibold text-black/60">{sub}</span>}
                   </div>
                 </Focusable>
-                <Focusable onEnter={toggleWatched} title={watched ? 'Mark unwatched' : 'Mark watched'}>
+                <Focusable onEnter={toggleWatched} title={watched ? 'Mark unwatched' : 'Mark watched'} onFocus={scrollToTopOf}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     {watched ? <EyeOff size={20} /> : <Eye size={20} />}{watched ? 'Mark unwatched' : 'Mark watched'}
                   </div>
                 </Focusable>
-                <Focusable focusKey="detail-preview" onEnter={preview} title="Preview">
+                <Focusable focusKey="detail-preview" onEnter={preview} title="Preview" onFocus={scrollToTopOf}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     {busy ? <Loader2 size={20} className="animate-spin" /> : <Clapperboard size={20} />}Preview
                   </div>
@@ -194,6 +201,7 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
                   </>
                 )}
               </dl>
+              </div>
             </div>
           </div>
 
@@ -201,11 +209,12 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
             <section className="relative mt-16 px-[var(--gutter)]">
               <div className="mb-5 flex flex-wrap items-center gap-3">
                 <h2 className="mr-3 text-[1.35rem] font-bold tracking-tight">Episodes</h2>
-                {seasons.map((s) => <Pill key={s.ratingKey} active={s.ratingKey === season} onEnter={() => setSeason(s.ratingKey)}>{s.title}</Pill>)}
+                {seasons.map((s) => <Pill key={s.ratingKey} focusKey={`season-${s.ratingKey}`} active={s.ratingKey === season} onEnter={() => setSeason(s.ratingKey)}
+                  onArrow={(d) => { if (d === 'down' && episodes[0]) { setFocus(`ep-${episodes[0].ratingKey}`); return false } if (d === 'up') { setFocus('detail-play'); return false } }}>{s.title}</Pill>)}
               </div>
               <div className="space-y-1.5">
                 {episodes.length === 0 ? Array.from({ length: 4 }, (_, i) => <div key={i} className="skeleton h-[130px] rounded-2xl" />)
-                  : episodes.map((ep) => <Episode key={ep.ratingKey} ep={ep} server={server} onPlay={onPlay} onRecap={recap}
+                  : episodes.map((ep, n) => <Episode key={ep.ratingKey} ep={ep} server={server} onPlay={onPlay} onRecap={recap} upTo={n === 0 && season ? `season-${season}` : undefined}
                     spoiler={settings.hideSpoilers && isSpoilerRisk(ep) && !revealed.has(ep.ratingKey)}
                     onReveal={() => setRevealed((r) => new Set(r).add(ep.ratingKey))} />)}
               </div>

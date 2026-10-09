@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { reveal } from '../lib/scroll'
-import { Film, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
+import { ChevronDown, ChevronUp, Film, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useInputMode, useTyping } from '../lib/input'
@@ -47,10 +47,16 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
   const typing = useTyping()
   const season = useSeason()
   const [hover, setHover] = useState(false)
+  const [allLibs, setAllLibs] = useState(false)
   const { ref, focusKey, hasFocusedChild } = useFocusable({ focusKey: 'SIDEBAR', trackChildren: true, saveLastFocusedChild: true })
   // With a mouse, the rail follows the pointer; with a remote/keyboard it follows focus. (Fixes it staying open after you click away.)
   const open = hover || (hasFocusedChild && mode === 'key' && !typing)
   const isLib = (k: string) => view.type === 'library' && view.section.key === k
+  // Only the first few libraries are listed; "View all" reveals the rest (and the list scrolls when it's long).
+  const LIMIT = 5
+  const activeAt = sections.findIndex((x) => isLib(x.key))
+  useEffect(() => { if (activeAt >= LIMIT) setAllLibs(true) }, [activeAt])   // never hide the library you're in
+  const listed = allLibs ? sections : sections.slice(0, LIMIT)
 
   return (
     <FocusContext.Provider value={focusKey}>
@@ -77,9 +83,12 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
         <div className="mt-6 flex min-h-0 flex-1 flex-col">
           <div className={`mb-2 h-4 shrink-0 overflow-hidden whitespace-nowrap px-[18px] text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>Libraries</div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-1">
-            {sections.map((s) => (
+            {listed.map((s) => (
               <NavItem key={s.key} focusKey={`nav-lib-${s.key}`} icon={s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />} label={s.title} active={isLib(s.key)} onEnter={() => onNavigate({ type: 'library', section: s })} />
             ))}
+            {sections.length > LIMIT && (
+              <NavItem focusKey="nav-lib-more" icon={allLibs ? <ChevronUp size={22} /> : <ChevronDown size={22} />} label={allLibs ? 'Show fewer' : `View all (${sections.length})`} onEnter={() => setAllLibs((v) => !v)} />
+            )}
           </div>
         </div>
 

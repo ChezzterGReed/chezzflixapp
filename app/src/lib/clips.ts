@@ -6,7 +6,8 @@ export interface Segment { start: number; len: number }
 
 export const PREVIEW_LEN = 10
 export const RECAP_PARTS = 8
-export const RECAP_LEN = 3.5
+export const RECAP_LEN = 3.8
+export const RECAP_FINALE = 10   // the last clip: the final seconds before the credits
 
 const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
 const durationOf = (m: PlexMedia) => (m.duration ?? 0) / 1000
@@ -19,12 +20,20 @@ export function previewSegments(m: PlexMedia): Segment[] {
   return [{ start: Math.round(start), len: PREVIEW_LEN }]
 }
 
-/** The episode is cut into eight equal parts; 3.5 seconds from a little way into each. */
+/**
+ * The episode (up to its credits, when Plex has marked them) is cut into eight equal parts: 3.8 seconds from a little way into each of
+ * the first seven. The eighth clip is the final 10 seconds before the credits begin; without credits it's the usual snippet.
+ */
 export function recapSegments(m: PlexMedia): Segment[] {
   const dur = durationOf(m)
   if (dur <= 0) return []
-  const part = dur / RECAP_PARTS
-  return Array.from({ length: RECAP_PARTS }, (_, i) => ({ start: Math.max(0, Math.min(i * part + part * 0.25, dur - RECAP_LEN - 1)), len: RECAP_LEN }))
+  const credits = m.Marker?.find((k) => k.type === 'credits')
+  const creditsAt = credits && credits.startTimeOffset / 1000 > 60 ? credits.startTimeOffset / 1000 : 0
+  const end = creditsAt || dur
+  const part = end / RECAP_PARTS
+  const segs = Array.from({ length: RECAP_PARTS }, (_, i) => ({ start: Math.max(0, Math.min(i * part + part * 0.25, dur - RECAP_LEN - 1)), len: RECAP_LEN }))
+  if (creditsAt) segs[RECAP_PARTS - 1] = { start: Math.max(0, creditsAt - RECAP_FINALE), len: RECAP_FINALE }
+  return segs
 }
 
 /** Episode 1 of the first real season, with full file details (a show itself has nothing to play). */

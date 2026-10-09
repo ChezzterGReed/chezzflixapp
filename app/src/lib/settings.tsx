@@ -58,6 +58,8 @@ export interface Settings {
   seekForward: number
   /** Continue Watching tiles: the episode's own thumbnail, or the show's poster with the season and episode underneath. */
   continueStyle: 'episode' | 'poster'
+  /** Info screen for a title: the cinematic page, or a plainer poster-and-details page. */
+  infoStyle: 'full' | 'minimal'
   /** Per library: show only titles you haven't watched. */
   unwatchedOnly: Record<string, boolean>
   autoSkipIntro: boolean
@@ -66,7 +68,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', unwatchedOnly: {}, autoSkipIntro: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false,
 }
 
 export const PUMPKIN = '#ff7a1a'

@@ -79,6 +79,12 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
         <TextField value={settings.brand} onChange={(v) => update({ brand: v })} placeholder="CHEZZ" suffix="FLIX" />
         <p className="mt-2 text-sm text-white/55">Your profile will see the app as <b className="tracking-widest text-white">{brandName(settings)}</b>.</p>
       </div>
+      <Heading>Info screen</Heading>
+      <div className="flex gap-2 px-4 py-2">
+        <Pill active={settings.infoStyle === 'full'} onEnter={() => update({ infoStyle: 'full' })}>Full</Pill>
+        <Pill active={settings.infoStyle === 'minimal'} onEnter={() => update({ infoStyle: 'minimal' })}>Minimal</Pill>
+      </div>
+      <p className="px-4 pb-3 text-sm text-white/55">{settings.infoStyle === 'minimal' ? 'The poster, with the play button, description and details beside it. No big background picture.' : 'A cinematic page with a large background picture and the title logo.'} Applies to movies and shows.</p>
       <Toggle label="Use my profile picture as the logo" hint="Shown at the top of the menu instead of the letter tile" on={settings.avatarLogo} onChange={(v) => update({ avatarLogo: v })} />
       <div className="flex items-center gap-3 px-4 pb-2 text-sm text-white/55"><Avatar name={profileName} thumb={profileThumb} size={28} />Preview of the logo style on the menu</div>
       <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />

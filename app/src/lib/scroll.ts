@@ -67,3 +67,6 @@ export function reveal(el: HTMLElement, { block = 'center', inline = 'none', mar
 export function revealInPanel(el: HTMLElement) {
   if (scroller(el, 'y') !== window) reveal(el, { block: 'nearest', inline: 'none', margin: 56 })
 }
+
+/** Scroll the panel or page that contains `el` back to its top (used when focus returns to the top of a long screen). */
+export function scrollToTopOf(el: HTMLElement) { scrollTo(scroller(el, 'y'), 'y', 0) }

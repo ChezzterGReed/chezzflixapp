@@ -36,7 +36,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
   // Only this profile's visible libraries count towards the anime tab.
   const visible = sections.filter((s) => !settings.hiddenLibraries.includes(s.key))
   const showAnime = animeEnabled(anime)
-  const activeTab: Tab = tab === 'anime' && anime && !showAnime ? 'all' : tab === 'foryou' && !settings.recs ? 'all' : tab
+  const activeTab: Tab = tab === 'anime' && anime && !showAnime ? 'all' : tab === 'foryou' && !settings.recs ? 'all' : tab === 'trending' && !settings.tmdbKey ? 'all' : tab
 
   // Rows
   useEffect(() => {
@@ -109,7 +109,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
     <div className="relative pb-24">
       <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
         <div className="flex gap-1 rounded-full bg-black/35 p-1 backdrop-blur-xl">
-          {TABS.filter((t) => (t.id !== 'anime' || showAnime) && (t.id !== 'foryou' || settings.recs)).map((t) => (
+          {TABS.filter((t) => (t.id !== 'anime' || showAnime) && (t.id !== 'foryou' || settings.recs) && (t.id !== 'trending' || !!settings.tmdbKey)).map((t) => (
             <Focusable key={t.id} focusKey={`tab-${t.id}`} onEnter={() => switchTab(t.id)} title={t.label} leftToRail={t.id === 'all'} onArrow={(d) => { if (d === 'down' && hero?.length && activeTab !== 'trending') { setFocus('hero-play'); return false } }}>
               <div className={`rounded-full px-5 py-2 text-[0.92rem] font-semibold transition-colors group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${activeTab === t.id ? 'bg-accent text-black' : 'text-white/65'}`}>{t.label}</div>
             </Focusable>
