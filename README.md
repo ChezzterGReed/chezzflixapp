@@ -8,3 +8,7 @@ A custom Plex frontend: TV-first interface, direct play through an embedded mpv 
 - `DISTRIBUTING.md` — signing, installing and sharing the Mac app
 
 Chezzflix is not affiliated with Plex. Trending uses the TMDB API but is not endorsed or certified by TMDB.
+
+## Install on Android TV / Fire TV
+
+In the **Downloader** app, type the code **2090862** (or `github.com/ChezzterGReed/chezzflixapp/releases/latest/download/Chezzflix.apk`). See `docs/index.html` for the full steps.

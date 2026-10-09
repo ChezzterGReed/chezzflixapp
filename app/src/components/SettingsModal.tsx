@@ -323,6 +323,7 @@ function About({ server }: { server: PlexServer }) {
           <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">{copied ? 'Copied' : 'Copy'}</span>
         </Row>
       )}
+      <Row label="Install on another TV" hint="Open the Downloader app on a Fire TV, Shield or Onn and type this code"><span className="rounded-xl bg-white/10 px-4 py-2 font-mono text-lg font-extrabold tracking-[0.2em]">2090862</span></Row>
       <p className="px-4 pt-2 text-sm text-white/45">Chezzflix checks for updates when it opens and installs them only when you say so.</p>
     </>
   )
