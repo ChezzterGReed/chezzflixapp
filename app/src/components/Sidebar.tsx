@@ -86,15 +86,13 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
             {listed.map((s) => (
               <NavItem key={s.key} focusKey={`nav-lib-${s.key}`} icon={s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />} label={s.title} active={isLib(s.key)} onEnter={() => onNavigate({ type: 'library', section: s })} />
             ))}
-            {sections.length > LIMIT && (
-              <NavItem focusKey="nav-lib-more" icon={<LayoutGrid size={22} />} label={`View all (${sections.length})`} active={view.type === 'library' && sections.findIndex((x) => isLib(x.key)) >= LIMIT} onEnter={() => setPicker(true)} />
-            )}
           </div>
         </div>
 
         {picker && <LibraryPicker sections={sections} activeKey={view.type === 'library' ? view.section.key : undefined} onClose={() => setPicker(false)} onPick={(x) => { setPicker(false); onNavigate({ type: 'library', section: x }) }} />}
 
         <div className="mt-3 shrink-0">
+          {sections.length > 0 && <div className="mb-1"><NavItem focusKey="nav-lib-more" icon={<LayoutGrid size={22} />} label="View all libraries" active={view.type === 'library' && sections.findIndex((x) => isLib(x.key)) >= LIMIT} onEnter={() => setPicker(true)} /></div>}
           {showDashboard && <div className="mb-1"><NavItem focusKey="nav-dashboard" icon={<LayoutDashboard size={22} />} label="Dashboard" active={view.type === 'dashboard'} onEnter={() => onNavigate({ type: 'dashboard' })} /></div>}
           <Focusable focusKey="nav-profile" onEnter={onProfile} title="Profile" rightToContent>
             <div className="flex h-14 items-center overflow-hidden rounded-xl transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">

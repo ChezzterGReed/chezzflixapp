@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from 'react'
 import { setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { blockEnterUntilRelease, justMoved, setFocusedKey, useIsFocused } from '../lib/input'
-import { revealInPanel } from '../lib/scroll'
+import { edgeSnap, revealInPanel } from '../lib/scroll'
 
 const LONG_PRESS_MS = 550
 
@@ -46,7 +46,7 @@ export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className =
           keyLong.current = false
         }
       : undefined,
-    onFocus: () => { setFocusedKey(keyRef.current); if (ref.current) { revealInPanel(ref.current as HTMLElement); onFocus?.(ref.current as HTMLElement) } },
+    onFocus: () => { setFocusedKey(keyRef.current); if (ref.current) { revealInPanel(ref.current as HTMLElement); onFocus?.(ref.current as HTMLElement); edgeSnap(ref.current as HTMLElement) } },
     onArrowPress: (dir) => {
       if (onArrow && onArrow(dir as 'left' | 'right' | 'up' | 'down') === false) return false
       if (dir === 'left' && leftToRail) { if (!justMoved()) setFocus('SIDEBAR'); return false }

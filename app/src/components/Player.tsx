@@ -26,6 +26,7 @@ const BEAT_MS = 900   // time held in black while the video loads
 
 export function Player({ server, media, onClose: finishClose, onPlayNext }: Props) {
   const { settings, update } = useSettings()
+  const [stylePanel, setStylePanel] = useState<number | null>(null)   // row highlighted in the subtitle-style menu (null = closed)
   const [levelPanel, setLevelPanel] = useState<number | null>(null)   // row highlighted in the volume menu (null = closed)
   const [loadedTick, setLoadedTick] = useState(0)
   const video = useRef<HTMLVideoElement>(null)
@@ -72,6 +73,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   // 'native' = embedded libmpv (desktop app): plays the original file, whatever the format. 'web' = <video> + Plex remux fallback.
   const [mode, setMode] = useState<'pending' | 'native' | 'web'>('pending')
   const [nTracks, setNTracks] = useState<MpvTrack[]>([])
+  const reloadTracks = useCallback(() => { mpvTracks().then(setNTracks).catch(() => {}) }, [])
   const endedRef = useRef<() => void>(() => {})
   const pausedRef = useRef(false)
 
@@ -287,7 +289,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
   // ----- keep spatial-nav out of the way; the player owns the keys -----
   useEffect(() => { pauseNav(); return () => resumeNav() }, [])
-  useBack(() => { if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
+  useBack(() => { if (stylePanel !== null) setStylePanel(null); else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
   useEffect(() => { poke(); return () => clearTimeout(idle.current) }, [poke])
 
   const seek = useCallback((t: number) => {
@@ -357,14 +359,32 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
   // ----- tracks -----
   const choose = (col: 0 | 1, idx: number) => {
+    if (col === 1 && idx === subs.length + 1) { setPanel(null); setStylePanel(0); return }   // "Subtitle style…"
     if (mode === 'native') {
-      if (col === 0) mpvSet('aid', audio[idx].id).then(() => mpvTracks().then(setNTracks)).catch(() => {})
-      else mpvSet('sid', idx === 0 ? 'no' : subs[idx - 1].id).then(() => mpvTracks().then(setNTracks)).catch(() => {})
+      // The player applies a track change a moment later, so re-read the list a few times until it shows the new choice.
+      const reread = () => [0, 350, 1000].forEach((ms) => setTimeout(reloadTracks, ms))
+      if (col === 0) mpvSet('aid', audio[idx].id).then(reread).catch(() => {})
+      else mpvSet('sid', idx === 0 ? 'no' : subs[idx - 1].id).then(reread).catch(() => {})
     } else if (col === 0) setChoice((c) => ({ ...c, audioId: audio[idx].id }))
     else setChoice((c) => ({ ...c, subtitleId: idx === 0 ? null : subs[idx - 1].id }))
     setPanel(null)
   }
+  // Subtitle look, adjustable while watching (same settings as Settings → Playback).
+  const styleRows = [
+    { label: 'Size', key: 'subSize', opts: [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['huge', 'Huge']] },
+    { label: 'Font', key: 'subFont', opts: [['sans', 'Sans'], ['serif', 'Serif'], ['mono', 'Mono']] },
+    { label: 'Colour', key: 'subColor', opts: [['white', 'White'], ['yellow', 'Yellow']] },
+    { label: 'Edge', key: 'subEdge', opts: [['outline', 'Outline'], ['shadow', 'Shadow'], ['none', 'None']] },
+    { label: 'Background box', key: 'subBackground', opts: [[false, 'Off'], [true, 'On']] },
+  ] as const
+  const styleValue = (i: number) => { const r = styleRows[i]; return (r.opts as readonly (readonly [unknown, string])[]).find((o) => o[0] === (settings as unknown as Record<string, unknown>)[r.key])?.[1] ?? '' }
+  const stepStyle = (i: number, d: 1 | -1) => {
+    const r = styleRows[i], opts = r.opts as readonly (readonly [unknown, string])[]
+    const at = Math.max(0, opts.findIndex((o) => o[0] === (settings as unknown as Record<string, unknown>)[r.key]))
+    update({ [r.key]: opts[(at + d + opts.length) % opts.length][0] } as Partial<typeof settings>)
+  }
   const activeSub = subs.find((r) => r.on)?.id ?? null
+  useEffect(() => { if (panel && mode === 'native') reloadTracks() }, [!!panel, mode, reloadTracks])   // opening the menu shows what's really selected
 
   // ----- the control bar, in order, for remote navigation -----
   const hasBoost = mode === 'native' || location.search.includes('levels')
@@ -379,19 +399,27 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
   // Menus (audio & subtitles, volume) close by themselves after a few idle seconds.
   useEffect(() => {
-    if (!panel && levelPanel === null) return
-    const t = setTimeout(() => { setPanel(null); setLevelPanel(null) }, 5000)
+    if (!panel && levelPanel === null && stylePanel === null) return
+    const t = setTimeout(() => { setPanel(null); setLevelPanel(null); setStylePanel(null) }, stylePanel !== null ? 12000 : 5000)   // longer while adjusting the style
     return () => clearTimeout(t)
-  }, [panel, levelPanel, panelTick])
+  }, [panel, levelPanel, stylePanel, panelTick])
   const menuLeave = useRef<number>(0)
 
   // ----- keyboard / remote -----
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
-      if (panel || levelPanel !== null) setPanelTick((n) => n + 1)
+      if (panel || levelPanel !== null || stylePanel !== null) setPanelTick((n) => n + 1)
+      if (stylePanel !== null) {
+        if (e.key === 'ArrowDown') setStylePanel(Math.min(styleRows.length - 1, stylePanel + 1))
+        else if (e.key === 'ArrowUp') setStylePanel(Math.max(0, stylePanel - 1))
+        else if (e.key === 'ArrowLeft') stepStyle(stylePanel, -1)
+        else if (e.key === 'ArrowRight' || e.key === 'Enter') stepStyle(stylePanel, 1)
+        else return
+        e.preventDefault(); e.stopPropagation(); return
+      }
       if (panel) {
-        const rows = [audio.length, subs.length + 1]
+        const rows = [audio.length, subs.length + 2]
         if (e.key === 'ArrowDown') setPanel({ ...panel, idx: Math.min(rows[panel.col] - 1, panel.idx + 1) })
         else if (e.key === 'ArrowUp') setPanel({ ...panel, idx: Math.max(0, panel.idx - 1) })
         else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const col = panel.col === 0 ? 1 : 0; setPanel({ col, idx: Math.min(panel.idx, rows[col] - 1) }) }
@@ -456,7 +484,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   return (
     <div data-player className={`fixed inset-0 z-[70] text-white transition-[opacity,transform] duration-700 ease-[cubic-bezier(.65,.05,.25,1)] ${mode === 'native' ? 'bg-transparent' : 'bg-black'} ${revealing ? 'scale-[1.08] opacity-0' : ''}`} onMouseMove={poke} style={{ cursor: controls ? 'default' : 'none' }}
       // The native (mpv) picture is behind the page, so clicks on the picture land here: click = pause/play, double-click = fullscreen.
-      onClick={(e) => { if ((panel || levelPanel !== null) && !(e.target as HTMLElement).closest('[data-menu]')) { setPanel(null); setLevelPanel(null); return }
+      onClick={(e) => { if ((panel || levelPanel !== null || stylePanel !== null) && !(e.target as HTMLElement).closest('[data-menu]')) { setPanel(null); setLevelPanel(null); setStylePanel(null); return }
         if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggle() }}
       onDoubleClick={(e) => { if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggleFullscreen() }}>
       {mode !== 'native' && <video ref={video} loop={server.uri === DEMO_URI} className="absolute inset-0 size-full bg-black object-contain" playsInline
@@ -518,7 +546,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
       )}
 
       {/* Chrome */}
-      <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel || levelPanel !== null) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+      <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel || levelPanel !== null || stylePanel !== null) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
         <div data-nopause className="absolute inset-x-0 top-0 flex items-start gap-4 bg-linear-to-b from-black/80 to-transparent px-8 pb-16 pt-6">
           <button onClick={close} aria-label="Back" className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/25"><ArrowLeft size={22} /></button>
           <div className="min-w-0 flex-1 pt-0.5"><div className="truncate text-xl font-bold">{title}</div><div className="truncate text-sm text-white/65">{subtitle}</div></div>
@@ -567,10 +595,25 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
           </div>
         )}
 
+        {stylePanel !== null && (
+          <div data-nopause data-menu className="pop absolute bottom-32 right-8 w-[22rem] max-w-[92vw] rounded-2xl bg-[#17171c]/95 p-2.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+            <div className="px-3 pb-1 pt-1.5 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Subtitle style</div>
+            {styleRows.map((r, i) => (
+              <div key={r.key} onMouseEnter={() => setStylePanel(i)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${stylePanel === i ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
+                <span className="flex-1 text-sm font-bold">{r.label}</span>
+                <button aria-label={`${r.label}: previous`} onClick={() => stepStyle(i, -1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 ${stylePanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>‹</button>
+                <span className="min-w-[4.6rem] text-center text-xs font-bold">{styleValue(i)}</span>
+                <button aria-label={`${r.label}: next`} onClick={() => stepStyle(i, 1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 ${stylePanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>›</button>
+              </div>
+            ))}
+            <div className="px-3 pb-1 pt-1.5 text-xs text-white/45">Applies to plain-text subtitles. Styled (.ass) ones keep their own look.</div>
+          </div>
+        )}
+
         {panel && (
           <div data-nopause data-menu onMouseEnter={() => clearTimeout(menuLeave.current)} onMouseLeave={() => { menuLeave.current = window.setTimeout(() => { setPanel(null); setLevelPanel(null) }, 1000) }} className="pop absolute bottom-32 right-8 flex w-[520px] max-w-[92vw] gap-1 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
             {[{ t: 'Audio', rows: audio },
-              { t: 'Subtitles', rows: [{ id: -1, label: 'Off', on: activeSub === null }, ...subs] }].map((c, col) => (
+              { t: 'Subtitles', rows: [{ id: -1, label: 'Off', on: activeSub === null }, ...subs, { id: -2, label: 'Subtitle style…', on: false }] }].map((c, col) => (
               <div key={c.t} className="min-w-0 flex-1">
                 <div className="px-3 pb-1 pt-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">{c.t}</div>
                 {c.rows.map((r, idx) => (

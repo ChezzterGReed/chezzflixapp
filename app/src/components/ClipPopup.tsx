@@ -49,6 +49,8 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
   const liftedRef = useRef(false)
   const doneRef = useRef(false)
   const switching = useRef(false)
+  const fading = useRef(false)       // the dip to black before the next clip has begun
+  const seekIssued = useRef(false)   // the jump to the next clip has been sent; waiting for it to arrive
   const settling = useRef(false)   // just sought: ignore stale time updates until the new position arrives
   const flags = useRef({ cache: false, seeking: false })
 
@@ -66,16 +68,30 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
       if (p.name === 'paused-for-cache') { flags.current.cache = !!p.value; setLoading(flags.current.cache || flags.current.seeking) }
       else if (p.name === 'seeking') { flags.current.seeking = !!p.value; setLoading(flags.current.cache || flags.current.seeking) }
       else if (p.name === 'time-pos' && n !== undefined) {
-        if (!liftedRef.current || switching.current || doneRef.current) return
+        if (!liftedRef.current || doneRef.current) return
         const seg = segments[curRef.current]
         if (!seg) return
+        if (switching.current) {
+          // Between clips: stay black until the next one is really playing, then fade back in.
+          if (seekIssued.current && n >= seg.start - 0.3 && n < seg.start + seg.len) { seekIssued.current = false; switching.current = false; settling.current = false; fading.current = false; setCut(false) }
+          return
+        }
         if (settling.current) { if (n >= seg.start - 0.5 && n < seg.start + seg.len) settling.current = false; else return }
         setT(Math.max(0, n - seg.start))
-        if (n >= seg.start + seg.len) {
+        const end = seg.start + seg.len
+        if (!fading.current && curRef.current < segments.length - 1 && n >= end - 0.4) { fading.current = true; setCut(true) }   // start the fade just before the clip ends
+        if (n >= end) {
           if (curRef.current >= segments.length - 1) { mpvSet('pause', 'yes').catch(() => {}); doneRef.current = true; setDone(true); return }
-          switching.current = true; settling.current = true
+          switching.current = true; settling.current = true; seekIssued.current = false
           curRef.current += 1; setCur(curRef.current); setT(0); setCut(true)
-          setTimeout(() => { mpvCmd('seek', segments[curRef.current].start, 'absolute').catch(() => {}); setCut(false); switching.current = false }, 220)
+          mpvSet('pause', 'yes').catch(() => {})
+          const release = () => { switching.current = false; settling.current = false; seekIssued.current = false; fading.current = false; setCut(false) }
+          setTimeout(() => {   // a beat of black, then jump and play
+            seekIssued.current = true
+            mpvCmd('seek', segments[curRef.current].start, 'absolute').catch(() => {})
+            mpvSet('pause', 'no').catch(() => {})
+          }, 220)
+          setTimeout(() => { if (switching.current) release() }, 5000)   // never stay black if the arrival isn't noticed
         }
       }
     }, (e) => {
@@ -102,8 +118,8 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
 
   const close = () => { if (leaving) return; setLeaving(true); setTimeout(onClose, 350) }
   const replay = () => {
-    curRef.current = 0; doneRef.current = false; switching.current = false; settling.current = true
-    setCur(0); setT(0); setDone(false)
+    curRef.current = 0; doneRef.current = false; switching.current = false; settling.current = true; fading.current = false; seekIssued.current = false
+    setCur(0); setT(0); setDone(false); setCut(false)
     mpvCmd('seek', segments[0].start, 'absolute').catch(() => {})
     mpvSet('pause', 'no').catch(() => {})
   }
@@ -111,7 +127,7 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
   return (
     <Layer player onClose={close} scrim="bg-transparent">
       <div className="absolute inset-0" onMouseDown={(e) => e.stopPropagation()}>
-        {loading && lifted && !done && <div className="pointer-events-none absolute inset-0 grid place-items-center"><Loader2 className="animate-spin text-white/80" size={48} /></div>}
+        {loading && lifted && !done && !cut && <div className="pointer-events-none absolute inset-0 grid place-items-center"><Loader2 className="animate-spin text-white/80" size={48} /></div>}
 
         {done && (
           <div className="fade-in absolute inset-0 grid place-items-center bg-black/55">
@@ -138,7 +154,7 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
         </div>
 
         {/* Black cover: up while the clip loads, between recap clips, and when leaving */}
-        <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity ease-in-out ${!lifted || cut || leaving ? 'opacity-100' : 'opacity-0'}`} style={{ transitionDuration: cut ? '200ms' : '450ms' }}>
+        <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity ease-in-out ${!lifted || cut || leaving ? 'opacity-100' : 'opacity-0'}`} style={{ transitionDuration: cut ? '380ms' : '500ms' }}>
           {!lifted && !leaving && <Loader2 className="animate-spin text-white/40" size={40} />}
         </div>
       </div>

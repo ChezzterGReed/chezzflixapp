@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
+import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
@@ -409,6 +410,12 @@ const PANELS = [
   { id: 'about', label: 'About', icon: Info },
 ] as const
 
+/** The settings page itself: the cursor stays inside it going up and down (only Left goes back to the list of sections). */
+function PanelBox({ children }: { children: ReactNode }) {
+  const { ref, focusKey } = useFocusable({ isFocusBoundary: true, focusBoundaryDirections: ['up', 'down', 'right'] })
+  return <FocusContext.Provider value={focusKey}><section ref={ref} className="min-w-0 flex-1 overflow-y-auto p-6">{children}</section></FocusContext.Provider>
+}
+
 interface Props { server: PlexServer; token: string; sections: PlexSection[]; profileName: string; profileThumb?: string; onClose: () => void }
 
 export function SettingsModal({ server, token, sections, profileName, profileThumb, onClose }: Props) {
@@ -427,7 +434,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           </div>
           <div className="mt-auto max-sm:hidden"><Focusable onEnter={onClose} title="Close"><div className="flex items-center gap-3 rounded-xl px-3.5 py-3 text-[0.95rem] font-semibold text-white/60 transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><X size={20} />Close</div></Focusable></div>
         </aside>
-        <section className="min-w-0 flex-1 overflow-y-auto p-6">
+        <PanelBox>
           <h2 className="mb-5 flex items-center gap-2.5 px-4 text-2xl font-extrabold tracking-tight"><Type className="hidden" />{PANELS.find((p) => p.id === panel)!.label}</h2>
           {panel === 'appearance' && <Appearance profileName={profileName} profileThumb={profileThumb} />}
           {panel === 'playback' && <Playback />}
@@ -438,7 +445,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           {panel === 'requests' && <Requests token={token} />}
           {panel === 'about' && <About server={server} />}
           <div className="mt-6 rounded-xl bg-white/5 px-4 py-3 text-sm text-white/55">Connected to <b className="text-white">{server.name}</b>. These settings belong to <b className="text-white">{profileName}</b>.</div>
-        </section>
+        </PanelBox>
       </div>
     </Layer>
   )

@@ -70,3 +70,19 @@ export function revealInPanel(el: HTMLElement) {
 
 /** Scroll the panel or page that contains `el` back to its top (used when focus returns to the top of a long screen). */
 export function scrollToTopOf(el: HTMLElement) { scrollTo(scroller(el, 'y'), 'y', 0) }
+
+/**
+ * When the cursor lands on something near the top (or bottom) of a page or panel, scroll all the way to that end, so the title or other
+ * content above (or below) it is visible too, rather than stopping at the item itself. "Near" = it would still be fully on screen there.
+ */
+export function edgeSnap(el: HTMLElement) {
+  const s = scroller(el, 'y')
+  if (isRoot(s) && el.closest('nav, [data-layer]')) return   // fixed things (side menu, popups) don't move with the page
+  const max = maxPos(s, 'y'), cur = pos(s, 'y')
+  if (max <= 1) return
+  const r = el.getBoundingClientRect()
+  const box = isRoot(s) ? { top: 0, h: window.innerHeight } : (() => { const b = (s as Element).getBoundingClientRect(); return { top: b.top, h: b.height } })()
+  const absTop = r.top - box.top + cur, absBot = absTop + r.height, M = 24
+  if (cur > 1 && absBot <= box.h - M) scrollTo(s, 'y', 0)
+  else if (cur < max - 1 && absTop - max >= M) scrollTo(s, 'y', max)
+}

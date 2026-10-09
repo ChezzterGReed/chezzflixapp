@@ -21,6 +21,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.ui.CaptionStyleCompat
@@ -76,6 +77,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     }.setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     val p = ExoPlayer.Builder(activity, factory).build()
     p.addListener(listener)
+    p.setSeekParameters(SeekParameters.CLOSEST_SYNC)   // jump to the nearest keyframe: avoids the picture freezing while the decoder catches up to an exact spot
     player = p
     val v = PlayerView(activity).apply {
       useController = false

@@ -4,15 +4,15 @@ import { getChildren, getMetadata, type PlexMedia, type PlexServer } from './ple
 /** A stretch of the file to play: `start` and `len` in seconds. */
 export interface Segment { start: number; len: number }
 
-export const PREVIEW_LEN = 10
-export const RECAP_PARTS = 8
-export const RECAP_LEN = 3.8
-export const RECAP_FINALE = 10   // the last clip: the final seconds before the credits
+export const PREVIEW_LEN = 30
+export const RECAP_PARTS = 5
+export const RECAP_LEN = 10      // each of the first four clips
+export const RECAP_FINALE = 20   // the last clip: the final seconds before the credits
 
 const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
 const durationOf = (m: PlexMedia) => (m.duration ?? 0) / 1000
 
-/** Movies jump 3-8 minutes in; the first episode of a show 2-5 minutes in. Plays for ten seconds. */
+/** Movies jump 3-8 minutes in; the first episode of a show 2-5 minutes in. Plays for thirty seconds. */
 export function previewSegments(m: PlexMedia): Segment[] {
   const dur = durationOf(m)
   let start = m.type === 'movie' ? between(180, 480) : between(120, 300)
@@ -21,8 +21,8 @@ export function previewSegments(m: PlexMedia): Segment[] {
 }
 
 /**
- * The episode (up to its credits, when Plex has marked them) is cut into eight equal parts: 3.8 seconds from a little way into each of
- * the first seven. The eighth clip is the final 10 seconds before the credits begin; without credits it's the usual snippet.
+ * The episode (up to its credits, when Plex has marked them) is cut into five equal parts: 10 seconds from a little way into each of
+ * the first four. The fifth clip is 20 seconds: the stretch right before the credits begin, or, without credits, from the last part.
  */
 export function recapSegments(m: PlexMedia): Segment[] {
   const dur = durationOf(m)
@@ -31,8 +31,9 @@ export function recapSegments(m: PlexMedia): Segment[] {
   const creditsAt = credits && credits.startTimeOffset / 1000 > 60 ? credits.startTimeOffset / 1000 : 0
   const end = creditsAt || dur
   const part = end / RECAP_PARTS
-  const segs = Array.from({ length: RECAP_PARTS }, (_, i) => ({ start: Math.max(0, Math.min(i * part + part * 0.25, dur - RECAP_LEN - 1)), len: RECAP_LEN }))
-  if (creditsAt) segs[RECAP_PARTS - 1] = { start: Math.max(0, creditsAt - RECAP_FINALE), len: RECAP_FINALE }
+  const clamp = (start: number, len: number) => Math.max(0, Math.min(start, dur - len - 1))
+  const segs: Segment[] = Array.from({ length: RECAP_PARTS - 1 }, (_, i) => ({ start: clamp(i * part + part * 0.25, RECAP_LEN), len: RECAP_LEN }))
+  segs.push(creditsAt ? { start: Math.max(0, creditsAt - RECAP_FINALE), len: RECAP_FINALE } : { start: clamp((RECAP_PARTS - 1) * part + part * 0.25, RECAP_FINALE), len: RECAP_FINALE })
   return segs
 }
 
