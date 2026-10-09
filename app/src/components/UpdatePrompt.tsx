@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download, Loader2, Sparkles } from 'lucide-react'
-import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
+import { Layer } from './Layer'
 import { isAndroid } from '../lib/native'
 import { checkForUpdate, installUpdate, useUpdater } from '../lib/updater'
 
@@ -20,12 +20,12 @@ export function UpdatePrompt() {
 
   const busy = u.status === 'downloading' || u.status === 'installing'
   const showing = u.status === 'available' && u.version !== later
-  // On a TV the prompt takes the remote's focus when it appears, so "Update now" is one OK press away (Later dismisses it).
-  useEffect(() => { if (isAndroid && showing) { const t = setTimeout(() => setFocus('update-now'), 300); return () => clearTimeout(t) } }, [showing, u.version])
-  if (!(u.status === 'available' && u.version !== later) && !busy) return null
+  if (!showing && !busy) return null
+  // On a TV the offer is a popup that owns the remote (OK = Update now, Back = Later), like the other menus, so it can always be reached.
+  const modal = isAndroid && showing
 
-  return (
-    <div className="pop fixed bottom-8 right-8 z-[60] w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-[#17171c]/95 p-5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+  const card = (
+    <div className={`pop z-[60] rounded-2xl bg-[#17171c]/95 p-5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl ${modal ? 'w-[min(540px,calc(100vw-2rem))] p-7' : 'fixed bottom-8 right-8 w-[min(380px,calc(100vw-2rem))]'}`}>
       <div className="flex items-start gap-3.5">
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent/20 text-accent">{busy ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} />}</span>
         <div className="min-w-0 flex-1">
@@ -48,4 +48,7 @@ export function UpdatePrompt() {
         )}
     </div>
   )
+
+  if (modal) return <Layer onClose={() => setLater(u.version)} scrim="bg-black/60"><div className="absolute inset-0 grid place-items-center px-6">{card}</div></Layer>
+  return card
 }
