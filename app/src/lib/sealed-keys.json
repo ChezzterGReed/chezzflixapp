@@ -4,5 +4,11 @@
     "salt": "u35Ed+XsUAs8QrhNk9ZfHA==",
     "iv": "KoEAYubi1Hx9kZAI",
     "ct": "aBFz+1O/YU8NDgfdaTusb5BG63zHTmwIibZ5nkhPrnAAoYE90R/XJWxwgFIUrHHT"
+  },
+  "overseerr": {
+    "v": 1,
+    "salt": "c86N+4TGPFYNpSLgyBJhjA==",
+    "iv": "dZL2M/YPJa6+ltMl",
+    "ct": "HZpMD7NBr3Z4Hvp7AFuuHFS+23VkIxnGcsJZMWs+sIxABOlbGVP6"
   }
 }
