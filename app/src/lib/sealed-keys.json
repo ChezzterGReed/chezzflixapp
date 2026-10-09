@@ -1,1 +1,8 @@
-{}
+{
+  "tmdb": {
+    "v": 1,
+    "salt": "u35Ed+XsUAs8QrhNk9ZfHA==",
+    "iv": "KoEAYubi1Hx9kZAI",
+    "ct": "aBFz+1O/YU8NDgfdaTusb5BG63zHTmwIibZ5nkhPrnAAoYE90R/XJWxwgFIUrHHT"
+  }
+}
