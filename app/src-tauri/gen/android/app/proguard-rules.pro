@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Chezzflix's own Kotlin plugins are called by name from Rust, so they must not be renamed or removed.
+-keep class app.chezzflix.client.** { *; }
+-keep @app.tauri.annotation.InvokeArg class * { *; }

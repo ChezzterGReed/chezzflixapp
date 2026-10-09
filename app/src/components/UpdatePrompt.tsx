@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Download, Loader2, Sparkles } from 'lucide-react'
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
+import { isAndroid } from '../lib/native'
 import { checkForUpdate, installUpdate, useUpdater } from '../lib/updater'
 
 const RECHECK_MS = 6 * 3600_000
@@ -17,6 +19,9 @@ export function UpdatePrompt() {
   }, [])
 
   const busy = u.status === 'downloading' || u.status === 'installing'
+  const showing = u.status === 'available' && u.version !== later
+  // On a TV the prompt takes the remote's focus when it appears, so "Update now" is one OK press away (Later dismisses it).
+  useEffect(() => { if (isAndroid && showing) { const t = setTimeout(() => setFocus('update-now'), 300); return () => clearTimeout(t) } }, [showing, u.version])
   if (!(u.status === 'available' && u.version !== later) && !busy) return null
 
   return (

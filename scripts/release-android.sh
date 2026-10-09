@@ -17,4 +17,5 @@ VER="$(python3 -c "import json;print(json.load(open('app/src-tauri/tauri.conf.js
 APK="$(find app/src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -1)"
 [ -n "$APK" ] || { echo "No release APK found"; exit 1; }
 mkdir -p "releases/$VER"; cp "$APK" "releases/$VER/Chezzflix_${VER}_android.apk"
-echo "✔ releases/$VER/Chezzflix_${VER}_android.apk"
+cp "releases/$VER/Chezzflix_${VER}_android.apk" "releases/$VER/Chezzflix.apk"   # a fixed-name copy: .../releases/latest/download/Chezzflix.apk always means "the newest"
+echo "✔ releases/$VER/Chezzflix_${VER}_android.apk (+ Chezzflix.apk)"

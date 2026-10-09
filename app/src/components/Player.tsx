@@ -3,7 +3,7 @@ import { ArrowLeft, AudioLines, Captions, Check, FastForward, Loader2, Maximize,
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
-import { mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
+import { isAndroid, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
 import { clampBoost, dbLabel, useLevelEngine } from '../lib/leveling'
@@ -63,6 +63,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const volumeRef = useRef(1)
   const [revealing, setRevealing] = useState(false)
   const engaged = useRef(false)
+  const nativeGaveUp = useRef(false)
   // 'native' = embedded libmpv (desktop app): plays the original file, whatever the format. 'web' = <video> + Plex remux fallback.
   const [mode, setMode] = useState<'pending' | 'native' | 'web'>('pending')
   const [nTracks, setNTracks] = useState<MpvTrack[]>([])
@@ -132,6 +133,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     // Load paused: the first frame is decoded behind the black cover, and playback starts as the cover lifts.
     mpvSet('video-zoom', 0).catch(() => {}); mpvSet('brightness', 0).catch(() => {})
     mpvSet('af', '').catch(() => {})   // clean slate; the volume engine installs its filters once the file has loaded
+    // Android's engine needs sidecar subtitles when the file loads (mpv adds them afterwards, below).
+    setExternalSubs(plexSubs.filter((s) => s.key).map((s) => ({ url: `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, lang: s.languageCode, name: s.displayTitle })))
     try { await mpvCmd('loadfile', url, 'replace', '-1', `start=${startAt > 1 ? startAt : 0},pause=yes`) } catch (e) { setError(String(e)) }
   }, [server, media])
 
@@ -169,6 +172,14 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         // Sidecar subtitles Plex knows about (embedded ones are already in mpv's track list).
         plexSubs.filter((s) => s.key).forEach((s) => mpvCmd('sub-add', `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, 'auto').catch(() => {}))
         setTimeout(refreshTracks, 800)
+      }
+      // On Android a TV may lack a decoder for something (an unusual codec): before anything has played, hand over to the web player,
+      // where Plex repackages the file, rather than showing an error.
+      if (isAndroid && (e.event === 'error' || (e.event === 'end' && e.reason === 4)) && timeRef.current < 1 && !nativeGaveUp.current) {
+        nativeGaveUp.current = true
+        mpvCmd('stop').catch(() => {})
+        setMode('web')
+        return
       }
       if (e.event === 'end' && e.reason === 4) setError('mpv could not play this file.')
       if (e.event === 'error') setError(e.message ?? 'The native player failed to start.')
@@ -294,15 +305,19 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   }, [])
 
   // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
-  const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost })
+  const level = useLevelEngine({ active: mode === 'native' && !isAndroid, loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost })
   // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +10).
   const nudgeBoost = (d: 1 | -1) => level.setBoost(clampBoost((level.boost === 'auto' ? Math.round(level.gain) : level.boost) + d))
-  const levelRows = [
+  // Android's engine has no live loudness analysis yet, so it offers the manual boost only (applied as a steady gain).
+  useEffect(() => { if (isAndroid && mode === 'native') mpvSet('gain-db', typeof level.boost === 'number' ? level.boost : 0).catch(() => {}) }, [mode, level.boost])
+  const allLevelRows = [
     { label: 'Auto leveling', value: settings.autoLevel ? 'On' : 'Off', hint: 'Measures the title, holds one steady boost', act: () => update({ autoLevel: !settings.autoLevel }) },
     { label: 'Dialogue boost', value: settings.dialogueBoost ? 'On' : 'Off', hint: 'Lifts voices in surround audio', act: () => update({ dialogueBoost: !settings.dialogueBoost }) },
     { label: 'Boost', value: level.boost === 'auto' ? (settings.autoLevel && level.gain ? `Auto · ${dbLabel(Math.round(level.gain))}` : 'Auto') : dbLabel(level.boost), hint: level.boost === 'auto' ? 'Use − and + to set it yourself' : 'Set by you · press OK for Auto', act: () => level.setBoost('auto') },
   ]
-  const levelActive = settings.autoLevel || settings.dialogueBoost || (typeof level.boost === 'number' && level.boost !== 0)
+  const levelRows = isAndroid ? allLevelRows.slice(2) : allLevelRows   // the boost row is always the last one
+  const boostRow = levelRows.length - 1
+  const levelActive = (!isAndroid && (settings.autoLevel || settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
 
   const showNext = !!next && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
@@ -360,8 +375,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
       if (levelPanel !== null) {
         if (e.key === 'ArrowDown') setLevelPanel(Math.min(levelRows.length - 1, levelPanel + 1))
         else if (e.key === 'ArrowUp') setLevelPanel(Math.max(0, levelPanel - 1))
-        else if (e.key === 'ArrowRight' && levelPanel === 2) nudgeBoost(1)
-        else if (e.key === 'ArrowLeft' && levelPanel === 2) nudgeBoost(-1)
+        else if (e.key === 'ArrowRight' && levelPanel === boostRow) nudgeBoost(1)
+        else if (e.key === 'ArrowLeft' && levelPanel === boostRow) nudgeBoost(-1)
         else if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') levelRows[levelPanel].act()
         else if (e.key === 'v') setLevelPanel(null)
         else return
@@ -489,7 +504,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
             {levelRows.map((r, i) => (
               <div key={r.label} onMouseEnter={() => setLevelPanel(i)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${levelPanel === i ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
                 <button onClick={() => { setLevelPanel(i); r.act() }} className="min-w-0 flex-1 text-left"><span className="block text-sm font-bold">{r.label}</span><span className={`block truncate text-xs ${levelPanel === i ? 'text-black/55' : 'text-white/45'}`}>{r.hint}</span></button>
-                {i === 2 ? (
+                {i === boostRow ? (
                   <span className="flex shrink-0 items-center gap-1.5">
                     <button aria-label="Quieter by 1 dB" disabled={typeof level.boost === 'number' && level.boost <= -10} onClick={() => nudgeBoost(-1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 disabled:opacity-30 ${levelPanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>−</button>
                     <span className="min-w-[4.6rem] text-center text-xs font-bold tabular-nums">{r.value}</span>

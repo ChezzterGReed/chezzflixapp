@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, State};
 
 #[cfg(target_os = "macos")]
 mod native;
+mod mobile;
 mod net;
 #[cfg(target_os = "macos")]
 use native::NativeState;
@@ -150,7 +151,10 @@ fn stop(state: State<Player>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(mobile::player::init())
+        .plugin(mobile::appupdate::init());
     // Self-updating is desktop-only; Android gets its own mechanism.
     #[cfg(desktop)]
     let builder = builder

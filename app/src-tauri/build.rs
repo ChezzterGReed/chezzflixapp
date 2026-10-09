@@ -34,5 +34,9 @@ fn main() {
         // (Tauri adds @executable_path/../Frameworks itself when bundling the framework.)
         println!("cargo:rerun-if-changed=../../native-deps/out/universal/lib/libmpv.2.dylib");
     }
-    tauri_build::build()
+    // The two Android (Kotlin) plugins are part of this app, so their commands are declared here for the permission system.
+    let kotlin = || tauri_build::InlinedPlugin::new()
+        .commands(&["call", "register_listener", "remove_listener"])
+        .default_permission(tauri_build::DefaultPermissionRule::AllowAllCommands);
+    tauri_build::try_build(tauri_build::Attributes::new().plugin("player", kotlin()).plugin("appupdate", kotlin())).expect("failed to run tauri-build");
 }

@@ -20,14 +20,5 @@ VER="$(python3 -c "import json;print(json.load(open('app/src-tauri/tauri.conf.js
 OUT="releases/$VER"; mkdir -p "$OUT"
 cp "$B/dmg/Chezzflix_${VER}_universal.dmg" "$OUT/"
 cp "$B/macos/Chezzflix.app.tar.gz" "$B/macos/Chezzflix.app.tar.gz.sig" "$OUT/"
-python3 - "$OUT" "$VER" "$BASE" <<'PY'
-import json, sys, datetime
-out, ver, base = sys.argv[1:4]
-sig = open(f"{out}/Chezzflix.app.tar.gz.sig").read().strip()
-entry = {"signature": sig, "url": f"{base}/Chezzflix.app.tar.gz" if "github.com" in base else f"{base}/{ver}/Chezzflix.app.tar.gz"}
-feed = {"version": ver, "notes": open(f"{out}/notes.txt").read().strip() if __import__('os').path.exists(f"{out}/notes.txt") else "",
-        "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "platforms": {"darwin-aarch64": entry, "darwin-x86_64": entry}}
-json.dump(feed, open("releases/latest.json", "w"), indent=2)
-PY
+scripts/make-feed.py "$VER" "$BASE"
 echo; echo "✔ $OUT ready; feed: releases/latest.json (version $VER)"

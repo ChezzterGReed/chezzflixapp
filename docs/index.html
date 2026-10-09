@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Chezzflix</title>
+<style>
+  :root { --bg:#0b0b0f; --card:#15151b; --line:#26262f; --text:#f4f4f6; --dim:#a4a4b0; --accent:#ff4b3e; }
+  * { box-sizing: border-box; }
+  body { margin:0; background: radial-gradient(900px 500px at 15% -10%, #3a1511 0%, transparent 60%), var(--bg); color:var(--text); font:16px/1.6 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 56px 20px 80px; }
+  .brand { display:flex; align-items:center; gap:14px; font-weight:800; letter-spacing:.3em; font-size:.95rem; }
+  .brand i { display:grid; place-items:center; width:42px; height:42px; border-radius:12px; background:var(--accent); color:#0b0b0f; font-style:normal; font-size:1.4rem; letter-spacing:0; }
+  h1 { font-size: clamp(2rem, 5vw, 3.2rem); line-height:1.05; margin:28px 0 10px; letter-spacing:-.03em; }
+  p.lead { color:var(--dim); font-size:1.1rem; margin:0 0 36px; max-width: 40rem; }
+  .grid { display:grid; gap:18px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:26px; }
+  h2 { margin:0 0 6px; font-size:1.3rem; }
+  ol { margin:14px 0 0; padding-left:1.3em; color:#d6d6de; } li { margin:.55em 0; }
+  code, .url { font-family: ui-monospace, Menlo, monospace; background:#0f0f14; border:1px solid var(--line); border-radius:8px; padding:.15em .5em; word-break:break-all; font-size:.88em; }
+  a { color: var(--accent); }
+  .btn { display:inline-block; background:var(--accent); color:#0b0b0f; font-weight:800; padding:.8em 1.4em; border-radius:999px; text-decoration:none; margin-top:12px; }
+  .qr { display:flex; gap:20px; align-items:center; margin-top:16px; } .qr img { width:150px; border-radius:12px; background:#fff; padding:6px; }
+  .note { color:var(--dim); font-size:.92rem; margin-top:14px; }
+  footer { margin-top:44px; color:var(--dim); font-size:.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><i>C</i> CHEZZFLIX</div>
+  <h1>Install Chezzflix</h1>
+  <p class="lead">A fast, TV-first way to watch your Plex library. Pick your device below. After the first install, the app keeps itself up to date.</p>
+
+  <div class="grid">
+    <section>
+      <h2>Fire TV, Shield, Onn &amp; Android TV</h2>
+      <div class="note" style="margin-top:0">Works from anywhere. You don't need to be on the same network as the Plex server.</div>
+      <ol>
+        <li>On the TV, install the free <b>Downloader</b> app (Amazon Appstore on Fire TV, Google Play on Shield/Onn/Android TV).</li>
+        <li>Allow it to install apps: <b>Settings → Apps / Security → Install unknown apps → Downloader → On</b> (Fire TV: Settings → My Fire TV → Developer options → Install unknown apps).</li>
+        <li>Open Downloader and type this address, then choose <b>Go</b>:<br><span class="url">github.com/ChezzterGReed/chezzflixapp/releases/latest/download/Chezzflix.apk</span></li>
+        <li>When it finishes, choose <b>Install</b>, then <b>Open</b>.</li>
+        <li>Sign in: the TV shows a short code. On your phone or computer go to <b>plex.tv/link</b> and enter it.</li>
+      </ol>
+      <p class="note">First time asking someone to do this? Send them this page. Typing is easiest with the Downloader app's on-screen keyboard or a phone remote app.</p>
+    </section>
+
+    <section>
+      <h2>Android phone or tablet</h2>
+      <div class="qr">
+        <img src="apk-qr.svg" alt="QR code for the Chezzflix Android download">
+        <div>Scan, download, and open the file. Android will ask to allow installs from your browser once.</div>
+      </div>
+      <a class="btn" href="https://github.com/ChezzterGReed/chezzflixapp/releases/latest/download/Chezzflix.apk">Download for Android</a>
+    </section>
+
+    <section>
+      <h2>Mac</h2>
+      <ol>
+        <li>Download <b>Chezzflix_…_universal.dmg</b> from the <a href="https://github.com/ChezzterGReed/chezzflixapp/releases/latest">latest release</a> and drag Chezzflix to Applications.</li>
+        <li>The first time, <b>right-click the app → Open</b> (it isn't from the App Store).</li>
+      </ol>
+      <a class="btn" href="https://github.com/ChezzterGReed/chezzflixapp/releases/latest">Open the latest release</a>
+    </section>
+  </div>
+
+  <footer>Chezzflix isn't affiliated with Plex. You'll need your own Plex account with access to a server.</footer>
+</main>
+</body>
+</html>

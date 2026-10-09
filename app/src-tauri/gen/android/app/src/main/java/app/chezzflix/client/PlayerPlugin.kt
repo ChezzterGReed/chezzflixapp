@@ -1,0 +1,264 @@
+package app.chezzflix.client
+
+import android.app.Activity
+import android.graphics.Color
+import android.media.audiofx.LoudnessEnhancer
+import android.os.Handler
+import android.os.Looper
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
+import android.widget.FrameLayout
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import app.tauri.annotation.Command
+import app.tauri.annotation.InvokeArg
+import app.tauri.annotation.TauriPlugin
+import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSArray
+import app.tauri.plugin.JSObject
+import app.tauri.plugin.Plugin
+import org.json.JSONObject
+import kotlin.math.pow
+
+@InvokeArg class SubArg { var url: String = ""; var lang: String? = null; var name: String? = null }
+@InvokeArg class LoadArgs { var url: String = ""; var startMs: Long = 0; var pause: Boolean = true; var subs: Array<SubArg>? = null }
+@InvokeArg class BoolArg { var value: Boolean = false }
+@InvokeArg class NumArg { var value: Double = 0.0 }
+@InvokeArg class NameArg { var name: String = "" }
+
+/**
+ * Chezzflix's Android video engine: Media3 ExoPlayer drawing into a surface BEHIND the (transparent) web view, like the Mac app's mpv.
+ * It plays the original file (MKV, HEVC, Dolby/DTS passthrough where the device allows) and reports progress back to the page,
+ * speaking the same small vocabulary as the mpv bridge (time-pos, duration, pause, paused-for-cache, eof-reached...).
+ */
+@TauriPlugin
+class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
+  private val ui = Handler(Looper.getMainLooper())
+  private var web: WebView? = null
+  private var player: ExoPlayer? = null
+  private var view: PlayerView? = null
+  private var enhancer: LoudnessEnhancer? = null
+  private var loadedFired = false
+  private var userVolume = 1.0
+  private var muted = false
+  private var gainDb = 0.0
+
+  override fun load(webView: WebView) { web = webView }
+
+  // ---- setup ----
+  private fun ensure(): ExoPlayer {
+    player?.let { return it }
+    val factory = DefaultRenderersFactory(activity).setEnableDecoderFallback(true)
+      .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    val p = ExoPlayer.Builder(activity, factory).build()
+    p.addListener(listener)
+    player = p
+    val v = PlayerView(activity).apply {
+      useController = false
+      resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+      setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+      setBackgroundColor(Color.BLACK)
+      visibility = View.GONE
+      player = p
+    }
+    view = v
+    // Behind the web view (which is transparent): the page shows through where it has no content.
+    val parent = web?.parent as? ViewGroup
+    parent?.addView(v, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    web?.setBackgroundColor(Color.TRANSPARENT)
+    ui.post(ticker)
+    return p
+  }
+
+  private val ticker = object : Runnable {
+    override fun run() {
+      val p = player ?: return
+      if (p.playbackState == Player.STATE_READY || p.playbackState == Player.STATE_BUFFERING) {
+        emit("time-pos", p.currentPosition / 1000.0)
+        emit("demuxer-cache-time", p.bufferedPosition / 1000.0)
+        if (p.duration != C.TIME_UNSET) emit("duration", p.duration / 1000.0)
+      }
+      ui.postDelayed(this, 500)
+    }
+  }
+
+  private fun emit(name: String, value: Any?) {
+    trigger("prop", JSObject().put("name", name).put("value", value ?: JSONObject.NULL))
+  }
+  private fun event(name: String, vararg extra: Pair<String, Any?>) {
+    val o = JSObject().put("event", name)
+    for ((k, v) in extra) o.put(k, v ?: JSONObject.NULL)
+    trigger("event", o)
+  }
+
+  private val listener = object : Player.Listener {
+    override fun onPlaybackStateChanged(state: Int) {
+      val p = player ?: return
+      emit("paused-for-cache", state == Player.STATE_BUFFERING)
+      if (state == Player.STATE_READY) {
+        if (p.duration != C.TIME_UNSET) emit("duration", p.duration / 1000.0)
+        emit("time-pos", p.currentPosition / 1000.0)
+        if (!loadedFired) { loadedFired = true; event("loaded") }
+      }
+      if (state == Player.STATE_ENDED) { emit("eof-reached", true); event("end", "reason" to 0) }
+    }
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { emit("pause", !playWhenReady) }
+    override fun onPlayerError(error: PlaybackException) {
+      event("end", "reason" to 4)
+      event("error", "message" to "${error.errorCodeName}: ${error.message ?: "playback failed"}")
+    }
+    override fun onAudioSessionIdChanged(audioSessionId: Int) { rebuildEnhancer(audioSessionId) }
+  }
+
+  private fun rebuildEnhancer(session: Int) {
+    try { enhancer?.release() } catch (_: Throwable) {}
+    enhancer = null
+    if (session == C.AUDIO_SESSION_ID_UNSET) return
+    try { enhancer = LoudnessEnhancer(session).also { applyGain(it) } } catch (_: Throwable) {}
+  }
+  private fun applyGain(e: LoudnessEnhancer? = enhancer) {
+    try { e?.setTargetGain(if (gainDb > 0) (gainDb * 100).toInt() else 0); e?.enabled = gainDb > 0 } catch (_: Throwable) {}
+  }
+  private fun applyVolume() {
+    // Louder than 0 dB comes from the loudness enhancer; quieter is plain attenuation.
+    val atten = if (gainDb < 0) 10.0.pow(gainDb / 20.0) else 1.0
+    player?.volume = if (muted) 0f else (userVolume.coerceIn(0.0, 1.0) * atten).toFloat()
+  }
+
+  private fun onUi(invoke: Invoke, work: () -> Unit) {
+    activity.runOnUiThread { try { work(); invoke.resolve() } catch (e: Exception) { invoke.reject(e.message ?: "player error") } }
+  }
+
+  // ---- commands ----
+  @Command fun loadMedia(invoke: Invoke) {
+    val a = invoke.parseArgs(LoadArgs::class.java)
+    onUi(invoke) {
+      val p = ensure()
+      loadedFired = false
+      view?.visibility = View.VISIBLE
+      val item = MediaItem.Builder().setUri(a.url).apply {
+        val subs = a.subs?.map { s ->
+          MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url)).setMimeType(guessSubMime(s.url)).setLanguage(s.lang).setLabel(s.name).build()
+        }
+        if (!subs.isNullOrEmpty()) setSubtitleConfigurations(subs)
+      }.build()
+      p.setMediaItem(item, a.startMs)
+      p.playWhenReady = !a.pause
+      p.prepare()
+      emit("pause", a.pause)
+    }
+  }
+
+  private fun guessSubMime(url: String) = when {
+    url.contains(".srt", true) -> MimeTypes.APPLICATION_SUBRIP
+    url.contains(".vtt", true) -> MimeTypes.TEXT_VTT
+    url.contains(".ass", true) || url.contains(".ssa", true) -> MimeTypes.TEXT_SSA
+    else -> MimeTypes.APPLICATION_SUBRIP
+  }
+
+  @Command fun setPause(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { player?.playWhenReady = !a.value } }
+  @Command fun seek(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.seekTo((a.value * 1000).toLong()) } }
+  @Command fun setVolume(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { userVolume = a.value; applyVolume(); emit("volume", userVolume * 100) } }
+  @Command fun setMute(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { muted = a.value; applyVolume(); emit("mute", muted) } }
+  @Command fun setGain(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { gainDb = a.value; applyGain(); applyVolume() } }
+
+  @Command fun stop(invoke: Invoke) {
+    onUi(invoke) {
+      player?.stop(); player?.clearMediaItems()
+      view?.visibility = View.GONE
+      loadedFired = false
+    }
+  }
+
+  @Command fun getProp(invoke: Invoke) {
+    val a = invoke.parseArgs(NameArg::class.java)
+    activity.runOnUiThread {
+      val p = player
+      val out = JSObject()
+      when (a.name) {
+        "time-pos" -> out.put("value", (p?.currentPosition ?: 0L) / 1000.0)
+        "duration" -> out.put("value", if (p == null || p.duration == C.TIME_UNSET) JSONObject.NULL else p.duration / 1000.0)
+        "audio-params/hr-channels" -> {
+          val n = p?.audioFormat?.channelCount ?: 0
+          out.put("value", when (n) { 0 -> JSONObject.NULL; 1 -> "mono"; 2 -> "stereo"; 6 -> "5.1"; 8 -> "7.1"; else -> "${n}ch" })
+        }
+        else -> out.put("value", JSONObject.NULL)
+      }
+      invoke.resolve(out)
+    }
+  }
+
+  // ---- tracks ----
+  private data class Ref(val group: Tracks.Group, val type: Int)
+  private fun groups(): List<Pair<Int, Tracks.Group>> {
+    val t = player?.currentTracks ?: return emptyList()
+    var a = 0; var s = 0
+    return t.groups.mapNotNull { g ->
+      when (g.type) { C.TRACK_TYPE_AUDIO -> (++a) to g; C.TRACK_TYPE_TEXT -> (++s) to g; else -> null }
+    }
+  }
+  private fun channelsLabel(n: Int) = when (n) { 1 -> "1.0"; 2 -> "2.0"; 6 -> "5.1"; 8 -> "7.1"; 0 -> "" else -> "${n}ch" }
+
+  @Command fun tracks(invoke: Invoke) {
+    activity.runOnUiThread {
+      val list = JSArray()
+      val t = player?.currentTracks
+      if (t != null) {
+        var a = 0; var s = 0
+        for (g in t.groups) {
+          if (g.type != C.TRACK_TYPE_AUDIO && g.type != C.TRACK_TYPE_TEXT) continue
+          val isAudio = g.type == C.TRACK_TYPE_AUDIO
+          val f = g.getTrackFormat(0)
+          val id = if (isAudio) ++a else ++s
+          list.put(JSObject()
+            .put("id", id).put("type", if (isAudio) "audio" else "sub")
+            .put("title", f.label ?: JSONObject.NULL).put("lang", f.language ?: JSONObject.NULL)
+            .put("codec", (f.sampleMimeType ?: f.codecs ?: "").substringAfter('/').substringAfter("x-").uppercase())
+            .put("channels", if (isAudio) channelsLabel(f.channelCount) else JSONObject.NULL)
+            .put("selected", g.isSelected)
+            .put("default", (f.selectionFlags and C.SELECTION_FLAG_DEFAULT) != 0)
+            .put("forced", (f.selectionFlags and C.SELECTION_FLAG_FORCED) != 0)
+            .put("external", false))
+        }
+      }
+      invoke.resolve(JSObject().put("tracks", list))
+    }
+  }
+
+  @Command fun selectAudio(invoke: Invoke) {
+    val a = invoke.parseArgs(NumArg::class.java)
+    onUi(invoke) {
+      val g = groups().firstOrNull { it.second.type == C.TRACK_TYPE_AUDIO && it.first == a.value.toInt() }?.second ?: return@onUi
+      val p = player ?: return@onUi
+      p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, 0)).build()
+    }
+  }
+
+  /** id <= 0 turns subtitles off. */
+  @Command fun selectSubtitle(invoke: Invoke) {
+    val a = invoke.parseArgs(NumArg::class.java)
+    onUi(invoke) {
+      val p = player ?: return@onUi
+      val b = p.trackSelectionParameters.buildUpon()
+      if (a.value <= 0) b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+      else {
+        val g = groups().firstOrNull { it.second.type == C.TRACK_TYPE_TEXT && it.first == a.value.toInt() }?.second ?: return@onUi
+        b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, 0))
+      }
+      p.trackSelectionParameters = b.build()
+    }
+  }
+
+  override fun onPause() { activity.runOnUiThread { player?.playWhenReady = false } }
+  override fun onDestroy() { activity.runOnUiThread { ui.removeCallbacksAndMessages(null); enhancer?.release(); player?.release(); player = null } }
+}

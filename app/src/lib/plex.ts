@@ -467,7 +467,7 @@ export async function resolvePlayable(server: PlexServer, item: PlexMedia): Prom
 
 // ---------- Playback ----------
 /** Original file, untouched. This is true direct play — no server work. */
-export const DEMO_VIDEO = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+export const DEMO_VIDEO: string = import.meta.env.VITE_DEMO_VIDEO || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
 export function directPlayUrl(server: PlexServer, media: PlexMedia): string | null {
   if (server.uri === DEMO_URI) return DEMO_VIDEO // (the in-app player picks its own demo clip)
   const key = media.Media?.[0]?.Part?.[0]?.key
