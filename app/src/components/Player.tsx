@@ -185,7 +185,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         setTimeout(() => document.documentElement.classList.remove('ui-fade'), 900)
       }
     }
-    if (mode === 'native') { mpvSet('video-zoom', 0).catch(() => {}); mpvSet('brightness', 0).catch(() => {}) }
+    // The exit transition fades volume to zero; put everything back so the next thing mpv plays (a clip, the next title) is audible.
+    if (mode === 'native') { mpvSet('video-zoom', 0).catch(() => {}); mpvSet('brightness', 0).catch(() => {}); mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {}) }
   }, [mode])
 
   // Cover timeline

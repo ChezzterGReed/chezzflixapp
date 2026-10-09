@@ -79,6 +79,8 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
       if (e.event === 'loaded') reveal()
       if ((e.event === 'end' && e.reason === 4) || e.event === 'error') onFail()
     }).then((u) => { if (dead) u(); else off = u })
+    // Clips always start at full volume, unmuted, whatever the last video left behind.
+    mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
     // Load paused on the first frame; it plays as the black cover lifts.
     mpvCmd('loadfile', url, 'replace', '-1', `start=${segments[0]?.start ?? 0},pause=yes`).catch(onFail)
     const safety = window.setTimeout(reveal, 15_000)
