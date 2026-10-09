@@ -27,6 +27,8 @@ function baseHeaders(token?: string): Record<string, string> {
 
 export interface PlexServer {
   name: string
+  /** The server's machine identifier (stable, only visible to people with access to it). */
+  id?: string
   uri: string
   accessToken: string
   local: boolean
@@ -135,7 +137,7 @@ export async function getCurrentUser(token: string): Promise<{ title: string; th
 
 // ---------- Servers ----------
 export function demoServer(): PlexServer {
-  return { name: 'Demo Server', uri: DEMO_URI, accessToken: 'demo', local: true }
+  return { id: 'demo-server', name: 'Demo Server', uri: DEMO_URI, accessToken: 'demo', local: true }
 }
 
 interface PlexConnection { uri: string; local: boolean; relay: boolean }
@@ -175,7 +177,7 @@ export async function getServers(token: string): Promise<PlexServer[]> {
     if (!res.provides?.includes('server')) continue
     const conns: PlexConnection[] = res.connections ?? []
     const chosen = (await pickConnection(conns, res.accessToken, res.clientIdentifier)) ?? conns.find((c) => !c.relay) ?? conns[0]
-    if (chosen) out.push({ name: res.name, uri: chosen.uri, accessToken: res.accessToken, local: chosen.local, relay: chosen.relay })
+    if (chosen) out.push({ id: res.clientIdentifier, name: res.name, uri: chosen.uri, accessToken: res.accessToken, local: chosen.local, relay: chosen.relay })
   }
   return out
 }

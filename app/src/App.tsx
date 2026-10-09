@@ -10,6 +10,8 @@ import { useBack } from './lib/back'
 import { inTauri, startPlayback } from './lib/player'
 import { brandName, SettingsProvider, useSettings } from './lib/settings'
 import { Login } from './screens/Login'
+import { unseal, type Sealed } from './lib/sealed'
+import sealedKeys from './lib/sealed-keys.json'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home } from './screens/Home'
@@ -189,7 +191,12 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
   const [me, setMe] = useState<Me>()
   const [error, setError] = useState<string>()
   const [needsPick, setNeedsPick] = useState(false)
+  const [sharedTmdb, setSharedTmdb] = useState<string>()
   const demoPick = useRef<PlexProfile | undefined>(undefined)
+
+  // A TMDB key sealed for this particular server unlocks only when you're connected to it.
+  const serverId = server?.id
+  useEffect(() => { let alive = true; unseal((sealedKeys as { tmdb?: Sealed }).tmdb, serverId, 'tmdb').then((k) => alive && setSharedTmdb(k ?? undefined)); return () => { alive = false } }, [serverId])
 
   const connect = useCallback(async () => {
     setError(undefined); setServer(undefined); setBooted(false)
@@ -245,7 +252,7 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
   if (!server || !me) return null // the animated loading screen (rendered by App) covers this
 
   return (
-    <SettingsProvider profileKey={me.key}>
+    <SettingsProvider profileKey={me.key} sharedTmdbKey={sharedTmdb}>
       <Gate key={me.key} token={token} server={server} allSections={sections} profiles={profiles} me={me} onSwitch={switchTo} onSignOut={onSignOut} />
     </SettingsProvider>
   )

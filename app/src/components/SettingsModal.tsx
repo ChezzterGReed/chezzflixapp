@@ -194,7 +194,7 @@ const defaultIds = (tab: HomeTab, genres: string[]) => new Set(rowCatalog(tab, [
 
 /** TMDB key entry for the Trending tab, with a quick check and the attribution TMDB's terms require. */
 function TmdbKey() {
-  const { settings, update } = useSettings()
+  const { settings, update, ownTmdbKey, tmdbShared } = useSettings()
   const [status, setStatus] = useState<'idle' | 'checking' | 'ok' | 'bad'>('idle')
   const input = useRef<HTMLInputElement>(null)
   const check = async () => {
@@ -206,13 +206,13 @@ function TmdbKey() {
     <div className="px-4 py-2">
       <Focusable onEnter={() => input.current?.focus()}>
         <div className={`flex items-center gap-3 rounded-xl bg-white/8 px-4 py-3 transition-colors focus-within:bg-white/12 group-hover/f:bg-white/12 group-data-[hl=true]/f:bg-white/15 ${ring}`}>
-          <input ref={input} value={settings.tmdbKey} placeholder="Paste your TMDB API key" spellCheck={false} autoCapitalize="off" autoCorrect="off"
+          <input ref={input} value={ownTmdbKey} placeholder={tmdbShared ? "Using the key shared by this server" : "Paste your TMDB API key"} spellCheck={false} autoCapitalize="off" autoCorrect="off"
             onChange={(e) => { update({ tmdbKey: e.target.value.trim() }); setStatus('idle') }}
             onBlur={check}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.stopPropagation(); e.currentTarget.blur() } else if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') e.stopPropagation() }}
             className="min-w-0 flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-white/30" />
           <span className={`shrink-0 text-xs font-bold ${status === 'ok' ? 'text-emerald-300' : status === 'bad' ? 'text-red-300' : 'text-white/40'}`}>
-            {status === 'checking' ? 'Checking…' : status === 'ok' ? 'Connected' : status === 'bad' ? 'Key not accepted' : settings.tmdbKey ? '' : 'Not set'}
+            {status === 'checking' ? 'Checking…' : status === 'ok' ? 'Connected' : status === 'bad' ? 'Key not accepted' : tmdbShared ? 'Shared' : settings.tmdbKey ? '' : 'Not set'}
           </span>
         </div>
       </Focusable>
@@ -236,8 +236,10 @@ function Content() {
   )
 }
 
-function About() {
+function About({ server }: { server: PlexServer }) {
   const u = useUpdater()
+  const [copied, setCopied] = useState(false)
+  const copyId = () => { if (server.id) navigator.clipboard?.writeText(server.id).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }).catch(() => {}) }
   useEffect(() => { checkForUpdate() }, [])
   const busy = u.status === 'checking' || u.status === 'downloading' || u.status === 'installing'
   const line = {
@@ -252,6 +254,11 @@ function About() {
           ? <Focusable onEnter={installUpdate} title="Update now"><div className="flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-black transition-transform group-hover/f:scale-105 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white"><Download size={16} />Update now</div></Focusable>
           : <Focusable onEnter={() => !busy && checkForUpdate()} title="Check for updates"><div className="flex items-center gap-2 rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">{busy && <Loader2 size={16} className="animate-spin" />}Check now</div></Focusable>}
       </Row>
+      {server.id && (
+        <Row label="Server ID" hint={`${server.name} · ${server.id.slice(0, 8)}…${server.id.slice(-4)}`} onEnter={copyId}>
+          <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">{copied ? 'Copied' : 'Copy'}</span>
+        </Row>
+      )}
       <p className="px-4 pt-2 text-sm text-white/45">Chezzflix checks for updates when it opens and installs them only when you say so.</p>
     </>
   )
@@ -288,7 +295,7 @@ export function SettingsModal({ server, sections, profileName, profileThumb, onC
           {panel === 'libraries' && <Libraries sections={sections} />}
           {panel === 'home' && <HomeEditor server={server} sections={sections} />}
           {panel === 'content' && <Content />}
-          {panel === 'about' && <About />}
+          {panel === 'about' && <About server={server} />}
           <div className="mt-6 rounded-xl bg-white/5 px-4 py-3 text-sm text-white/55">Connected to <b className="text-white">{server.name}</b>. These settings belong to <b className="text-white">{profileName}</b>.</div>
         </section>
       </div>

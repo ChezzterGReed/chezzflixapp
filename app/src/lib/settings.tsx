@@ -71,13 +71,22 @@ function load(profileKey: string): Settings {
   } catch { return DEFAULTS }
 }
 
-const Ctx = createContext<{ settings: Settings; update: (p: Partial<Settings>) => void }>({ settings: DEFAULTS, update: () => {} })
+interface SettingsCtx {
+  /** What the app should use: your own choices, with a shared TMDB key filling in when you haven't set one. */
+  settings: Settings
+  update: (p: Partial<Settings>) => void
+  /** The TMDB key this person typed themselves ('' if none). */
+  ownTmdbKey: string
+  /** True when the TMDB key in `settings` is the one shared by this server's owner. */
+  tmdbShared: boolean
+}
+const Ctx = createContext<SettingsCtx>({ settings: DEFAULTS, update: () => {}, ownTmdbKey: '', tmdbShared: false })
 export const useSettings = () => useContext(Ctx)
 /** The active seasonal theme for this profile (null when off or out of season). */
 export function useSeason(): Season { const { settings } = useContext(Ctx); return settings.seasonal ? currentSeason() : null }
 
 /** Settings are stored per Plex profile, so each person gets their own accent, name, rows and libraries. */
-export function SettingsProvider({ profileKey, children }: { profileKey: string; children: ReactNode }) {
+export function SettingsProvider({ profileKey, sharedTmdbKey, children }: { profileKey: string; sharedTmdbKey?: string; children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(() => load(profileKey))
   const loadedFor = useRef(profileKey)
 
@@ -95,5 +104,8 @@ export function SettingsProvider({ profileKey, children }: { profileKey: string;
     if (loadedFor.current === profileKey) { try { localStorage.setItem(keyFor(profileKey), JSON.stringify(settings)) } catch { /* private mode */ } }
   }, [settings, profileKey])
 
-  return <Ctx.Provider value={{ settings, update: (p) => setSettings((s) => ({ ...s, ...p })) }}>{children}</Ctx.Provider>
+  // The shared key is applied on top, never saved into this person's own settings.
+  const shared = !settings.tmdbKey && !!sharedTmdbKey
+  const effective = shared ? { ...settings, tmdbKey: sharedTmdbKey! } : settings
+  return <Ctx.Provider value={{ settings: effective, update: (p) => setSettings((s) => ({ ...s, ...p })), ownTmdbKey: settings.tmdbKey, tmdbShared: shared }}>{children}</Ctx.Provider>
 }
