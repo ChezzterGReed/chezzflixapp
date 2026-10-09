@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import { setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
-import { setFocusedKey, useIsFocused } from '../lib/input'
+import { blockEnterUntilRelease, justMoved, setFocusedKey, useIsFocused } from '../lib/input'
 import { revealInPanel } from '../lib/scroll'
 
 const LONG_PRESS_MS = 550
@@ -37,7 +37,7 @@ export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className =
       ? () => {
           if (keyTimer.current) return // key auto-repeat
           keyLong.current = false
-          keyTimer.current = window.setTimeout(() => { keyLong.current = true; keyTimer.current = 0; onLongPress() }, LONG_PRESS_MS)
+          keyTimer.current = window.setTimeout(() => { keyLong.current = true; keyTimer.current = 0; blockEnterUntilRelease(); onLongPress() }, LONG_PRESS_MS)
         }
       : onEnter,
     onEnterRelease: onLongPress
@@ -49,7 +49,7 @@ export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className =
     onFocus: () => { setFocusedKey(keyRef.current); if (ref.current) { revealInPanel(ref.current as HTMLElement); onFocus?.(ref.current as HTMLElement) } },
     onArrowPress: (dir) => {
       if (onArrow && onArrow(dir as 'left' | 'right' | 'up' | 'down') === false) return false
-      if (dir === 'left' && leftToRail) { setFocus('SIDEBAR'); return false }
+      if (dir === 'left' && leftToRail) { if (!justMoved()) setFocus('SIDEBAR'); return false }
       if (dir === 'right' && rightToContent) { setFocus('MAIN'); return false }
       return true
     },
@@ -71,7 +71,7 @@ export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className =
   } : {}
 
   return (
-    <div ref={ref} role="button" aria-label={title} data-hl={focused} {...pointer}
+    <div ref={ref} role="button" data-fk={fk} aria-label={title} data-hl={focused} {...pointer}
       onClick={() => { if (ptrLong.current) { ptrLong.current = false; return } focusSelf(); onEnter?.() }} className={`group/f ${className}`}>
       {typeof children === 'function' ? children(focused) : children}
     </div>

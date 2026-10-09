@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { reveal } from '../lib/scroll'
-import { ChevronDown, ChevronUp, Film, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
-import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { reveal, revealInPanel } from '../lib/scroll'
+import { Bookmark, ChevronDown, ChevronUp, Film, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
+import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useInputMode, useTyping } from '../lib/input'
 import { useSeason } from '../lib/settings'
@@ -13,7 +13,7 @@ import type { HomeTab } from '../lib/settings'
 
 export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string }
 export type View =
-  | { type: 'home' } | { type: 'search' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
+  | { type: 'home' } | { type: 'search' } | { type: 'watchlist' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
   | { type: 'list'; title: string; subtitle?: string; source: ListSource }
 
@@ -57,6 +57,14 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
   const activeAt = sections.findIndex((x) => isLib(x.key))
   useEffect(() => { if (activeAt >= LIMIT) setAllLibs(true) }, [activeAt])   // never hide the library you're in
   const listed = allLibs ? sections : sections.slice(0, LIMIT)
+  // The toggle button moves when the list grows or shrinks; keep the cursor somewhere visible: on the first newly shown library when expanding, on the button (scrolled into view) when collapsing.
+  const toggled = useRef(false)
+  useEffect(() => {
+    if (!toggled.current) return
+    toggled.current = false
+    if (allLibs) { const k = sections[LIMIT]?.key; if (k) setTimeout(() => setFocus(`nav-lib-${k}`), 30) }
+    else setTimeout(() => { setFocus('nav-lib-more'); const el = document.querySelector<HTMLElement>('[data-fk="nav-lib-more"]'); if (el) revealInPanel(el) }, 60)
+  }, [allLibs, sections])
 
   return (
     <FocusContext.Provider value={focusKey}>
@@ -71,23 +79,24 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
               {season === 'halloween' && <Pumpkin size={21} className="absolute right-0.5 top-0 drop-shadow" />}
             </span>
           </span>
-          <span className={`whitespace-nowrap text-[0.95rem] font-extrabold tracking-[0.2em] transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>{brand}</span>
+          <span className={`whitespace-nowrap font-display text-[1.6rem] leading-none tracking-[0.16em] transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>{brand}</span>
         </div>
 
         <div className="space-y-1">
           <NavItem focusKey="nav-home" icon={<Home size={22} />} label="Home" active={view.type === 'home'} onEnter={() => onNavigate({ type: 'home' })} />
           <NavItem focusKey="nav-search" icon={<Search size={22} />} label="Search" active={view.type === 'search'} onEnter={() => onNavigate({ type: 'search' })} />
+          <NavItem focusKey="nav-watchlist" icon={<Bookmark size={22} />} label="Watchlist" active={view.type === 'watchlist'} onEnter={() => onNavigate({ type: 'watchlist' })} />
         </div>
 
         {/* Libraries scroll on their own so a long list never pushes the profile button off screen */}
         <div className="mt-6 flex min-h-0 flex-1 flex-col">
-          <div className={`mb-2 h-4 shrink-0 overflow-hidden whitespace-nowrap px-[18px] text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>Libraries</div>
+          <div className={`mb-2 h-4 shrink-0 overflow-hidden whitespace-nowrap px-[18px] font-display text-[1.05rem] uppercase leading-4 tracking-[0.2em] text-white/80 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>Libraries</div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-1">
             {listed.map((s) => (
               <NavItem key={s.key} focusKey={`nav-lib-${s.key}`} icon={s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />} label={s.title} active={isLib(s.key)} onEnter={() => onNavigate({ type: 'library', section: s })} />
             ))}
             {sections.length > LIMIT && (
-              <NavItem focusKey="nav-lib-more" icon={allLibs ? <ChevronUp size={22} /> : <ChevronDown size={22} />} label={allLibs ? 'Show fewer' : `View all (${sections.length})`} onEnter={() => setAllLibs((v) => !v)} />
+              <NavItem focusKey="nav-lib-more" icon={allLibs ? <ChevronUp size={22} /> : <ChevronDown size={22} />} label={allLibs ? 'Show fewer' : `View all (${sections.length})`} onEnter={() => { toggled.current = true; setAllLibs((v) => !v) }} />
             )}
           </div>
         </div>
@@ -106,6 +115,7 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
         {([
           { label: 'Home', icon: <Home size={22} />, active: view.type === 'home', go: () => onNavigate({ type: 'home' }) },
           { label: 'Search', icon: <Search size={22} />, active: view.type === 'search', go: () => onNavigate({ type: 'search' }) },
+          { label: 'Watchlist', icon: <Bookmark size={22} />, active: view.type === 'watchlist', go: () => onNavigate({ type: 'watchlist' }) },
           ...sections.map((s) => ({ label: s.title, icon: s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />, active: isLib(s.key), go: () => onNavigate({ type: 'library', section: s }) })),
           ...(showDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={22} />, active: view.type === 'dashboard', go: () => onNavigate({ type: 'dashboard' }) }] : []),
           { label: 'You', icon: <Avatar name={profileName} thumb={profileThumb} size={24} />, active: false, go: onProfile },

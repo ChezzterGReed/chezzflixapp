@@ -48,7 +48,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
       .then(async (a) => { const r = await loadRows(server, sections, activeTab, settings, a, season); if (alive) { setRowsAnime(a); setNotices(r.notices); setRows(r.rows) } })
       .catch((e) => { if (alive) { setError(String(e)); setBooted(true) } })
     return () => { alive = false }
-  }, [server, sections, activeTab, settings.homeRows, settings.hiddenLibraries, settings.hideWatched, settings.tmdbKey, settings.dismissedContinue, season, refreshKey])
+  }, [server, sections, activeTab, settings.homeRows, settings.hiddenLibraries, settings.hideWatched, settings.tmdbKey, settings.dismissedContinue, settings.pinned, settings.continueDays, season, refreshKey])
 
   // Personalized rows: built on this device from the profile's watch history (shown after Continue Watching).
   const wantsRecs = settings.recs && (activeTab === 'all' || activeTab === 'movie' || activeTab === 'show' || activeTab === 'foryou')

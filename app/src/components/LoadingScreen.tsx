@@ -28,7 +28,7 @@ export function LoadingScreen({ visible }: { visible: boolean }) {
             <span className="absolute inset-[5px] rounded-full bg-[#07070a]" />
             <span className="logo-breathe relative grid place-items-center drop-shadow-[0_0_28px_var(--accent)]"><Logo size={86} /></span>
           </div>
-          <div className="mb-3 flex justify-center text-[1.05rem] font-extrabold tracking-[0.34em]">
+          <div className="mb-3 flex justify-center font-display text-[2rem] leading-none tracking-[0.3em]">
             {[...brand].map((ch, n) => <span key={n} className="letter-in" style={{ animationDelay: `${n * 70}ms` }}>{ch}</span>)}
           </div>
           <div key={i} className="fade-in h-5 text-sm tracking-wide text-white/50">{MESSAGES[i]}</div>

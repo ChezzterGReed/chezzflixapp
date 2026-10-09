@@ -45,6 +45,10 @@ export interface Settings {
   tmdbKey: string
   /** Continue Watching items you removed: ratingKey -> when (epoch seconds). They return once you watch more. */
   dismissedContinue: Record<string, number>
+  /** Titles pinned to Continue Watching (ratingKey -> when pinned): they stay there, started or not, finished or not, until unpinned. */
+  pinned: Record<string, number>
+  /** How far back Continue Watching looks, in days. */
+  continueDays: number
   /** Libraries (by key) that list a collection as one tile instead of every title in it. */
   collapseCollections: Record<string, boolean>
   player: 'app' | 'mpv'
@@ -68,7 +72,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false,
 }
 
 export const PUMPKIN = '#ff7a1a'

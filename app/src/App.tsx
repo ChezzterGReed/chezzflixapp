@@ -7,6 +7,7 @@ import {
 import { loadAnime, tabOk } from './lib/homeData'
 import { setBooted, useBooted } from './lib/boot'
 import { useBack } from './lib/back'
+import { justMoved, settleMs } from './lib/input'
 import { ensureFocus, rescueSoon } from './lib/focusRescue'
 import { isAndroid } from './lib/native'
 import { inTauri, startPlayback } from './lib/player'
@@ -19,6 +20,7 @@ import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home } from './screens/Home'
 import { Library } from './screens/Library'
 import { Search } from './screens/Search'
+import { Watchlist } from './screens/Watchlist'
 import { Dashboard } from './screens/Dashboard'
 import { BrowseIndex } from './screens/BrowseIndex'
 import { ListView } from './screens/ListView'
@@ -80,7 +82,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const push = (v: View) => { setHistory((h) => [...h, view]); setView(v); setDetails([]); window.scrollTo({ top: 0 }) }
   const back = () => { setView(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); window.scrollTo({ top: 0 }) }
   // Back: go back a screen; with nothing to go back to, a TV remote's Back goes Home, and from Home it opens/closes the side menu.
-  const railKey = () => (view.type === 'library' ? `nav-lib-${view.section.key}` : view.type === 'search' ? 'nav-search' : view.type === 'dashboard' ? 'nav-dashboard' : 'nav-home')
+  const railKey = () => (view.type === 'library' ? `nav-lib-${view.section.key}` : view.type === 'search' ? 'nav-search' : view.type === 'watchlist' ? 'nav-watchlist' : view.type === 'dashboard' ? 'nav-dashboard' : 'nav-home')
   const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
   useBack(() => {
     if (history.length > 0) return back()
@@ -90,14 +92,14 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const railKeyRef = useRef(railKey()); railKeyRef.current = railKey()
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowLeft' || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key !== 'ArrowLeft' || e.repeat || justMoved() || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const before = getCurrentFocusKey()
       if (!before || before === 'SN:ROOT' || before.startsWith('nav-')) return
       setTimeout(() => {
         if (getCurrentFocusKey() !== before || document.querySelector('[data-layer], [data-player]')) return   // it moved, or a popup / the player owns the keys
         const k = railKeyRef.current
         setFocus(doesFocusableExist(k) ? k : 'SIDEBAR')
-      }, 130)
+      }, settleMs())
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
@@ -169,7 +171,9 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   }
   const removeContinue = (m: PlexMedia) => {
     // Hidden on our side (per profile) until you watch more; also asks the server to drop it.
-    update({ dismissedContinue: { ...settings.dismissedContinue, [m.ratingKey]: Math.floor(Date.now() / 1000) } })
+    const pinned = { ...settings.pinned }
+    delete pinned[m.ratingKey]; if (m.grandparentRatingKey) delete pinned[m.grandparentRatingKey]   // removing a pinned title unpins it
+    update({ pinned, dismissedContinue: { ...settings.dismissedContinue, [m.ratingKey]: Math.floor(Date.now() / 1000) } })
     removeFromContinueWatching(server, m.ratingKey)
     say('Removed from Continue Watching')
   }
@@ -195,11 +199,12 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
+          {view.type === 'watchlist' && <Watchlist server={server} token={token} sections={allSections} onOpen={open} />}
           {view.type === 'search' && <Search server={server} token={token} sections={allSections} onOpen={open} />}
         </main>
       </FocusContext.Provider>
 
-      {details.length > 0 && <Detail key={details[details.length - 1] + refreshKey} ratingKey={details[details.length - 1]} server={server}
+      {details.length > 0 && <Detail key={details[details.length - 1] + refreshKey} ratingKey={details[details.length - 1]} server={server} token={token}
         onClose={() => setDetails((d) => d.slice(0, -1))} onPlay={play} onOpen={open} onCollection={openCollection} />}
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}

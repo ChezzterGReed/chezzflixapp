@@ -1,7 +1,9 @@
 @import "tailwindcss";
 @import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource/bebas-neue";
 
 @theme {
+  --font-display: "Bebas Neue", "Plus Jakarta Sans Variable", sans-serif;
   --font-sans: "Plus Jakarta Sans Variable", system-ui, sans-serif;
   --color-bg: #0a0a0d;
   --color-surface: #141418;

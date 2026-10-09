@@ -31,7 +31,7 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     web = webView
-    webView.setBackgroundColor(Color.TRANSPARENT)      // lets a native video surface behind the page show through
+    webView.setBackgroundColor(0xFF0A0A0D.toInt())      // dark until video plays (PlayerPlugin then makes it transparent); never a white flash
     webView.defaultFocusHighlightEnabled = false      // no system outline around the page when the remote moves focus
     webView.settings.mediaPlaybackRequiresUserGesture = false
     webView.settings.useWideViewPort = true             // honour the page's viewport width

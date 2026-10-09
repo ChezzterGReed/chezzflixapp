@@ -21,16 +21,34 @@ export function setMode(next: InputMode) {
   notify()
 }
 
+// Timing of arrow presses, so "nothing further left" can be told apart from "still moving": navigation is async and slow on a TV.
+let arrowAt = 0, arrowRepeat = false, focusAt = 0, latency = 80
 export function setFocusedKey(key: string | null) {
   if (key === focusedKey) return
   focusedKey = key
+  const now = performance.now()
+  if (now - arrowAt < 900) latency = Math.max(40, Math.min(700, latency * 0.5 + (now - arrowAt) * 0.5))
+  focusAt = now
   notify()
 }
+/** How long to wait after an arrow press before deciding focus really had nowhere to go (adapts to how slow this device is). */
+export const settleMs = () => Math.round(Math.max(130, Math.min(650, latency * 1.8 + 60)))
+/** True if focus just arrived somewhere, or the key is being held: pressing Left then shouldn't also open the side menu. */
+export const justMoved = () => arrowRepeat || performance.now() - focusAt < 300
+
+// Holding OK to open a menu must not also "press" whatever gets focus in it (the key keeps repeating until released).
+let enterBlocked = false
+export const blockEnterUntilRelease = () => { enterBlocked = true }
 
 if (typeof window !== 'undefined') {
   document.documentElement.dataset.input = mode
   // Typing into a text field isn't navigation: only arrows, Enter, Escape etc. switch to remote/keyboard mode there.
-  window.addEventListener('keydown', (e) => { if (isEditable(e.target) && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) return; setMode('key') }, true)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && enterBlocked) { e.stopPropagation(); e.preventDefault(); return }
+    if (e.key.startsWith('Arrow')) { arrowAt = performance.now(); arrowRepeat = e.repeat }
+    if (isEditable(e.target) && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) return; setMode('key')
+  }, true)
+  window.addEventListener('keyup', (e) => { if (e.key === 'Enter' && enterBlocked) { enterBlocked = false; e.stopPropagation(); e.preventDefault() } }, true)
   window.addEventListener('focusin', (e) => setTyping(isEditable(e.target)), true)
   window.addEventListener('focusout', () => setTyping(false), true)
   window.addEventListener('pointerdown', () => setMode('mouse'), true)

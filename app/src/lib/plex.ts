@@ -55,6 +55,8 @@ export interface PlexMedia {
   duration?: number
   viewOffset?: number
   lastViewedAt?: number
+  /** Plex's own id for the title (plex://movie/…): the same everywhere, so it links a library item to the Watchlist. */
+  guid?: string
   Guid?: { id: string }[]
   viewCount?: number
   leafCount?: number

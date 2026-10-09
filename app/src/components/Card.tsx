@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, Pin } from 'lucide-react'
 import { Focusable } from './Focusable'
 import { useSettings } from '../lib/settings'
 import { useItemMenu } from '../lib/itemMenu'
@@ -16,11 +16,18 @@ function Img({ src, alt, className = '' }: { src: string; alt: string; className
   )
 }
 
+/** Marks a title that's pinned to Continue Watching. */
+function PinMark({ m }: { m: PlexMedia }) {
+  const { settings } = useSettings()
+  if (!settings.pinned[m.ratingKey] && !(m.grandparentRatingKey && settings.pinned[m.grandparentRatingKey])) return null
+  return <div className="absolute left-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 text-accent backdrop-blur"><Pin size={13} fill="currentColor" /></div>
+}
+
 function Badge({ m }: { m: PlexMedia }) {
   if (isWatched(m)) return <div className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 backdrop-blur"><Check size={14} strokeWidth={3} /></div>
   if ((m.type === 'show' || m.type === 'season') && m.leafCount) {
     const left = m.leafCount - (m.viewedLeafCount ?? 0)
-    return left > 0 ? <div className="absolute right-2 top-2 min-w-6 rounded-full bg-accent px-1.5 py-0.5 text-center text-[11px] font-bold text-black">{left}</div> : null
+    return left > 0 ? <div className="absolute right-2 top-2 min-w-6 rounded-full bg-accent px-1.5 py-0.5 text-center text-[11px] font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,.45)]">{left}</div> : null
   }
   return null
 }
@@ -31,15 +38,16 @@ function Progress({ p }: { p: number }) {
 
 const focusRing = 'transition-[transform,box-shadow] duration-300 ease-out-expo group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_18px_40px_-8px_rgba(0,0,0,.8),0_0_0_3px_var(--accent)] group-hover/f:scale-[1.03]'
 
-export function PosterCard({ m, server, onEnter, onFocus, leftEdge, fromRecs, fromContinue }: { m: PlexMedia; server: PlexServer; onEnter: () => void; onFocus: (el: HTMLElement) => void; leftEdge?: boolean; fromRecs?: boolean; fromContinue?: boolean }) {
+export function PosterCard({ m, server, onEnter, onFocus, leftEdge, fromRecs, fromContinue, onLongPress }: { m: PlexMedia; server: PlexServer; onEnter: () => void; onFocus: (el: HTMLElement) => void; leftEdge?: boolean; fromRecs?: boolean; fromContinue?: boolean; onLongPress?: () => void }) {
   const title = m.type === 'episode' ? m.grandparentTitle ?? m.title : m.title
   const sub = m.type === 'episode' ? `${episodeLabel(m)}` : m.type === 'collection' ? 'Collection' : [m.year, m.type === 'show' ? 'Series' : m.contentRating].filter(Boolean).join(' · ')
   const openMenu = useItemMenu()
   return (
-    <Focusable onEnter={onEnter} onLongPress={m.type === 'collection' ? undefined : () => openMenu(m, { fromRecs, fromContinue })} onFocus={onFocus} title={title} leftToRail={leftEdge} className="w-[var(--card-w)] shrink-0">
+    <Focusable onEnter={onEnter} onLongPress={onLongPress ?? (m.type === 'collection' ? undefined : () => openMenu(m, { fromRecs, fromContinue }))} onFocus={onFocus} title={title} leftToRail={leftEdge} className="w-[var(--card-w)] shrink-0">
       <div className={`relative aspect-[2/3] overflow-hidden rounded-xl bg-surface ${focusRing}`}>
         <Img src={imageUrl(server, posterPath(m), 360, 540)} alt={title} />
         <Badge m={m} />
+        <PinMark m={m} />
         <Progress p={progressOf(m)} />
       </div>
       <div className="mt-2.5 px-0.5 opacity-70 transition-opacity group-data-[hl=true]/f:opacity-100 group-hover/f:opacity-100">
@@ -67,6 +75,7 @@ export function LandscapeCard({ m, server, onEnter, onFocus, leftEdge }: { m: Pl
           <div className="truncate text-[0.95rem] font-bold leading-tight drop-shadow">{title}</div>
           <div className="mt-0.5 truncate text-[0.78rem] text-white/75">{sub}</div>
         </div>
+        <PinMark m={m} />
         <Progress p={progressOf(m)} />
       </div>
       {m.viewOffset ? <div className="mt-2 px-0.5 text-[0.78rem] text-white/55">{formatLeft(m)}</div> : null}

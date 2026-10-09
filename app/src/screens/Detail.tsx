@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { BIG_IMAGE } from '../lib/perf'
 import { reveal, scrollToTopOf } from '../lib/scroll'
-import { ArrowLeft, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Play } from 'lucide-react'
+import { ArrowLeft, BookmarkCheck, BookmarkPlus, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Pin, PinOff, Play } from 'lucide-react'
 import { useSettings } from '../lib/settings'
+import { getWatchlist, setOnWatchlist, watchItemOf, watchKey } from '../lib/watchlist'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from '../components/Layer'
 import { Focusable } from '../components/Focusable'
@@ -61,16 +62,17 @@ function Episode({ ep, server, spoiler, onReveal, onPlay, onRecap, upTo }: { ep:
   )
 }
 
-interface Props { ratingKey: string; server: PlexServer; onClose: () => void; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onCollection: (title: string, sectionId?: string | number) => void }
+interface Props { ratingKey: string; server: PlexServer; token: string; onClose: () => void; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onCollection: (title: string, sectionId?: string | number) => void }
 
-export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollection }: Props) {
+export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCollection }: Props) {
   const [m, setM] = useState<PlexMedia>()
   const [seasons, setSeasons] = useState<PlexMedia[]>([])
   const [season, setSeason] = useState<string>()
   const [episodes, setEpisodes] = useState<PlexMedia[]>([])
   const [related, setRelated] = useState<PlexMedia[]>([])
   const [watched, setWatchedState] = useState(false)
-  const { settings } = useSettings()
+  const { settings, update } = useSettings()
+  const [onList, setOnList] = useState<boolean>()   // undefined until we know (or when this title can't be on a Watchlist)
   const [revealed, setRevealed] = useState<Set<string>>(new Set())
   const [clip, setClip] = useState<{ media: PlexMedia; segments: Segment[]; heading: string; subheading?: string }>()
   const [busy, setBusy] = useState(false)
@@ -101,6 +103,29 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
 
   // Land on Play as soon as the page has content — the fastest path to watching.
   useEffect(() => { if (m) setTimeout(() => setFocus('detail-play'), 80) }, [m])
+
+  // Pin to Continue Watching: stays there, started or not, until unpinned.
+  const pinned = !!(m && settings.pinned[m.ratingKey])
+  const togglePin = () => {
+    if (!m) return
+    const pins = { ...settings.pinned }
+    if (pinned) delete pins[m.ratingKey]; else pins[m.ratingKey] = Math.floor(Date.now() / 1000)
+    update({ pinned: pins })
+  }
+  // Plex Watchlist (kept on Plex's cloud, per account).
+  const wKey = m ? watchKey(server, m) : undefined
+  useEffect(() => {
+    if (!wKey) { setOnList(undefined); return }
+    let alive = true
+    getWatchlist(token).then((l) => alive && setOnList(l.some((x) => x.key === wKey))).catch(() => alive && setOnList(undefined))
+    return () => { alive = false }
+  }, [wKey, token])
+  const toggleList = async () => {
+    if (!m || !wKey || onList === undefined) return
+    const next = !onList
+    setOnList(next)
+    await setOnWatchlist(token, watchItemOf(wKey, m), next).catch(() => setOnList(!next))
+  }
 
   const toggleWatched = async () => {
     if (!m) return
@@ -166,7 +191,7 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
               {m.tagline && <p className="mt-4 text-lg font-semibold italic text-white/70">{m.tagline}</p>}
               <p className="mt-4 max-w-[40rem] text-[1.05rem] leading-relaxed text-white/80">{m.summary}</p>
 
-              <div className="mt-7 flex items-center gap-3">
+              <div className="mt-7 flex flex-wrap items-center gap-3">
                 <Focusable focusKey="detail-play" onEnter={() => onPlay(resumeTarget ?? m)} title="Play" onFocus={scrollToTopOf}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white px-8 text-[1.05rem] font-bold text-black transition-all duration-200 group-hover/f:bg-white/90 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     <Play size={20} fill="currentColor" />{playLabel}{sub && <span className="font-semibold text-black/60">{sub}</span>}
@@ -182,6 +207,18 @@ export function Detail({ ratingKey, server, onClose, onPlay, onOpen, onCollectio
                     {busy ? <Loader2 size={20} className="animate-spin" /> : <Clapperboard size={20} />}Preview
                   </div>
                 </Focusable>
+                <Focusable onEnter={togglePin} title={pinned ? 'Unpin from Continue Watching' : 'Pin to Continue Watching'} onFocus={scrollToTopOf}>
+                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                    {pinned ? <PinOff size={20} /> : <Pin size={20} />}{pinned ? 'Unpin' : 'Pin'}
+                  </div>
+                </Focusable>
+                {onList !== undefined && (
+                  <Focusable onEnter={toggleList} title={onList ? 'Remove from Watchlist' : 'Add to Watchlist'} onFocus={scrollToTopOf}>
+                    <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                      {onList ? <BookmarkCheck size={20} className="text-accent" /> : <BookmarkPlus size={20} />}Watchlist
+                    </div>
+                  </Focusable>
+                )}
               </div>
 
               <dl className="mt-8 grid max-w-[40rem] grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[0.9rem]">

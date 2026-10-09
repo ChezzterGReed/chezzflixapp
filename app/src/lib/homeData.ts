@@ -177,9 +177,7 @@ async function custom(c: Ctx, cfg: HomeRowCfg): Promise<PlexMedia[]> {
   return []
 }
 
-const CONTINUE_WINDOW_S = 90 * 86400
-
-/** Continue Watching and On Deck as one list, limited to the last three months, minus anything you removed. */
+/** Continue Watching and On Deck as one list, limited to the chosen look-back, minus anything you removed, with pinned titles always first. */
 async function continueItems(server: PlexServer, settings: Settings): Promise<PlexMedia[]> {
   const [hubs, deck] = await Promise.all([getHubs(server).catch(() => []), getOnDeck(server).catch(() => [])])
   const fromHub = hubs.find(isContinueHub)?.Metadata ?? []
@@ -188,9 +186,19 @@ async function continueItems(server: PlexServer, settings: Settings): Promise<Pl
   const recent = merged.filter((m) => {
     const removedAt = settings.dismissedContinue[m.ratingKey]
     if (removedAt != null && (m.lastViewedAt ?? 0) <= removedAt) return false // removed, and not watched since
-    return !(m.lastViewedAt && now - m.lastViewedAt > CONTINUE_WINDOW_S)
+    return !(m.lastViewedAt && now - m.lastViewedAt > settings.continueDays * 86400)
   })
-  return [...recent.filter((m) => m.viewOffset), ...recent.filter((m) => !m.viewOffset)]
+  const pins = settings.pinned
+  const isPinned = (m: PlexMedia) => !!pins[m.ratingKey] || (!!m.grandparentRatingKey && !!pins[m.grandparentRatingKey])
+  // Pinned titles that have nothing in progress still appear, as the show / movie itself.
+  const have = new Set(merged.flatMap((m) => [m.ratingKey, m.grandparentRatingKey ?? '']))
+  const extras = (await Promise.all(Object.keys(pins).filter((k) => !have.has(k)).sort((x, y) => pins[y] - pins[x]).map((k) => getMetadata(server, k).catch(() => null)))).filter((m): m is PlexMedia => !!m)
+  // Your latest movie and your latest show/episode lead; pinned titles come next, then everything else (in progress first).
+  const latest = (pick: (m: PlexMedia) => boolean) => recent.filter((m) => pick(m) && m.lastViewedAt).sort((x, y) => (y.lastViewedAt ?? 0) - (x.lastViewedAt ?? 0))[0]
+  const lead = [latest((m) => m.type === 'movie'), latest((m) => m.type !== 'movie')].filter((m): m is PlexMedia => !!m).sort((x, y) => (y.lastViewedAt ?? 0) - (x.lastViewedAt ?? 0))
+  const led = new Set(lead.map((m) => m.ratingKey))
+  const rest = recent.filter((m) => !led.has(m.ratingKey) && !isPinned(m))
+  return [...lead, ...merged.filter((m) => isPinned(m) && !led.has(m.ratingKey)), ...extras, ...rest.filter((m) => m.viewOffset), ...rest.filter((m) => !m.viewOffset)]
 }
 
 export function layoutFor(tab: Tab, settings: Settings, plexHubs: HomeRowCfg[], season: Season): HomeRowCfg[] {
