@@ -8,6 +8,12 @@ let focusedKey: string | null = null
 const subs = new Set<() => void>()
 const notify = () => subs.forEach((f) => f())
 
+const isEditable = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || (t instanceof HTMLElement && t.isContentEditable)
+let typing = false
+function setTyping(v: boolean) { if (v !== typing) { typing = v; notify() } }
+/** True while a text field has the cursor (search box, settings fields). */
+export function useTyping(): boolean { return useSyncExternalStore(subscribe, () => typing) }
+
 function setMode(next: InputMode) {
   if (next === mode) return
   mode = next
@@ -23,7 +29,10 @@ export function setFocusedKey(key: string | null) {
 
 if (typeof window !== 'undefined') {
   document.documentElement.dataset.input = mode
-  window.addEventListener('keydown', () => setMode('key'), true)
+  // Typing into a text field isn't navigation: only arrows, Enter, Escape etc. switch to remote/keyboard mode there.
+  window.addEventListener('keydown', (e) => { if (isEditable(e.target) && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete')) return; setMode('key') }, true)
+  window.addEventListener('focusin', (e) => setTyping(isEditable(e.target)), true)
+  window.addEventListener('focusout', () => setTyping(false), true)
   window.addEventListener('pointerdown', () => setMode('mouse'), true)
   let lastX = 0, lastY = 0
   window.addEventListener('mousemove', (e) => {

@@ -4,6 +4,8 @@ import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { planPlayback, type PlaybackPlan } from '../lib/playback'
 import { DEMO_URI, directPlayUrl, type PlexMedia, type PlexServer } from '../lib/plex'
+import { levelingAf } from '../lib/leveling'
+import { useSettings } from '../lib/settings'
 import { mpvCmd, mpvSet, nativeStart, onMpv, setNativeVideoActive } from '../lib/native'
 import type { Segment } from '../lib/clips'
 
@@ -34,6 +36,7 @@ function Bars({ segments, cur, t, done }: { segments: Segment[]; cur: number; t:
 }
 
 function NativeClip({ server, media, segments, heading, subheading, onClose, onFail }: Props & { onFail: () => void }) {
+  const { settings } = useSettings()
   const [cur, setCur] = useState(0)
   const [t, setT] = useState(0)
   const [lifted, setLifted] = useState(false)    // black cover gone, video visible
@@ -81,6 +84,7 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
     }).then((u) => { if (dead) u(); else off = u })
     // Clips always start at full volume, unmuted, whatever the last video left behind.
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
+    mpvSet('af', levelingAf(settings.leveling)).catch(() => {})   // clips follow your volume-leveling choice too
     // Load paused on the first frame; it plays as the black cover lifts.
     mpvCmd('loadfile', url, 'replace', '-1', `start=${segments[0]?.start ?? 0},pause=yes`).catch(onFail)
     const safety = window.setTimeout(reveal, 15_000)

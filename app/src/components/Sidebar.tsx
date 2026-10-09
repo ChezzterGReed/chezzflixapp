@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Film, Home, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
-import { useInputMode } from '../lib/input'
+import { useInputMode, useTyping } from '../lib/input'
 import { useSeason } from '../lib/settings'
 import { Pumpkin } from './Pumpkin'
 import { Avatar } from './Avatar'
@@ -40,11 +40,12 @@ interface Props {
 
 export function Sidebar({ sections, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile }: Props) {
   const mode = useInputMode()
+  const typing = useTyping()
   const season = useSeason()
   const [hover, setHover] = useState(false)
   const { ref, focusKey, hasFocusedChild } = useFocusable({ focusKey: 'SIDEBAR', trackChildren: true, saveLastFocusedChild: true })
   // With a mouse, the rail follows the pointer; with a remote/keyboard it follows focus. (Fixes it staying open after you click away.)
-  const open = hover || (hasFocusedChild && mode === 'key')
+  const open = hover || (hasFocusedChild && mode === 'key' && !typing)
   const isLib = (k: string) => view.type === 'library' && view.section.key === k
 
   return (

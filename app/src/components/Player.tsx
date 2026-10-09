@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Captions, Check, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, AudioLines, Captions, Check, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, imageUrl, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
+import { LEVELING, levelingAf, nextLeveling } from '../lib/leveling'
 
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0
@@ -24,7 +25,8 @@ const IRIS_MS = 950   // the exit: the app grows back over the video
 const BEAT_MS = 900   // time held in black while the video loads
 
 export function Player({ server, media, onClose: finishClose, onPlayNext }: Props) {
-  const { settings } = useSettings()
+  const { settings, update } = useSettings()
+  const [levelNote, setLevelNote] = useState<string>()
   const video = useRef<HTMLVideoElement>(null)
   const hls = useRef<{ destroy: () => void } | null>(null)
   const timeRef = useRef(0)
@@ -128,8 +130,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     setError(undefined); setBuffering(true)
     // Load paused: the first frame is decoded behind the black cover, and playback starts as the cover lifts.
     mpvSet('video-zoom', 0).catch(() => {}); mpvSet('brightness', 0).catch(() => {})
+    mpvSet('af', levelingAf(settings.leveling)).catch(() => {})
     try { await mpvCmd('loadfile', url, 'replace', '-1', `start=${startAt > 1 ? startAt : 0},pause=yes`) } catch (e) { setError(String(e)) }
-  }, [server, media])
+  }, [server, media, settings.leveling])
 
   useEffect(() => {
     if (mode === 'pending') return
@@ -289,6 +292,16 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     else { await document.documentElement.requestFullscreen().catch(() => {}); setFullscreen(true) }
   }, [])
 
+  // Switch volume leveling while watching (Off -> Balanced -> Night) and say which one is on.
+  const cycleLeveling = useCallback(() => {
+    const nextL = nextLeveling(settings.leveling)
+    update({ leveling: nextL })
+    if (mode === 'native') mpvSet('af', levelingAf(nextL)).catch(() => {})
+    setLevelNote(`Volume leveling: ${LEVELING.find((l) => l.id === nextL)!.label}`)
+    poke()
+  }, [settings.leveling, update, mode, poke])
+  useEffect(() => { if (!levelNote) return; const t = setTimeout(() => setLevelNote(undefined), 2200); return () => clearTimeout(t) }, [levelNote])
+
   const showNext = !!next && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
   endedRef.current = () => (next && settings.autoplayNext ? goNext() : close())
@@ -338,6 +351,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         case 'ArrowUp': if (controls) setPanel({ col: 0, idx: Math.max(0, audio.findIndex((s) => s.id === activeAudio)) }); else poke(); break
         case 'ArrowDown': poke(); break
         case 'm': setMuted((x) => !x); break
+        case 'v': if (mode === 'native') cycleLeveling(); break
         case 'f': toggleFullscreen(); break
         case 'n': if (next) goNext(); break
         case 'c': case 's': setPanel({ col: 1, idx: 0 }); break
@@ -379,6 +393,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
             <button onClick={close} className="rounded-full bg-white px-6 py-2.5 font-bold text-black">Back</button></div>
         </div>
       )}
+
+      {levelNote && <div className="pop pointer-events-none absolute left-1/2 top-24 z-40 -translate-x-1/2 rounded-full bg-black/70 px-5 py-2.5 text-sm font-semibold backdrop-blur">{levelNote}</div>}
 
       {/* Skip intro */}
       {inIntro && !settings.autoSkipIntro && intro && (
@@ -422,6 +438,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
             </div>
             <div className="flex-1" />
             {next && <Ctl label="Next episode" onClick={goNext}><SkipForward size={24} /></Ctl>}
+            {mode === 'native' && <Ctl label={`Volume leveling (${settings.leveling})`} onClick={cycleLeveling}><span className="relative grid place-items-center"><AudioLines size={24} />{settings.leveling !== 'off' && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>}
             <Ctl label="Audio & subtitles" onClick={() => setPanel(panel ? null : { col: 0, idx: 0 })}><Captions size={26} /></Ctl>
             <Ctl label="Fullscreen" onClick={toggleFullscreen}>{fullscreen ? <Minimize size={24} /> : <Maximize size={24} />}</Ctl>
           </div>

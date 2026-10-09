@@ -18,8 +18,6 @@ function closeness(title: string, q: string): number {
   return t.includes(n) ? 2 : 1
 }
 
-type Entry = { kind: 'local'; m: PlexMedia; score: number; order: number } | { kind: 'remote'; r: RequestItem; score: number; order: number }
-
 export function Search({ server, token, sections, onOpen }: { server: PlexServer; token: string; sections: PlexSection[]; onOpen: (m: PlexMedia) => void }) {
   const { settings } = useSettings()
   const canRequest = settings.requests && !!settings.tmdbKey && !!settings.overseerrUrl
@@ -46,11 +44,12 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
   }, [q, server, sections, canRequest, settings.tmdbKey])
 
   const term = q.trim()
-  const entries: Entry[] = [
-    ...(local ?? []).map((m, order): Entry => ({ kind: 'local', m, score: closeness(m.title, term) + 0.2, order })),   // your own library wins ties
-    ...remote.map((r, order): Entry => ({ kind: 'remote', r, score: closeness(r.title, term), order })),
-  ].sort((a, b) => b.score - a.score || a.order - b.order)
+  // Two lists: what you can watch right now, then what you could request. Each is ordered by how close the title is to what was typed.
+  const rank = <T,>(list: T[], title: (x: T) => string) => list.map((x, i) => ({ x, i, c: closeness(title(x), term) })).sort((p, r) => r.c - p.c || p.i - r.i).map((e) => e.x)
+  const available = rank(local ?? [], (m) => m.title)
+  const requestable = rank(remote, (r) => r.title)
   const scroll = (el: HTMLElement) => el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const grid = 'fade-in grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]'
 
   return (
     <div className="px-[var(--gutter)] pb-24 pt-14">
@@ -60,13 +59,23 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
           className="w-full border-b-2 border-white/15 bg-transparent py-4 pl-12 text-[2rem] font-bold tracking-tight outline-none transition-colors placeholder:text-white/25 focus:border-accent" />
       </div>
       {local === undefined && <p className="text-white/45">{canRequest ? 'Start typing to search your library and find titles to request.' : 'Start typing to search your libraries.'}</p>}
-      {local && entries.length === 0 && <p className="text-white/55">Nothing matches “{q}”. Check the spelling or try a shorter title.</p>}
-      {entries.length > 0 && (
-        <div className="fade-in grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
-          {entries.map((e) => e.kind === 'local'
-            ? <div key={e.m.ratingKey} className="[--card-w:100%]"><PosterCard m={e.m} server={server} onEnter={() => onOpen(e.m)} onFocus={scroll} /></div>
-            : <div key={`${e.r.type}:${e.r.tmdbId}`} className="[--card-w:100%]"><RequestCard item={e.r} onEnter={() => setRequesting(e.r)} onFocus={scroll} /></div>)}
-        </div>
+      {local && available.length === 0 && requestable.length === 0 && <p className="text-white/55">Nothing matches “{q}”. Check the spelling or try a shorter title.</p>}
+      {available.length > 0 && (
+        <section>
+          <h2 className="mb-5 text-[1.3rem] font-bold tracking-tight">Available to watch</h2>
+          <div className={grid}>
+            {available.map((m) => <div key={m.ratingKey} className="[--card-w:100%]"><PosterCard m={m} server={server} onEnter={() => onOpen(m)} onFocus={scroll} /></div>)}
+          </div>
+        </section>
+      )}
+      {requestable.length > 0 && (
+        <section className={available.length > 0 ? 'mt-14' : ''}>
+          <h2 className="text-[1.3rem] font-bold tracking-tight">Request something</h2>
+          <p className="mb-5 mt-1 text-sm text-white/50">{available.length === 0 && local ? `Nothing in your library matches “${q}”, but you can request it.` : 'Not in your library yet. Request it and it will be added.'}</p>
+          <div className={grid}>
+            {requestable.map((r) => <div key={`${r.type}:${r.tmdbId}`} className="[--card-w:100%]"><RequestCard item={r} onEnter={() => setRequesting(r)} onFocus={scroll} /></div>)}
+          </div>
+        </section>
       )}
       {requesting && <RequestDetail item={requesting} base={normalizeBase(settings.overseerrUrl)} plexToken={token} tmdbKey={settings.tmdbKey} onClose={() => setRequesting(undefined)} />}
     </div>
