@@ -229,7 +229,7 @@ impl Native {
         if r < 0 { Err(format!("set {name}: {}", err_text(r))) } else { Ok(()) }
     }
 
-    fn get(&self, name: &str) -> Option<String> {
+    pub fn get(&self, name: &str) -> Option<String> {
         unsafe {
             let p = mpv_get_property_string(self.mpv.get(), cstr(name).as_ptr());
             if p.is_null() { return None; }

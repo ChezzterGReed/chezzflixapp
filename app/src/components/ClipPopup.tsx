@@ -4,7 +4,7 @@ import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { planPlayback, type PlaybackPlan } from '../lib/playback'
 import { DEMO_URI, directPlayUrl, type PlexMedia, type PlexServer } from '../lib/plex'
-import { levelingAf } from '../lib/leveling'
+import { clipAf } from '../lib/leveling'
 import { useSettings } from '../lib/settings'
 import { mpvCmd, mpvSet, nativeStart, onMpv, setNativeVideoActive } from '../lib/native'
 import type { Segment } from '../lib/clips'
@@ -84,7 +84,7 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
     }).then((u) => { if (dead) u(); else off = u })
     // Clips always start at full volume, unmuted, whatever the last video left behind.
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
-    mpvSet('af', levelingAf(settings.leveling)).catch(() => {})   // clips follow your volume-leveling choice too
+    mpvSet('af', clipAf(media, settings.autoLevel)).catch(() => {})   // clips get this title's remembered boost too
     // Load paused on the first frame; it plays as the black cover lifts.
     mpvCmd('loadfile', url, 'replace', '-1', `start=${segments[0]?.start ?? 0},pause=yes`).catch(onFail)
     const safety = window.setTimeout(reveal, 15_000)

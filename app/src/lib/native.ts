@@ -13,6 +13,7 @@ export async function nativeStart(): Promise<boolean> {
 }
 export async function mpvCmd(...args: (string | number)[]) { return (await core()).invoke('mpv_cmd', { args: args.map(String) }) }
 export async function mpvSet(name: string, value: string | number | boolean) { return (await core()).invoke('mpv_set', { name, value: typeof value === 'boolean' ? (value ? 'yes' : 'no') : String(value) }) }
+export async function mpvGet(name: string) { return (await core()).invoke<string | null>('mpv_get', { name }) }
 export async function mpvTracks() { return (await core()).invoke<MpvTrack[]>('mpv_tracks') }
 
 export async function onMpv(onProp: (p: MpvProp) => void, onEvent: (e: { event: string; reason?: number; error?: number; message?: string }) => void) {

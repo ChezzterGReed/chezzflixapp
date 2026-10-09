@@ -1,4 +1,3 @@
-import type { Leveling } from './leveling'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 export const ACCENTS: { name: string; value: string }[] = [
@@ -43,8 +42,10 @@ export interface Settings {
   /** Libraries (by key) that list a collection as one tile instead of every title in it. */
   collapseCollections: Record<string, boolean>
   player: 'app' | 'mpv'
-  /** Evens out loud and quiet titles (desktop player). */
-  leveling: Leveling
+  /** Measures each title and holds one steady volume boost, so quiet movies don't need the TV turned way up (desktop player). */
+  autoLevel: boolean
+  /** Lifts the center (dialogue) channel of surround audio (desktop player). */
+  dialogueBoost: boolean
   autoplayNext: boolean
   autoSkipIntro: boolean
 }
@@ -52,7 +53,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', leveling: 'off', autoplayNext: true, autoSkipIntro: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, autoSkipIntro: false,
 }
 
 export const PUMPKIN = '#ff7a1a'

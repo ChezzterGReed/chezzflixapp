@@ -128,6 +128,14 @@ async fn mpv_set(name: String, value: String, state: State<'_, NativeState>) -> 
 }
 
 #[tauri::command]
+async fn mpv_get(name: String, state: State<'_, NativeState>) -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    { return Ok(state.0.lock().unwrap().as_ref().ok_or("player not started")?.get(&name)); }
+    #[allow(unreachable_code)]
+    { let _ = (&name, &state); Err("unavailable".into()) }
+}
+
+#[tauri::command]
 async fn mpv_tracks(state: State<'_, NativeState>) -> Result<Value, String> {
     #[cfg(target_os = "macos")]
     { return Ok(state.0.lock().unwrap().as_ref().ok_or("player not started")?.tracks()); }
@@ -152,7 +160,7 @@ pub fn run() {
         .manage(Player::default())
         .manage(NativeState::default())
         .manage(net::NetState::default())
-        .invoke_handler(tauri::generate_handler![play, stop, mpv_start, mpv_cmd, mpv_set, mpv_tracks, net::requests_http])
+        .invoke_handler(tauri::generate_handler![play, stop, mpv_start, mpv_cmd, mpv_set, mpv_get, mpv_tracks, net::requests_http])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }

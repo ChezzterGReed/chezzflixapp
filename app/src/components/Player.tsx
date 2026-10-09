@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, AudioLines, Captions, Check, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, AudioLines, Captions, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
-import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, imageUrl, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
+import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
-import { LEVELING, levelingAf, nextLeveling } from '../lib/leveling'
+import { BOOST_STEPS, boostLabel, useLevelEngine } from '../lib/leveling'
 
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0
@@ -26,7 +26,8 @@ const BEAT_MS = 900   // time held in black while the video loads
 
 export function Player({ server, media, onClose: finishClose, onPlayNext }: Props) {
   const { settings, update } = useSettings()
-  const [levelNote, setLevelNote] = useState<string>()
+  const [levelPanel, setLevelPanel] = useState<number | null>(null)   // row highlighted in the volume menu (null = closed)
+  const [loadedTick, setLoadedTick] = useState(0)
   const video = useRef<HTMLVideoElement>(null)
   const hls = useRef<{ destroy: () => void } | null>(null)
   const timeRef = useRef(0)
@@ -130,9 +131,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     setError(undefined); setBuffering(true)
     // Load paused: the first frame is decoded behind the black cover, and playback starts as the cover lifts.
     mpvSet('video-zoom', 0).catch(() => {}); mpvSet('brightness', 0).catch(() => {})
-    mpvSet('af', levelingAf(settings.leveling)).catch(() => {})
+    mpvSet('af', '').catch(() => {})   // clean slate; the volume engine installs its filters once the file has loaded
     try { await mpvCmd('loadfile', url, 'replace', '-1', `start=${startAt > 1 ? startAt : 0},pause=yes`) } catch (e) { setError(String(e)) }
-  }, [server, media, settings.leveling])
+  }, [server, media])
 
   useEffect(() => {
     if (mode === 'pending') return
@@ -164,7 +165,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
       }
     }, (e) => {
       if (e.event === 'loaded') {
-        setBuffering(false); setReady(true); refreshTracks()
+        setBuffering(false); setReady(true); refreshTracks(); setLoadedTick((n) => n + 1)
         // Sidecar subtitles Plex knows about (embedded ones are already in mpv's track list).
         plexSubs.filter((s) => s.key).forEach((s) => mpvCmd('sub-add', `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, 'auto').catch(() => {}))
         setTimeout(refreshTracks, 800)
@@ -270,7 +271,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
 
   // ----- keep spatial-nav out of the way; the player owns the keys -----
   useEffect(() => { pauseNav(); return () => resumeNav() }, [])
-  useBack(() => { if (panel) setPanel(null); else close() })
+  useBack(() => { if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else close() })
   useEffect(() => { poke(); return () => clearTimeout(idle.current) }, [poke])
 
   const seek = useCallback((t: number) => {
@@ -292,15 +293,15 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     else { await document.documentElement.requestFullscreen().catch(() => {}); setFullscreen(true) }
   }, [])
 
-  // Switch volume leveling while watching (Off -> Balanced -> Night) and say which one is on.
-  const cycleLeveling = useCallback(() => {
-    const nextL = nextLeveling(settings.leveling)
-    update({ leveling: nextL })
-    if (mode === 'native') mpvSet('af', levelingAf(nextL)).catch(() => {})
-    setLevelNote(`Volume leveling: ${LEVELING.find((l) => l.id === nextL)!.label}`)
-    poke()
-  }, [settings.leveling, update, mode, poke])
-  useEffect(() => { if (!levelNote) return; const t = setTimeout(() => setLevelNote(undefined), 2200); return () => clearTimeout(t) }, [levelNote])
+  // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
+  const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost })
+  const stepBoost = (d: 1 | -1) => level.setBoost(BOOST_STEPS[(BOOST_STEPS.findIndex((b) => b === level.boost) + d + BOOST_STEPS.length) % BOOST_STEPS.length])
+  const levelRows = [
+    { label: 'Auto leveling', value: settings.autoLevel ? 'On' : 'Off', hint: 'Measures the title, holds one steady boost', act: () => update({ autoLevel: !settings.autoLevel }) },
+    { label: 'Dialogue boost', value: settings.dialogueBoost ? 'On' : 'Off', hint: 'Lifts voices in surround audio', act: () => update({ dialogueBoost: !settings.dialogueBoost }) },
+    { label: 'Boost', value: level.boost === 'auto' ? (settings.autoLevel && level.gain ? `Auto · ${level.gain > 0 ? '+' : ''}${level.gain.toFixed(0)} dB` : 'Auto') : boostLabel(level.boost), hint: 'Set it yourself, or turn it off', act: () => stepBoost(1) },
+  ]
+  const levelActive = settings.autoLevel || settings.dialogueBoost || (level.boost !== 'auto' && level.boost !== 'off')
 
   const showNext = !!next && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
@@ -315,9 +316,20 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   }, [showNext, settings.autoplayNext])
   useEffect(() => { if (countdown !== null && countdown <= 0) goNext() }, [countdown, goNext])
 
+  // Skip credits (when there's no next episode to hand over to: movies and series finales)
+  const inCredits = !!credits && duration > 0 && time >= credits.startTimeOffset / 1000 && time < credits.endTimeOffset / 1000
+  const skipCredits = useCallback(() => {
+    if (!credits) return
+    const end = credits.endTimeOffset / 1000
+    if (!duration || end >= duration - 5) close(); else seek(end)
+  }, [credits, duration, close, seek])
+  const showSkipCredits = inCredits && !next
   // Skip intro
   const inIntro = !!intro && time >= intro.startTimeOffset / 1000 && time < intro.endTimeOffset / 1000
   useEffect(() => { if (inIntro && settings.autoSkipIntro && intro) seek(intro.endTimeOffset / 1000) }, [inIntro, settings.autoSkipIntro, intro, seek])
+  const showSkipIntro = inIntro && !settings.autoSkipIntro && !!intro
+  // What OK/Enter does when an on-screen button is showing (otherwise it pauses): Skip intro, Skip credits, or Play now on Up Next.
+  const primary: (() => void) | null = showSkipIntro ? () => seek(intro!.endTimeOffset / 1000) : showSkipCredits ? skipCredits : showNext && next ? goNext : null
 
   // ----- tracks -----
   const choose = (col: 0 | 1, idx: number) => {
@@ -344,14 +356,25 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         else return
         e.preventDefault(); e.stopPropagation(); return
       }
+      if (levelPanel !== null) {
+        if (e.key === 'ArrowDown') setLevelPanel(Math.min(levelRows.length - 1, levelPanel + 1))
+        else if (e.key === 'ArrowUp') setLevelPanel(Math.max(0, levelPanel - 1))
+        else if (e.key === 'ArrowRight' && levelPanel === 2) stepBoost(1)
+        else if (e.key === 'ArrowLeft' && levelPanel === 2) stepBoost(-1)
+        else if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') levelRows[levelPanel].act()
+        else if (e.key === 'v') setLevelPanel(null)
+        else return
+        e.preventDefault(); e.stopPropagation(); poke(); return
+      }
       switch (e.key) {
-        case ' ': case 'k': case 'Enter': case 'MediaPlayPause': toggle(); break
+        case 'Enter': if (primary) primary(); else toggle(); break
+        case ' ': case 'k': case 'MediaPlayPause': toggle(); break
         case 'ArrowLeft': case 'j': seek(timeRef.current - 10); break
         case 'ArrowRight': case 'l': seek(timeRef.current + 10); break
         case 'ArrowUp': if (controls) setPanel({ col: 0, idx: Math.max(0, audio.findIndex((s) => s.id === activeAudio)) }); else poke(); break
-        case 'ArrowDown': poke(); break
+        case 'ArrowDown': if (showNext && countdown !== null) setCountdown(null); else poke(); break
         case 'm': setMuted((x) => !x); break
-        case 'v': if (mode === 'native') cycleLeveling(); break
+        case 'v': if (mode === 'native' || location.search.includes('levels')) { setLevelPanel(0); poke() } break
         case 'f': toggleFullscreen(); break
         case 'n': if (next) goNext(); break
         case 'c': case 's': setPanel({ col: 1, idx: 0 }); break
@@ -397,29 +420,41 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         </div>
       )}
 
-      {levelNote && <div className="pop pointer-events-none absolute left-1/2 top-24 z-40 -translate-x-1/2 rounded-full bg-black/70 px-5 py-2.5 text-sm font-semibold backdrop-blur">{levelNote}</div>}
+      {/* Paused: the picture dims and says so */}
+      <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black/55 transition-opacity duration-300 ${paused && lifted && !closing && !error ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="flex flex-col items-center gap-3">
+          <span className="grid size-24 place-items-center rounded-full bg-white/15 ring-1 ring-white/25 backdrop-blur"><Pause size={44} fill="currentColor" /></span>
+          <span className="text-sm font-bold uppercase tracking-[0.3em] text-white/70">Paused</span>
+        </div>
+      </div>
 
-      {/* Skip intro */}
-      {inIntro && !settings.autoSkipIntro && intro && (
-        <button onClick={() => seek(intro.endTimeOffset / 1000)} className="fade-in absolute bottom-40 left-12 rounded-lg bg-white/90 px-6 py-3 font-bold text-black shadow-2xl backdrop-blur transition hover:bg-white">Skip intro</button>
+      {/* On-screen actions sit above the control bar and answer to the mouse and to OK/Enter */}
+      {showSkipIntro && (
+        <button onClick={() => seek(intro!.endTimeOffset / 1000)} className="fade-in absolute bottom-60 right-12 z-[25] inline-flex items-center gap-2.5 rounded-xl bg-white px-7 py-3.5 text-[1.05rem] font-bold text-black shadow-2xl ring-4 ring-white/30 transition hover:scale-105 hover:ring-accent active:scale-95">
+          <FastForward size={20} fill="currentColor" />Skip intro
+        </button>
+      )}
+      {showSkipCredits && (
+        <button onClick={skipCredits} className="fade-in absolute bottom-60 right-12 z-[25] inline-flex items-center gap-2.5 rounded-xl bg-white px-7 py-3.5 text-[1.05rem] font-bold text-black shadow-2xl ring-4 ring-white/30 transition hover:scale-105 hover:ring-accent active:scale-95">
+          <FastForward size={20} fill="currentColor" />Skip credits
+        </button>
       )}
 
-      {/* Up next */}
       {showNext && next && (
-        <div data-nopause className="pop absolute bottom-40 right-12 w-80 overflow-hidden rounded-2xl bg-[#17171c]/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
-          <div className="relative aspect-video"><img src={imageUrl(server, next.thumb, 640, 360)} alt="" className="size-full object-cover" />
+        <div data-nopause className="pop absolute bottom-60 right-12 z-[25] w-80 overflow-hidden rounded-2xl bg-[#17171c]/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+          <div className="relative aspect-video overflow-hidden"><img src={imageUrl(server, next.thumb, 640, 360)} alt="" className={`size-full object-cover transition-all duration-500 ${settings.hideSpoilers && isSpoilerRisk(next) ? 'scale-125 blur-2xl brightness-75' : ''}`} />
             <div className="absolute inset-0 bg-linear-to-t from-black/80 to-transparent" />
             <div className="absolute bottom-3 left-4 right-4"><div className="text-xs font-bold uppercase tracking-widest text-white/60">Up next{countdown !== null ? ` · ${Math.max(0, countdown)}s` : ''}</div>
               <div className="truncate font-bold">{episodeLabel(next)} · {next.title}</div></div></div>
           <div className="flex gap-2 p-3">
-            <button onClick={goNext} className="flex-1 rounded-full bg-white py-2 text-sm font-bold text-black">Play now</button>
-            <button onClick={() => setCountdown(null)} className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold">Stay</button>
+            <button onClick={goNext} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-2.5 text-sm font-bold text-black ring-2 ring-white/40 transition hover:scale-[1.04] hover:bg-accent hover:ring-accent active:scale-95"><Play size={15} fill="currentColor" />Play now</button>
+            <button onClick={() => setCountdown(null)} className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/25 active:scale-95">Stay</button>
           </div>
         </div>
       )}
 
       {/* Chrome */}
-      <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+      <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel || levelPanel !== null) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
         <div data-nopause className="absolute inset-x-0 top-0 flex items-start gap-4 bg-linear-to-b from-black/80 to-transparent px-8 pb-16 pt-6">
           <button onClick={close} aria-label="Back" className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/25"><ArrowLeft size={22} /></button>
           <div className="min-w-0 flex-1 pt-0.5"><div className="truncate text-xl font-bold">{title}</div><div className="truncate text-sm text-white/65">{subtitle}</div></div>
@@ -441,11 +476,24 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
             </div>
             <div className="flex-1" />
             {next && <Ctl label="Next episode" onClick={goNext}><SkipForward size={24} /></Ctl>}
-            {mode === 'native' && <Ctl label={`Volume leveling (${settings.leveling})`} onClick={cycleLeveling}><span className="relative grid place-items-center"><AudioLines size={24} />{settings.leveling !== 'off' && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>}
+            {(mode === 'native' || location.search.includes('levels')) && <Ctl label="Volume boost" onClick={() => setLevelPanel(levelPanel === null ? 0 : null)}><span className="relative grid place-items-center"><AudioLines size={24} />{levelActive && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>}
             <Ctl label="Audio & subtitles" onClick={() => setPanel(panel ? null : { col: 0, idx: 0 })}><Captions size={26} /></Ctl>
             <Ctl label="Fullscreen" onClick={toggleFullscreen}>{fullscreen ? <Minimize size={24} /> : <Maximize size={24} />}</Ctl>
           </div>
         </div>
+
+        {levelPanel !== null && (
+          <div data-nopause className="pop absolute bottom-32 right-24 w-[22rem] rounded-2xl bg-[#17171c]/95 p-2.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+            <div className="px-3 pb-1 pt-1.5 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Volume boost</div>
+            {levelRows.map((r, i) => (
+              <button key={r.label} onClick={() => { setLevelPanel(i); r.act() }} onMouseEnter={() => setLevelPanel(i)}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${levelPanel === i ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{r.label}</span><span className={`block truncate text-xs ${levelPanel === i ? 'text-black/55' : 'text-white/45'}`}>{r.hint}</span></span>
+                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${levelPanel === i ? 'bg-black/10' : 'bg-white/10'} ${r.value === 'On' ? 'text-accent' : ''}`}>{r.value}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {panel && (
           <div data-nopause className="pop absolute bottom-32 right-8 flex w-[520px] max-w-[92vw] gap-1 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">

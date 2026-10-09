@@ -9,7 +9,6 @@ import { listPlexHubs, mergeRows, rowCatalog } from '../lib/homeData'
 import { inTauri } from '../lib/player'
 import { trendingIds } from '../lib/tmdb'
 import { Pumpkin } from './Pumpkin'
-import { LEVELING } from '../lib/leveling'
 import { checkForUpdate, installUpdate, useUpdater } from '../lib/updater'
 import { normalizeBase, testConnection } from '../lib/overseerr'
 
@@ -110,11 +109,10 @@ function Playback() {
       </div>
       <p className="px-4 pb-2 text-sm text-white/55">{inTauri ? 'In the desktop app, the built-in mpv engine plays your original files inside the window — MKV, DTS, TrueHD and image subtitles included — with no transcoding.' : 'In a browser, the player direct-plays what it can and falls back to Direct Stream or Transcoding, and says which in the corner.'} {inTauri ? 'The external option opens mpv in its own window instead.' : ''}</p>
       {inTauri && <>
-        <Heading>Volume leveling</Heading>
-        <div className="flex gap-2 px-4 py-2">
-          {LEVELING.map((l) => <Pill key={l.id} active={settings.leveling === l.id} onEnter={() => update({ leveling: l.id })}>{l.label}</Pill>)}
-        </div>
-        <p className="px-4 pb-2 text-sm text-white/55">{LEVELING.find((l) => l.id === settings.leveling)?.hint}. Handy for quiet movies that need the TV turned way up. You can also switch it while watching, from the player controls.</p>
+        <Heading>Volume</Heading>
+        <Toggle label="Auto volume leveling" hint="Measures how loud each title is and applies one steady boost to all of it, so quiet movies don't need the TV turned way up. Remembered per movie and show." on={settings.autoLevel} onChange={(v) => update({ autoLevel: v })} />
+        <Toggle label="Dialogue boost for surround" hint="On 5.1 and 7.1 audio, lifts the center channel where dialogue lives, so voices stand out from effects." on={settings.dialogueBoost} onChange={(v) => update({ dialogueBoost: v })} />
+        <p className="px-4 pb-2 text-sm text-white/55">Both can be switched on or off while watching, and you can set the boost amount yourself, from the player's volume button.</p>
       </>}
       <Heading>Episodes</Heading>
       <Toggle label="Autoplay next episode" hint="Continue to the next episode after a short countdown" on={settings.autoplayNext} onChange={(v) => update({ autoplayNext: v })} />
