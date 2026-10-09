@@ -1,0 +1,16 @@
+# dependencies / build output
+node_modules/
+dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+native-deps/work/
+native-deps/out/
+# release artifacts live on GitHub Releases, not in git
+releases/
+# secrets and OS junk
+*.key
+.env
+.env.*
+.DS_Store
+*.log
+.claude/

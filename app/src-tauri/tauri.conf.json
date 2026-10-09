@@ -1,0 +1,70 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Chezzflix",
+  "version": "0.1.1",
+  "identifier": "app.chezzflix.client",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Chezzflix",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "minWidth": 720,
+        "minHeight": 480,
+        "transparent": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    },
+    "category": "Video",
+    "shortDescription": "A custom Plex client with direct-play video.",
+    "copyright": "Chezzflix",
+    "resources": {
+      "../../native-deps/licenses": "licenses"
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "frameworks": [
+        "../../native-deps/out/universal/lib/libmpv.2.dylib"
+      ],
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY2QTg2MDYyMDhDMTg1MzcKUldRM2hjRUlZbUNvOXF5aGVmczk0blhiUlRvMmNRMUpGMC9iOXQ2LzloYXEyOCtwMGFyRFNHRVUK",
+      "endpoints": [
+        "https://github.com/ChezzterGReed/chezzflixapp/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
