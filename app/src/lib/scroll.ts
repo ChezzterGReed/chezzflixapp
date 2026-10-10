@@ -87,7 +87,12 @@ export function edgeSnap(el: HTMLElement) {
   if (max <= 1) return
   const r = el.getBoundingClientRect()
   const box = isRoot(s) ? { top: 0, h: window.innerHeight } : (() => { const b = (s as Element).getBoundingClientRect(); return { top: b.top, h: b.height } })()
-  const absTop = r.top - box.top + cur, absBot = absTop + r.height, M = 24
-  if (cur > 1 && absBot <= box.h - M) scrollTo(s, 'y', 0)
-  else if (cur < max - 1 && absTop - max >= M) scrollTo(s, 'y', max)
+  // Measured from the item's centre and its layout height: a focused card is scaled up for a moment, which would otherwise make the
+  // answer flip for neighbours in the same row.
+  const half = (el.offsetHeight || r.height) / 2, mid = (r.top + r.bottom) / 2 - box.top + cur
+  const absTop = mid - half, absBot = mid + half, M = 32
+  // Decide by position alone, and always say so (even when already there): the item's own reveal may have just started scrolling somewhere
+  // else, and without this the page would swing between the two as you move along a row.
+  if (absBot <= box.h - M) scrollTo(s, 'y', 0)
+  else if (absTop - max >= M) scrollTo(s, 'y', max)
 }
