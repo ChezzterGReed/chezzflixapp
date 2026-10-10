@@ -5,9 +5,10 @@ import {
 import type { HomeRowCfg, HomeTab, Season, Settings } from './settings'
 import { trendingInLibrary } from './tmdb'
 import { shuffled } from './session'
+import { listsFor, matchList } from './seasonal'
 
 export type Tab = HomeTab
-export interface HomeRow { id: string; title: string; items: PlexMedia[]; continue?: boolean }
+export interface HomeRow { id: string; title: string; items: PlexMedia[]; continue?: boolean; /** A seasonal list: how many of its movies are on the server (shows "See all"). */ seasonal?: { id: string; total: number } }
 /** Why a tab might have less than expected (shown as a friendly note). */
 export type HomeNotice = { kind: 'tmdb-key' } | { kind: 'tmdb-error'; message: string } | { kind: 'tmdb-empty' }
 
@@ -205,16 +206,8 @@ async function continueItems(server: PlexServer, settings: Settings): Promise<Pl
 export function layoutFor(tab: Tab, settings: Settings, plexHubs: HomeRowCfg[], season: Season): HomeRowCfg[] {
   const saved = settings.homeRows[tab]
   let layout = mergeRows(saved, rowCatalog(tab, plexHubs, settings.genres))
-  // Spooky season: the Horror row becomes "Spooky Season" and (unless you've arranged things yourself) moves up under Continue Watching.
-  if (season === 'halloween') {
-    // Horror might not be among the picked genres; October brings it back.
-    if (!saved && (tab === 'all' || tab === 'movie') && !layout.some((r) => r.id === 'genre:Horror' && r.enabled)) layout = layout.map((r) => (r.id === 'genre:Horror' ? { ...r, enabled: true } : r))
-    layout = layout.map((r) => (r.id === 'genre:Horror' ? { ...r, title: 'Spooky Season' } : r))
-    if (!saved) {
-      const i = layout.findIndex((r) => r.id === 'genre:Horror')
-      if (i > 1) { const [h] = layout.splice(i, 1); layout.splice(1, 0, h) }
-    }
-  }
+  // Spooky season: Horror might not be among the picked genres; October brings its row back (the Spooky Season list row is added in loadRows).
+  if (season === 'halloween' && !saved && (tab === 'all' || tab === 'movie') && !layout.some((r) => r.id === 'genre:Horror' && r.enabled)) layout = layout.map((r) => (r.id === 'genre:Horror' ? { ...r, enabled: true } : r))
   return layout
 }
 
@@ -252,6 +245,16 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
     return items.length ? { id: cfg.id, title: cfg.title, items: items.slice(0, 30), continue: cont } : null
   }))
   const out = rows.filter((r): r is HomeRow => !!r)
+  // Seasonal lists (in season, on the movie-led tabs): the list's movies that this server has, right under Continue Watching.
+  if ((tab === 'all' || tab === 'movie') && season) {
+    for (const list of listsFor(season)) {
+      const have = await matchList(server, visible, list).catch(() => [] as PlexMedia[])
+      if (have.length < 3) continue
+      const row: HomeRow = { id: `seasonal:${list.id}`, title: list.title, items: shuffled(have, 9).slice(0, 30), seasonal: { id: list.id, total: have.length } }
+      const at = out.findIndex((r) => r.continue)
+      out.splice(at + 1, 0, row)
+    }
+  }
   if (tab === 'trending' && settings.tmdbKey && !notices.length && !out.some((r) => r.id.startsWith('builtin:tmdb'))) notices.push({ kind: 'tmdb-empty' })
   return { rows: out, notices }
 }

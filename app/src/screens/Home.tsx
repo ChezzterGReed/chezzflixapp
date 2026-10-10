@@ -11,12 +11,12 @@ import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
 import { useSeason, useSettings } from '../lib/settings'
 
-interface Props { server: PlexServer; sections: PlexSection[]; refreshKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onOpenSettings: () => void }
+interface Props { server: PlexServer; sections: PlexSection[]; refreshKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenSettings: () => void }
 
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'foryou', label: 'For You' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
 const TAB_KEY = 'chezzflix_home_tab'
 
-export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, onOpenSettings }: Props) {
+export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenSettings }: Props) {
   const { settings } = useSettings()
   const season = useSeason()
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(TAB_KEY) as Tab) || 'all')
@@ -101,7 +101,8 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
   // Home shows the first couple of personalized rows under Continue Watching; the For You tab shows them all.
   const shownRecs = wantsRecs ? recRows.slice(0, activeTab === 'foryou' ? 12 : 2) : []
   const ci = (rows ?? []).findIndex((r) => r.continue)
-  const merged: (HomeRow & { subtitle?: string; recs?: boolean })[] = rows ? [...rows.slice(0, ci + 1), ...shownRecs.map((r) => ({ ...r, recs: true })), ...rows.slice(ci + 1)] : []
+  const after = ci + 1 + ((rows ?? [])[ci + 1]?.seasonal ? 1 : 0)   // a seasonal list sits right under Continue Watching, ahead of the recommendations
+  const merged: (HomeRow & { subtitle?: string; recs?: boolean })[] = rows ? [...rows.slice(0, after), ...shownRecs.map((r) => ({ ...r, recs: true })), ...rows.slice(after)] : []
 
   if (error) return <div className="grid h-screen place-items-center px-8 text-center text-white/70">Couldn't load your library.<br />{error}</div>
 
@@ -127,7 +128,7 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
           ? <><RowSkeleton landscape /><RowSkeleton /><RowSkeleton /></>
           : <>
               {merged.length === 0 && recsReady && <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>}
-              {merged.map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onSelect={(m) => r.continue ? onPlay(m) : onOpen(m)} />)}
+              {merged.map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? onPlay(m) : onOpen(m)} />)}
               {wantsRecs && !recsReady && (activeTab === 'foryou' || shownRecs.length === 0) && <RowSkeleton />}
               {activeTab === 'foryou' && recsReady && recRows.length === 0 && (
                 <div className="mx-[var(--gutter)] mb-8 max-w-3xl rounded-2xl bg-white/6 p-6 ring-1 ring-white/10">

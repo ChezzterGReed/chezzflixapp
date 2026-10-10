@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, TriangleAlert } from 'lucide-react'
 import { Layer } from './Layer'
+import { Pumpkin } from './Pumpkin'
 import { Focusable } from './Focusable'
 import { DEMO_URI, directPlayUrl, getMetadata, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
@@ -156,7 +157,7 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
         {/* Banner: channel, title, episode */}
         <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 via-black/50 to-transparent px-12 pb-10 pt-28 transition-opacity duration-500 ${banner && status !== 'tuning' || (status === 'tuning' && banner) ? 'opacity-100' : 'opacity-0'}`}>
           <div className="flex items-end gap-6">
-            <div className="grid min-w-[5.5rem] place-items-center rounded-2xl bg-white/15 px-4 py-3 text-center"><div className="text-3xl font-extrabold leading-none tabular-nums">{ch.number}</div></div>
+            <div className="grid min-w-[5.5rem] place-items-center rounded-2xl px-4 py-3 text-center" style={{ background: ch.accent ? 'rgba(255,122,26,.3)' : 'rgba(255,255,255,.15)' }}>{ch.seasonal ? <Pumpkin size={34} /> : <div className="text-3xl font-extrabold leading-none tabular-nums">{ch.number}</div>}</div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-bold uppercase tracking-[0.2em] text-white/60">{ch.name}</div>
               <div className="truncate text-3xl font-extrabold tracking-tight">{slot?.title ?? '—'}</div>
@@ -170,12 +171,12 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
         <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity duration-300 ${status === 'playing' && !leaving ? 'opacity-0' : 'opacity-100'}`}>
           {status === 'tuning' && !leaving && (
             <div className="text-center"><Loader2 className="mx-auto animate-spin text-white/60" size={44} />
-              <div className="mt-5 text-4xl font-extrabold tabular-nums">{ch.number}</div><div className="mt-1 font-bold tracking-wide text-white/70">{ch.name}</div>
+              <div className="mt-5 flex justify-center text-4xl font-extrabold tabular-nums">{ch.seasonal ? <Pumpkin size={44} /> : ch.number}</div><div className="mt-1 font-bold tracking-wide" style={{ color: ch.accent ?? 'rgba(255,255,255,.7)' }}>{ch.name}</div>
               <div className="mt-3 text-sm uppercase tracking-[0.3em] text-white/40">Tuning</div></div>
           )}
           {status === 'error' && !leaving && (
             <div className="max-w-md text-center"><TriangleAlert className="mx-auto text-amber-300" size={44} />
-              <div className="mt-4 text-2xl font-extrabold">{ch.number} · {ch.name}</div>
+              <div className="mt-4 text-2xl font-extrabold">{ch.seasonal ? '' : `${ch.number} · `}{ch.name}</div>
               <p className="mt-2 text-white/70">This channel isn’t working. Try another channel (Up or Down).</p></div>
           )}
         </div>

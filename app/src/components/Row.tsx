@@ -3,6 +3,7 @@ import { reveal, scrollTo } from '../lib/scroll'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { LandscapeCard, PosterCard } from './Card'
+import { Focusable } from './Focusable'
 import { Pumpkin } from './Pumpkin'
 import type { PlexMedia, PlexServer } from '../lib/plex'
 
@@ -20,9 +21,12 @@ interface Props {
   fromRecs?: boolean
   /** Continue Watching row (gives titles the "Remove from Continue Watching" menu). */
   fromContinue?: boolean
+  /** A last tile that opens the full list ("See all 42"). */
+  onMore?: () => void
+  moreLabel?: string
 }
 
-export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs, fromContinue }: Props) {
+export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs, fromContinue, onMore, moreLabel }: Props) {
   const { ref, focusKey } = useFocusable({ saveLastFocusedChild: true, autoRestoreFocus: false })
   const track = useRef<HTMLDivElement>(null)
 
@@ -40,6 +44,13 @@ export function Row({ title, items, server, variant = 'poster', onSelect, themed
             {items.map((m, idx) => variant === 'landscape'
               ? <LandscapeCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} />
               : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} fromRecs={fromRecs} fromContinue={fromContinue} />)}
+            {onMore && (
+              <Focusable onEnter={onMore} onFocus={focusReveal} title={moreLabel ?? 'See all'} className="w-[var(--card-w)] shrink-0">
+                <div className="grid aspect-[2/3] place-items-center rounded-xl bg-white/[0.06] p-4 text-center ring-1 ring-white/10 transition-all group-hover/f:bg-white/12 group-data-[hl=true]/f:scale-[1.06] group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
+                  <div><div className="text-3xl font-extrabold">→</div><div className="mt-2 font-bold">{moreLabel ?? 'See all'}</div></div>
+                </div>
+              </Focusable>
+            )}
           </div>
           {([-1, 1] as const).map((d) => (
             <button key={d} aria-label={d < 0 ? 'Scroll left' : 'Scroll right'} onClick={() => nudge(d)} tabIndex={-1}

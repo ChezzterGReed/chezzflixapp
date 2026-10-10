@@ -23,6 +23,9 @@ export interface Channel {
   movieOrder?: 'release' | 'random'
   /** Audio and subtitle choices for this channel (they override the guide's defaults). */
   prefs?: ChannelPrefs
+  /** A seasonal channel (built by the app for a time of year, not stored with your channels), and the colour it's drawn in. */
+  seasonal?: boolean
+  accent?: string
 }
 export interface ChannelPrefs { subs?: 'default' | 'on' | 'off'; subLang?: string; audioLang?: string }
 
@@ -76,8 +79,8 @@ export function newChannel(draft: ChannelDraft, existing: Channel[]): Channel {
 }
 /** A copy of a channel (new number, name with (1), (2)...). */
 export function cloneChannel(c: Channel, existing: Channel[]): Channel {
-  const { id: _id, number: _n, ...draft } = JSON.parse(JSON.stringify(c)) as Channel
-  void _id; void _n
+  const { id: _id, number: _n, seasonal: _s, accent: _a, ...draft } = JSON.parse(JSON.stringify(c)) as Channel
+  void _id; void _n; void _s; void _a
   return newChannel({ ...draft, name: c.name }, existing)
 }
 /** What the schedule depends on: when this changes, the channel's schedule is rebuilt. */

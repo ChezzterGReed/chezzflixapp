@@ -7,6 +7,7 @@ import {
 import { loadAnime, tabOk } from './lib/homeData'
 import { setBooted, useBooted } from './lib/boot'
 import { useBack } from './lib/back'
+import { matchList, seasonalList } from './lib/seasonal'
 import { justMoved, moveCount, settleMs } from './lib/input'
 import { ensureFocus, rescueSoon } from './lib/focusRescue'
 import { isAndroid } from './lib/native'
@@ -121,6 +122,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     const src = view.source
     return async (): Promise<PlexMedia[]> => {
       if (src.kind === 'collection') return getCollectionItems(server, src.id)
+      if (src.kind === 'seasonal') { const l = seasonalList(src.id); return l ? matchList(server, sections, l) : [] }
       const anime = await loadAnime(server, sections, 0).catch(() => undefined)
       const secs = sections.filter((x) => (src.sectionKey ? x.key === src.sectionKey : src.tab === 'all' || src.tab === 'anime' || src.tab === 'trending' || x.type === src.tab))
       if (src.tab === 'anime') return (anime?.items ?? []).filter((m) => m.Genre?.some((g) => g.tag === src.genre))
@@ -193,7 +195,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
-          {view.type === 'home' && <Home server={server} sections={allSections} refreshKey={refreshKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenSettings={() => setLayer('settings')} />}
+          {view.type === 'home' && <Home server={server} sections={allSections} refreshKey={refreshKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}

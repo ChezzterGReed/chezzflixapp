@@ -12,7 +12,7 @@ import { Avatar } from './Avatar'
 import type { PlexSection } from '../lib/plex'
 import type { HomeTab } from '../lib/settings'
 
-export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string }
+export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string } | { kind: 'seasonal'; id: string }
 export type View =
   | { type: 'home' } | { type: 'search' } | { type: 'watchlist' } | { type: 'guide' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
@@ -71,7 +71,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           <span className="grid w-[52px] shrink-0 place-items-center">
             <span className="relative">
               {avatarLogo ? <Avatar name={profileName} thumb={profileThumb} size={34} /> : <Logo size={52} />}
-              {season === 'halloween' && <Pumpkin size={21} className="absolute right-0.5 top-0 drop-shadow" />}
+              {season === 'halloween' && avatarLogo && <Pumpkin size={21} className="absolute right-0.5 top-0 drop-shadow" />}
             </span>
           </span>
           <span className={`whitespace-nowrap font-display text-[1.4rem] leading-none tracking-[0.14em] transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>{brand}</span>

@@ -21,3 +21,4 @@ app/src-tauri/gen/android/.gradle/
 app/src-tauri/gen/android/build/
 app/src-tauri/gen/android/app/build/
 *.jks
+personal/

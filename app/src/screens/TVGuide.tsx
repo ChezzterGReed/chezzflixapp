@@ -9,7 +9,9 @@ import { Layer } from '../components/Layer'
 import { getMetadata, getWatchedItems, imageUrl, type PlexSection, type PlexServer } from '../lib/plex'
 import { reveal } from '../lib/scroll'
 import { noteMove } from '../lib/input'
-import { useSettings } from '../lib/settings'
+import { useSettings, useSeason } from '../lib/settings'
+import { seasonalChannels } from '../lib/seasonal'
+import { Pumpkin } from '../components/Pumpkin'
 import { cloneChannel, ensureGuide, HOUR, LANGS, newChannel, slotAt, suggestChannels, topUp, uniqueName, useGuide, type Channel, type ChannelDraft, type Slot, type Suggestion } from '../lib/tvguide'
 
 const MIN = 60_000
@@ -27,7 +29,20 @@ interface Props { server: PlexServer; sections: PlexSection[]; scope: string; on
 export function TVGuide({ server, sections, scope, onLeave }: Props) {
   const { settings, update } = useSettings()
   const guide = useGuide()
-  const channels = useMemo(() => [...settings.channels].sort((a, b) => a.number - b.number), [settings.channels])
+  const season = useSeason()
+  const [seasonalBase, setSeasonalBase] = useState<Channel[]>([])
+  const [seasonalReady, setSeasonalReady] = useState(false)
+  // In season, the app's own channels (e.g. Spooky Season) come first, in the season's colour; the guide waits until they're worked out.
+  useEffect(() => {
+    let alive = true
+    if (!season) { setSeasonalBase([]); setSeasonalReady(true); return }
+    setSeasonalReady(false)
+    seasonalChannels(server, sections, season).then((c) => { if (alive) { setSeasonalBase(c); setSeasonalReady(true) } }).catch(() => alive && setSeasonalReady(true))
+    return () => { alive = false }
+  }, [server, sections, season])
+  const seasonalChans = useMemo(() => seasonalBase.map((c) => ({ ...c, prefs: settings.seasonalPrefs[c.id] })), [seasonalBase, settings.seasonalPrefs])
+  const userChannels = useMemo(() => [...settings.channels].sort((a, b) => a.number - b.number), [settings.channels])
+  const channels = useMemo(() => [...seasonalChans, ...userChannels], [seasonalChans, userChannels])
   const [origin] = useState(() => Math.floor(Date.now() / (30 * MIN)) * 30 * MIN)   // the grid starts at the last half hour, so the "now" line sits inside it
   const [now, setNow] = useState(Date.now())
   const [sel, setSel] = useState(() => ({ row: 0, t: Date.now() }))
@@ -46,15 +61,15 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
   // Build (or top up) the guide when this screen opens, and keep it from running dry while it's open.
   const hours = settings.guideHours
   useEffect(() => {
-    if (!channels.length) return
+    if (!channels.length || !seasonalReady) return
     ensureGuide(server, sections, scope, channels, hours).catch(() => {})
-  }, [server, sections, scope, channels, hours])
+  }, [server, sections, scope, channels, hours, seasonalReady])
   useEffect(() => {
     const t = setInterval(() => { setNow(Date.now()); topUp(server, sections, scope, channels, hours) }, 60_000)
     return () => clearInterval(t)
   }, [server, sections, scope, channels, hours])
 
-  const loading = channels.length > 0 && !guide.ready
+  const loading = !seasonalReady || (channels.length > 0 && !guide.ready)
   useEffect(() => {
     if (!loading) { setSlow(false); return }
     const t = setTimeout(() => setSlow(true), SLOW_MS)
@@ -62,7 +77,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
   }, [loading])
 
   // First time with no channels: offer some.
-  useEffect(() => { if (!channels.length && !settings.guideOffered) setSuggesting(true) }, [channels.length, settings.guideOffered])
+  useEffect(() => { if (!userChannels.length && !settings.guideOffered) setSuggesting(true) }, [userChannels.length, settings.guideOffered])
 
   useEffect(() => { if (guide.ready && channels.length && watching === undefined && !adding && !suggesting) { const t = setTimeout(() => setFocus('guide-grid'), 150); return () => clearTimeout(t) } }, [guide.ready, channels.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -111,7 +126,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
   }
   const patchChannel = (id: string, patch: Partial<Channel>) => update({ channels: settings.channels.map((x) => (x.id === id ? { ...x, ...patch } : x)) })
   const clone = (c: Channel) => { if (settings.channels.length < 40) update({ channels: [...settings.channels, cloneChannel(c, settings.channels)] }) }
-  const setPrefs = (c: Channel, prefs: Channel['prefs']) => update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, prefs } : x)) })
+  const setPrefs = (c: Channel, prefs: Channel['prefs']) => (c.seasonal ? update({ seasonalPrefs: { ...settings.seasonalPrefs, [c.id]: prefs ?? {} } }) : update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, prefs } : x)) }))
   const remove = (c: Channel) => { update({ channels: settings.channels.filter((x) => x.id !== c.id) }); setMenu(undefined); setSel({ row: 0, t: Date.now() }) }
   const rename = (c: Channel, name: string) => { update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, name: uniqueName(name, settings.channels.filter((y) => y.id !== c.id).map((y) => y.name)) } : x)) }); setRenaming(undefined) }
 
@@ -167,7 +182,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
           <div className="relative aspect-video w-[min(250px,28vw)] shrink-0 overflow-hidden rounded-xl bg-surface">
             {heroArt && <img src={imageUrl(server, heroArt, 640, 360)} alt="" draggable={false} className="absolute inset-0 size-full object-cover" />}
             <div className="absolute inset-0 bg-linear-to-t from-black/70 to-transparent" />
-            <div className="absolute bottom-2 left-3 text-sm font-bold">{channels[sel.row]?.number} · {channels[sel.row]?.name}</div>
+            <div className="absolute bottom-2 left-3 text-sm font-bold">{channels[sel.row]?.seasonal ? '' : `${channels[sel.row]?.number} · `}{channels[sel.row]?.name}</div>
           </div>
           <div className="min-w-0 flex-1 py-1">
             {cur ? <>
@@ -200,9 +215,9 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
                   const slots = (guide.slots[ch.id] ?? []).filter(aired)
                   return (
                     <div key={ch.id} className="relative flex border-b border-white/[0.07]" style={{ height: ROW_H, width: CH_W + span }}>
-                      <div className={`sticky left-0 z-[6] flex shrink-0 items-center gap-3 px-4 transition-colors ${sel.row === row ? 'bg-[#26262f]' : 'bg-[#16161d]'}`} style={{ width: CH_W }}>
-                        <span className="text-xl font-extrabold tabular-nums text-white/90">{ch.number}</span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white/65">{ch.name}</span>
+                      <div className={`sticky left-0 z-[6] flex shrink-0 items-center gap-3 px-4 transition-colors ${sel.row === row ? 'bg-[#26262f]' : 'bg-[#16161d]'}`} style={{ width: CH_W, boxShadow: ch.accent ? `inset 3px 0 0 ${ch.accent}` : undefined }}>
+                        {ch.seasonal ? <Pumpkin size={26} /> : <span className="text-xl font-extrabold tabular-nums text-white/90">{ch.number}</span>}
+                        <span className="min-w-0 flex-1 text-sm font-semibold leading-tight" style={{ color: ch.accent }}><span className={ch.accent ? '' : 'text-white/65'}>{ch.name}</span></span>
                       </div>
                       <div className="relative" style={{ width: span }}>
                         {slots.length === 0 && <div className="absolute inset-y-0 left-4 flex items-center text-sm text-white/40">Nothing to schedule: this channel has no playable content.</div>}
@@ -212,8 +227,8 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
                           const on = sel.row === row && cur?.start === s.start
                           return (
                             <div key={s.start} id={`cell-${row}-${s.start}`} onClick={() => { selRef.current = { row, t: s.start + 1 }; setSel(selRef.current) }}
-                              className={`absolute inset-y-[3px] overflow-hidden rounded-lg px-3 py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : 'bg-white/[0.07] ring-white/10'}`}
-                              style={{ left: left + 2, width: Math.max(8, right - left - 4) }}>
+                              className={`absolute inset-y-[3px] overflow-hidden rounded-lg px-3 py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : ch.accent ? 'ring-[#ff7a1a]/40' : 'bg-white/[0.07] ring-white/10'}`}
+                              style={{ left: left + 2, width: Math.max(8, right - left - 4), background: !on && ch.accent ? 'rgba(255,122,26,.16)' : undefined }}>
                               <div className="flex items-center gap-1.5 truncate text-[0.98rem] font-bold">{s.start < origin && <span className="opacity-60">◂</span>}<span className="truncate">{s.title}</span></div>
                               <div className={`truncate text-xs ${on ? 'text-black/60' : 'text-white/50'}`}>{s.sub}</div>
                               {s.start <= now && now < s.end && <div className={`absolute inset-x-0 bottom-0 h-[3px] ${on ? 'bg-black/20' : 'bg-white/10'}`}><div className="h-full bg-accent" style={{ width: `${((now - s.start) / (s.end - s.start)) * 100}%` }} /></div>}
@@ -247,17 +262,17 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
       {menu && (
         <Layer onClose={() => setMenu(undefined)} scrim="bg-black/55 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(380px,92vw)] -translate-x-1/2 -translate-y-1/2">
           <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
-            <div className="px-3.5 pb-2 pt-3"><div className="truncate text-[1.02rem] font-bold">{menu.number} · {menu.name}</div><div className="text-sm text-white/55">Channel options</div></div>
-            <MenuItem icon={<ListChecks size={20} />} label="Edit content" onEnter={() => { setEditing(menu.id); setMenu(undefined) }} />
+            <div className="px-3.5 pb-2 pt-3"><div className="truncate text-[1.02rem] font-bold">{menu.seasonal ? '' : `${menu.number} · `}{menu.name}</div><div className="text-sm text-white/55">{menu.seasonal ? 'Seasonal channel · built from this season’s list' : 'Channel options'}</div></div>
+            {!menu.seasonal && <MenuItem icon={<ListChecks size={20} />} label="Edit content" onEnter={() => { setEditing(menu.id); setMenu(undefined) }} />}
             <MenuItem icon={<Languages size={20} />} label="Preferences" onEnter={() => { setPrefsFor(menu); setMenu(undefined) }} />
             <MenuItem icon={<Copy size={20} />} label="Clone channel" onEnter={() => { clone(menu); setMenu(undefined) }} />
-            <MenuItem icon={<Pencil size={20} />} label="Rename" onEnter={() => { setRenaming(menu); setMenu(undefined) }} />
-            <MenuItem danger icon={<Trash2 size={20} />} label="Delete channel" onEnter={() => remove(menu)} />
+            {!menu.seasonal && <MenuItem icon={<Pencil size={20} />} label="Rename" onEnter={() => { setRenaming(menu); setMenu(undefined) }} />}
+            {!menu.seasonal && <MenuItem danger icon={<Trash2 size={20} />} label="Delete channel" onEnter={() => remove(menu)} />}
           </div>
         </Layer>
       )}
       {editing && settings.channels.find((c) => c.id === editing) && <ChannelEditor channel={settings.channels.find((c) => c.id === editing)!} server={server} sections={sections} onChange={(patch) => patchChannel(editing, patch)} onClose={() => setEditing(undefined)} />}
-      {prefsFor && <Prefs channel={settings.channels.find((c) => c.id === prefsFor.id) ?? prefsFor} onChange={(p) => setPrefs(prefsFor, p)} onClose={() => setPrefsFor(undefined)} />}
+      {prefsFor && <Prefs channel={prefsFor.seasonal ? (seasonalChans.find((c) => c.id === prefsFor.id) ?? prefsFor) : (settings.channels.find((c) => c.id === prefsFor.id) ?? prefsFor)} onChange={(p) => setPrefs(prefsFor, p)} onClose={() => setPrefsFor(undefined)} />}
       {guideSettings && <GuideDefaults onClose={() => setGuideSettings(false)} />}
       {renaming && <Rename channel={renaming} onClose={() => setRenaming(undefined)} onSave={(n) => rename(renaming, n)} />}
     </div>
@@ -355,7 +370,7 @@ function Prefs({ channel, onChange, onClose }: { channel: Channel; onChange: (p:
   return (
     <Layer onClose={onClose} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(720px,94vw)] -translate-x-1/2 -translate-y-1/2">
       <div className="pop max-h-[88vh] overflow-y-auto rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
-        <div className="flex items-center gap-3 text-xl font-extrabold"><Languages className="text-accent" size={22} />{channel.number} · {channel.name}: preferences</div>
+        <div className="flex items-center gap-3 text-xl font-extrabold"><Languages className="text-accent" size={22} />{channel.seasonal ? '' : `${channel.number} · `}{channel.name}: preferences</div>
         <p className="mt-1 text-sm text-white/55">For example: an anime channel with Japanese audio and English subtitles, another with English audio and no subtitles. “Default” uses the guide settings.</p>
         <div className="mt-5 space-y-5">
           <div><div className="mb-2 font-bold">Audio language</div>{langPills(p.audioLang, (v) => set({ audioLang: v }), 'Default')}</div>
