@@ -35,6 +35,10 @@ export interface Settings {
   tvGuide: boolean
   /** How many hours ahead the guide is built. */
   guideHours: number
+  /** TV Guide defaults: subtitles on/off, their language, and the preferred audio language ('' = whatever the file defaults to). Channels can override them. */
+  guideSubs: 'on' | 'off'
+  guideSubLang: string
+  guideAudioLang: string
   channels: Channel[]
   /** The first-time "want some suggested channels?" offer has been shown. */
   guideOffered: boolean
@@ -89,7 +93,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
 }
 
 export const PUMPKIN = '#ff7a1a'

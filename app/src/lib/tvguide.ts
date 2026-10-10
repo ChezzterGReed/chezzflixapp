@@ -17,9 +17,44 @@ export interface Channel {
   shows?: { key: string; title: string; thumb?: string; art?: string }[]
   perBlock?: number
   episodeOrder?: 'ordered' | 'random'
-  /** Movie channels: genre names (all movies in any of them), and the order. */
+  /** Movie channels: genre names (all movies in any of them), movies added one by one, and the order. */
   genres?: string[]
+  movieItems?: { key: string; title: string; year?: number; dur: number; date?: string; thumb?: string; art?: string }[]
   movieOrder?: 'release' | 'random'
+  /** Audio and subtitle choices for this channel (they override the guide's defaults). */
+  prefs?: ChannelPrefs
+}
+export interface ChannelPrefs { subs?: 'default' | 'on' | 'off'; subLang?: string; audioLang?: string }
+
+// ---------- Languages for audio / subtitle preferences ----------
+export const LANGS: { id: string; name: string; codes: string[] }[] = [
+  { id: 'en', name: 'English', codes: ['en', 'eng'] }, { id: 'ja', name: 'Japanese', codes: ['ja', 'jpn'] }, { id: 'es', name: 'Spanish', codes: ['es', 'spa'] },
+  { id: 'fr', name: 'French', codes: ['fr', 'fra', 'fre'] }, { id: 'de', name: 'German', codes: ['de', 'deu', 'ger'] }, { id: 'it', name: 'Italian', codes: ['it', 'ita'] },
+  { id: 'pt', name: 'Portuguese', codes: ['pt', 'por'] }, { id: 'ko', name: 'Korean', codes: ['ko', 'kor'] }, { id: 'zh', name: 'Chinese', codes: ['zh', 'zho', 'chi'] },
+  { id: 'ru', name: 'Russian', codes: ['ru', 'rus'] }, { id: 'hi', name: 'Hindi', codes: ['hi', 'hin'] },
+]
+export const langName = (id?: string) => LANGS.find((l) => l.id === id)?.name ?? 'Default'
+/** Does a track (language code or title) match a language choice? */
+export function trackIs(t: { lang?: string; title?: string }, id?: string): boolean {
+  const l = LANGS.find((x) => x.id === id)
+  if (!l) return false
+  const code = (t.lang ?? '').toLowerCase()
+  return l.codes.some((c) => code === c || code.startsWith(c + '-')) || (t.title ?? '').toLowerCase().includes(l.name.toLowerCase())
+}
+/** Which audio / subtitle track to switch to: a channel's own choice, else the guide's default. Returns undefined to leave things alone. */
+export function chooseTracks(tracks: { id: number; type: string; lang?: string; title?: string; forced: boolean }[], channel: ChannelPrefs | undefined, defaults: { subs: 'on' | 'off'; subLang: string; audioLang: string }) {
+  const audioLang = channel?.audioLang || defaults.audioLang
+  const subsMode = channel?.subs && channel.subs !== 'default' ? channel.subs : defaults.subs
+  const subLang = channel?.subLang || defaults.subLang
+  const audio = audioLang ? tracks.filter((t) => t.type === 'audio').find((t) => trackIs(t, audioLang)) : undefined
+  let sid: number | 'no' | undefined
+  if (subsMode === 'off') sid = 'no'
+  else {
+    const subs = tracks.filter((t) => t.type === 'sub' && trackIs(t, subLang || 'en'))
+    const full = subs.find((t) => !t.forced) ?? subs[0]
+    sid = full?.id
+  }
+  return { aid: audio?.id, sid }
 }
 export type ChannelDraft = Omit<Channel, 'id' | 'number'>
 
@@ -39,8 +74,14 @@ export function newChannel(draft: ChannelDraft, existing: Channel[]): Channel {
   let number = 1; while (used.has(number)) number++
   return { ...draft, id: `ch-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`, number, name: uniqueName(draft.name, existing.map((c) => c.name)) }
 }
+/** A copy of a channel (new number, name with (1), (2)...). */
+export function cloneChannel(c: Channel, existing: Channel[]): Channel {
+  const { id: _id, number: _n, ...draft } = JSON.parse(JSON.stringify(c)) as Channel
+  void _id; void _n
+  return newChannel({ ...draft, name: c.name }, existing)
+}
 /** What the schedule depends on: when this changes, the channel's schedule is rebuilt. */
-const signature = (c: Channel) => JSON.stringify([c.kind, c.shows?.map((s) => s.key), c.perBlock, c.episodeOrder, c.genres, c.movieOrder])
+const signature = (c: Channel) => JSON.stringify([c.kind, c.shows?.map((s) => s.key), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder])
 
 // ---------- Schedule ----------
 export interface Slot {
@@ -132,7 +173,10 @@ async function sources(server: PlexServer, sections: PlexSection[], ch: Channel)
     await Promise.all((ch.shows ?? []).map(async (s) => { eps[s.key] = await loadEpisodes(server, s.key) }))
     return { eps }
   }
-  const movies = await loadMovies(server, sections, ch.genres ?? [])
+  const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art }))
+  const fromGenres = (ch.genres ?? []).length ? await loadMovies(server, sections, ch.genres ?? []) : []
+  const seen = new Set(own.map((m) => m.key))
+  const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))]
   return { movies: ch.movieOrder === 'release' ? [...movies].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)) : movies }
 }
 

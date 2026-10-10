@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { BIG_IMAGE } from '../lib/perf'
 import { reveal, scrollToTopOf } from '../lib/scroll'
-import { ArrowLeft, BookmarkCheck, BookmarkPlus, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Pin, PinOff, Play } from 'lucide-react'
+import { ArrowLeft, BookmarkCheck, BookmarkPlus, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Pin, PinOff, Play, Radio } from 'lucide-react'
 import { useSettings } from '../lib/settings'
+import { AddToChannel } from '../components/AddToChannel'
 import { getWatchlist, setOnWatchlist, watchItemOf, watchKey } from '../lib/watchlist'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from '../components/Layer'
@@ -72,6 +73,7 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
   const [related, setRelated] = useState<PlexMedia[]>([])
   const [watched, setWatchedState] = useState(false)
   const { settings, update } = useSettings()
+  const [addToChannel, setAddToChannel] = useState(false)
   const [onList, setOnList] = useState<boolean>()   // undefined until we know (or when this title can't be on a Watchlist)
   const [revealed, setRevealed] = useState<Set<string>>(new Set())
   const [clip, setClip] = useState<{ media: PlexMedia; segments: Segment[]; heading: string; subheading?: string }>()
@@ -212,6 +214,13 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
                     {pinned ? <PinOff size={20} /> : <Pin size={20} />}{pinned ? 'Unpin' : 'Pin'}
                   </div>
                 </Focusable>
+                {settings.tvGuide && (m.type === 'show' || m.type === 'movie') && (
+                  <Focusable onEnter={() => setAddToChannel(true)} title="Add to a TV Guide channel" onFocus={scrollToTopOf}>
+                    <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                      <Radio size={20} />Channel
+                    </div>
+                  </Focusable>
+                )}
                 {onList !== undefined && (
                   <Focusable onEnter={toggleList} title={onList ? 'Remove from Watchlist' : 'Add to Watchlist'} onFocus={scrollToTopOf}>
                     <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
@@ -279,6 +288,7 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
           {related.length > 0 && <div className="relative mt-14"><Row title="More like this" items={related} server={server} onSelect={onOpen} /></div>}
         </div>
       )}
+      {addToChannel && m && <AddToChannel media={m} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => setAddToChannel(false)} />}
       {clip && <ClipPopup key={clip.media.ratingKey + clip.segments.length} server={server} media={clip.media} segments={clip.segments} heading={clip.heading} subheading={clip.subheading} onClose={() => setClip(undefined)} />}
     </Layer>
   )

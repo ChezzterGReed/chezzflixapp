@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Loader2, Pencil, Plus, Radio, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Languages, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
-import { AddChannel, Btn, CheckRow, NameField } from '../components/AddChannel'
+import { AddChannel, Btn, CheckRow, NameField, Pill } from '../components/AddChannel'
 import { ChannelPlayer } from '../components/ChannelPlayer'
 import { Focusable } from '../components/Focusable'
 import { Layer } from '../components/Layer'
@@ -9,10 +9,10 @@ import { getMetadata, getWatchedItems, imageUrl, type PlexSection, type PlexServ
 import { reveal } from '../lib/scroll'
 import { noteMove } from '../lib/input'
 import { useSettings } from '../lib/settings'
-import { ensureGuide, HOUR, newChannel, slotAt, suggestChannels, topUp, uniqueName, useGuide, type Channel, type ChannelDraft, type Slot, type Suggestion } from '../lib/tvguide'
+import { cloneChannel, ensureGuide, HOUR, LANGS, newChannel, slotAt, suggestChannels, topUp, uniqueName, useGuide, type Channel, type ChannelDraft, type Slot, type Suggestion } from '../lib/tvguide'
 
 const MIN = 60_000
-const PPM = 7        // pixels per minute (so 30 minutes = 210px)
+const PPM = 10       // pixels per minute (so 30 minutes = 300px)
 const ROW_H = 66
 const CH_W = 150
 const SLOW_MS = 8000 // after this long, offer to leave while the guide keeps building
@@ -27,14 +27,16 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
   const { settings, update } = useSettings()
   const guide = useGuide()
   const channels = useMemo(() => [...settings.channels].sort((a, b) => a.number - b.number), [settings.channels])
-  const [origin] = useState(() => Math.floor(Date.now() / MIN) * MIN)
+  const [origin] = useState(() => Math.floor(Date.now() / (30 * MIN)) * 30 * MIN)   // the grid starts at the last half hour, so the "now" line sits inside it
   const [now, setNow] = useState(Date.now())
-  const [sel, setSel] = useState({ row: 0, t: origin + 1 })
+  const [sel, setSel] = useState(() => ({ row: 0, t: Date.now() }))
   const selRef = useRef(sel); selRef.current = sel
   const [adding, setAdding] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
   const [menu, setMenu] = useState<Channel>()
   const [renaming, setRenaming] = useState<Channel>()
+  const [prefsFor, setPrefsFor] = useState<Channel>()
+  const [guideSettings, setGuideSettings] = useState(false)
   const [watching, setWatching] = useState<number>()
   const [slow, setSlow] = useState(false)
   const track = useRef<HTMLDivElement>(null)
@@ -105,7 +107,9 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
     for (const d of drafts) { if (list.length >= 40) break; list = [...list, newChannel(d, list)] }
     update({ channels: list, guideOffered: true })
   }
-  const remove = (c: Channel) => { update({ channels: settings.channels.filter((x) => x.id !== c.id) }); setMenu(undefined); setSel({ row: 0, t: origin + 1 }) }
+  const clone = (c: Channel) => { if (settings.channels.length < 40) update({ channels: [...settings.channels, cloneChannel(c, settings.channels)] }) }
+  const setPrefs = (c: Channel, prefs: Channel['prefs']) => update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, prefs } : x)) })
+  const remove = (c: Channel) => { update({ channels: settings.channels.filter((x) => x.id !== c.id) }); setMenu(undefined); setSel({ row: 0, t: Date.now() }) }
   const rename = (c: Channel, name: string) => { update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, name: uniqueName(name, settings.channels.filter((y) => y.id !== c.id).map((y) => y.name)) } : x)) }); setRenaming(undefined) }
 
   const span = hours * 60 * PPM
@@ -118,6 +122,9 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
       <div className="flex-1" />
       <Focusable focusKey="guide-add" onEnter={() => setAdding(true)} title="Add channel" leftToRail onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
         <div className="flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[0.95rem] font-bold text-black transition-transform group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Plus size={18} />Add channel</div>
+      </Focusable>
+      <Focusable focusKey="guide-settings" onEnter={() => setGuideSettings(true)} title="Guide settings" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
+        <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><SlidersHorizontal size={17} />Settings</div>
       </Focusable>
       <Focusable focusKey="guide-suggest" onEnter={() => setSuggesting(true)} title="Suggested channels" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
         <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Sparkles size={17} />Suggested</div>
@@ -176,12 +183,13 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
           onLongPress={() => { const c = channels[selRef.current.row]; if (c) setMenu(c) }}>
           <div className="h-full overflow-hidden rounded-2xl bg-[#101016] ring-1 ring-white/10">
             <div ref={track} className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div style={{ width: CH_W + span }}>
+              <div className="relative" style={{ width: CH_W + span }}>
+                {/* "Now": a line down the whole guide */}
+                {now >= origin && now < origin + hours * HOUR && <div className="pointer-events-none absolute inset-y-0 z-[5] w-[2px] bg-accent/80 shadow-[0_0_10px_var(--accent)]" style={{ left: CH_W + ((now - origin) / MIN) * PPM }}><i className="absolute -left-[5px] top-0 size-3 rounded-full bg-accent" /></div>}
                 {/* Time ruler */}
                 <div className="sticky top-0 z-30 flex h-11 border-b border-white/10 bg-[#1a1a22]" style={{ width: CH_W + span }}>
                   <div className="sticky left-0 z-20 flex shrink-0 items-center bg-[#16161d] px-4 text-sm font-bold text-white/70" style={{ width: CH_W }}>{new Date(origin).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</div>
                   <div className="relative" style={{ width: span }}>
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm font-bold text-accent">{clock(origin)}</span>
                     {ticks.map((t) => <span key={t} className="absolute border-l border-white/15 pl-2 text-sm font-semibold text-white/70" style={{ left: ((t - origin) / MIN) * PPM, height: 44, lineHeight: '44px', top: 0 }}>{clock(t)}</span>)}
                   </div>
                 </div>
@@ -237,11 +245,15 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
         <Layer onClose={() => setMenu(undefined)} scrim="bg-black/55 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(380px,92vw)] -translate-x-1/2 -translate-y-1/2">
           <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
             <div className="px-3.5 pb-2 pt-3"><div className="truncate text-[1.02rem] font-bold">{menu.number} · {menu.name}</div><div className="text-sm text-white/55">Channel options</div></div>
+            <MenuItem icon={<Languages size={20} />} label="Preferences" onEnter={() => { setPrefsFor(menu); setMenu(undefined) }} />
+            <MenuItem icon={<Copy size={20} />} label="Clone channel" onEnter={() => { clone(menu); setMenu(undefined) }} />
             <MenuItem icon={<Pencil size={20} />} label="Rename" onEnter={() => { setRenaming(menu); setMenu(undefined) }} />
             <MenuItem danger icon={<Trash2 size={20} />} label="Delete channel" onEnter={() => remove(menu)} />
           </div>
         </Layer>
       )}
+      {prefsFor && <Prefs channel={settings.channels.find((c) => c.id === prefsFor.id) ?? prefsFor} onChange={(p) => setPrefs(prefsFor, p)} onClose={() => setPrefsFor(undefined)} />}
+      {guideSettings && <GuideDefaults onClose={() => setGuideSettings(false)} />}
       {renaming && <Rename channel={renaming} onClose={() => setRenaming(undefined)} onSave={(n) => rename(renaming, n)} />}
     </div>
   )
@@ -286,19 +298,66 @@ function Suggestions({ server, sections, existing, genres, onClose, onAdd }: { s
   const toggle = (id: string) => setOn((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   return (
-    <Layer onClose={onClose} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(560px,94vw)] -translate-x-1/2 -translate-y-1/2">
+    <Layer onClose={onClose} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(720px,94vw)] -translate-x-1/2 -translate-y-1/2">
       <div className="pop max-h-[88vh] overflow-y-auto rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
         <div className="flex items-center gap-3 text-xl font-extrabold"><Sparkles className="text-accent" size={22} />Want some channels to start with?</div>
         <p className="mt-1 text-sm text-white/55">Based on what you watch and the genres you picked. Untick any you don’t want.</p>
         <div className="mt-4">
           {!list ? <div className="grid place-items-center py-10"><Loader2 className="animate-spin text-white/50" size={28} /></div>
             : list.length === 0 ? <p className="py-8 text-center text-white/55">Nothing to suggest right now. You can add channels yourself.</p>
-            : list.map((s) => <CheckRow key={s.id} label={s.label} sub={s.hint} on={on.has(s.id)} onEnter={() => toggle(s.id)} />)}
+            : list.map((s) => <CheckRow key={s.id} label={s.label} sub={s.hint} below on={on.has(s.id)} onEnter={() => toggle(s.id)} />)}
         </div>
         <div className="mt-5 flex gap-2.5">
           <Btn onEnter={onClose}>Not now</Btn>
           <Btn primary focusKey="sug-add" disabled={!list || on.size === 0} onEnter={() => onAdd((list ?? []).filter((s) => on.has(s.id)).map((s) => s.draft))}>Add {on.size || ''} channel{on.size === 1 ? '' : 's'}</Btn>
         </div>
+      </div>
+    </Layer>
+  )
+}
+
+const langPills = (value: string | undefined, onPick: (v: string) => void, defaultLabel: string) => (
+  <div className="flex flex-wrap gap-2">
+    <Pill active={!value} onEnter={() => onPick('')}>{defaultLabel}</Pill>
+    {LANGS.map((l) => <Pill key={l.id} active={value === l.id} onEnter={() => onPick(l.id)}>{l.name}</Pill>)}
+  </div>
+)
+
+/** Guide-wide defaults for audio and subtitles (each channel can override them in its Preferences). */
+function GuideDefaults({ onClose }: { onClose: () => void }) {
+  const { settings, update } = useSettings()
+  return (
+    <Layer onClose={onClose} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(720px,94vw)] -translate-x-1/2 -translate-y-1/2">
+      <div className="pop max-h-[88vh] overflow-y-auto rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+        <div className="flex items-center gap-3 text-xl font-extrabold"><SlidersHorizontal className="text-accent" size={22} />Guide settings</div>
+        <p className="mt-1 text-sm text-white/55">Defaults for every channel. Each channel can override them from its options (hold OK on a channel).</p>
+        <div className="mt-5 space-y-5">
+          <div><div className="mb-2 font-bold">Subtitles</div><div className="flex gap-2"><Pill active={settings.guideSubs === 'off'} onEnter={() => update({ guideSubs: 'off' })}>Off</Pill><Pill active={settings.guideSubs === 'on'} onEnter={() => update({ guideSubs: 'on' })}>On</Pill></div></div>
+          {settings.guideSubs === 'on' && <div><div className="mb-2 font-bold">Subtitle language</div>{langPills(settings.guideSubLang, (v) => update({ guideSubLang: v || 'en' }), 'English')}</div>}
+          <div><div className="mb-2 font-bold">Audio language</div>{langPills(settings.guideAudioLang, (v) => update({ guideAudioLang: v }), 'Whatever the file plays by default')}</div>
+        </div>
+        <div className="mt-6"><Btn primary focusKey="gd-done" onEnter={onClose}>Done</Btn></div>
+      </div>
+    </Layer>
+  )
+}
+
+/** One channel's audio and subtitle choices. "Default" follows the guide settings. */
+function Prefs({ channel, onChange, onClose }: { channel: Channel; onChange: (p: Channel['prefs']) => void; onClose: () => void }) {
+  const p = channel.prefs ?? {}
+  const set = (patch: NonNullable<Channel['prefs']>) => onChange({ ...p, ...patch })
+  return (
+    <Layer onClose={onClose} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(720px,94vw)] -translate-x-1/2 -translate-y-1/2">
+      <div className="pop max-h-[88vh] overflow-y-auto rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+        <div className="flex items-center gap-3 text-xl font-extrabold"><Languages className="text-accent" size={22} />{channel.number} · {channel.name}: preferences</div>
+        <p className="mt-1 text-sm text-white/55">For example: an anime channel with Japanese audio and English subtitles, another with English audio and no subtitles. “Default” uses the guide settings.</p>
+        <div className="mt-5 space-y-5">
+          <div><div className="mb-2 font-bold">Audio language</div>{langPills(p.audioLang, (v) => set({ audioLang: v }), 'Default')}</div>
+          <div><div className="mb-2 font-bold">Subtitles</div>
+            <div className="flex gap-2">{(['default', 'off', 'on'] as const).map((m) => <Pill key={m} active={(p.subs ?? 'default') === m} onEnter={() => set({ subs: m })}>{m === 'default' ? 'Default' : m === 'off' ? 'Off' : 'On'}</Pill>)}</div></div>
+          {p.subs === 'on' && <div><div className="mb-2 font-bold">Subtitle language</div>{langPills(p.subLang, (v) => set({ subLang: v }), 'Default')}</div>}
+        </div>
+        <div className="mt-6"><Btn primary focusKey="pf-done" onEnter={onClose}>Done</Btn></div>
       </div>
     </Layer>
   )

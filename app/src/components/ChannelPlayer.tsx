@@ -4,9 +4,9 @@ import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { DEMO_URI, directPlayUrl, getMetadata, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
-import { applySubStyle, keepAwake, mpvCmd, mpvSet, nativeStart, onMpv, setNativeVideoActive } from '../lib/native'
+import { applySubStyle, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive } from '../lib/native'
 import { useSettings } from '../lib/settings'
-import { slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
+import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
 
 interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void }
 
@@ -35,6 +35,20 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
   const video = useRef<HTMLVideoElement>(null)
   const hls = useRef<{ destroy: () => void } | null>(null)
   const modeRef = useRef(mode); modeRef.current = mode
+  const settingsRef = useRef(settings); settingsRef.current = settings
+
+  // Audio and subtitle choices: this channel's own, else the guide's defaults.
+  const applyTracks = useCallback(async (tries = 0): Promise<void> => {
+    try {
+      const tracks = await mpvTracks()
+      if (!tracks.length && tries < 3) { await new Promise((r) => setTimeout(r, 600)); return applyTracks(tries + 1) }
+      const s = settingsRef.current
+      const pick = chooseTracks(tracks, channels[idxRef.current]?.prefs, { subs: s.guideSubs, subLang: s.guideSubLang, audioLang: s.guideAudioLang })
+      if (pick.aid !== undefined) await mpvSet('aid', pick.aid)
+      if (pick.sid === 'no') await mpvSet('sid', 'no')
+      else if (pick.sid !== undefined) await mpvSet('sid', pick.sid)
+    } catch { /* keep the file's own defaults */ }
+  }, [channels])
 
   useEffect(() => { nativeStart().then((ok) => setMode(ok ? 'native' : 'web')) }, [])
   useEffect(() => { keepAwake(true); return () => { keepAwake(false) } }, [])
@@ -85,7 +99,7 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
     if (mode !== 'native') return
     let off: (() => void) | undefined, dead = false
     onMpv((p) => { if (p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
-      if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); flash() }
+      if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); flash(); applyTracks() }
       if ((e.event === 'end' && e.reason === 4) || e.event === 'error') setStatus('error')
     }).then((u) => { if (dead) u(); else off = u })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
@@ -96,7 +110,7 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
       document.documentElement.classList.add('ui-fade')
       setTimeout(() => document.documentElement.classList.remove('ui-fade'), 900)
     }
-  }, [mode, tune, flash])
+  }, [mode, tune, flash, applyTracks])
   useEffect(() => () => { clearTimeout(advance.current); clearTimeout(bannerTimer.current); hls.current?.destroy(); seq.current++ }, [])
 
   // Tune whenever the channel changes (after a short settle), once the engine is chosen.

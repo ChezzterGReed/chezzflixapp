@@ -9,7 +9,7 @@ import { uniqueName, type Channel, type ChannelDraft } from '../lib/tvguide'
 type Step = 'type' | 'shows' | 'showOpts' | 'movies' | 'movieOpts' | 'name'
 const PAGE = 60
 
-function Choice({ icon, label, hint, onEnter, focusKey }: { icon: ReactNode; label: string; hint?: string; onEnter: () => void; focusKey?: string }) {
+export function Choice({ icon, label, hint, onEnter, focusKey }: { icon: ReactNode; label: string; hint?: string; onEnter: () => void; focusKey?: string }) {
   return (
     <Focusable focusKey={focusKey} onEnter={onEnter} title={label}>
       <div className="flex items-center gap-4 rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10 transition-all group-hover/f:bg-white/10 group-data-[hl=true]/f:scale-[1.02] group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
@@ -20,13 +20,13 @@ function Choice({ icon, label, hint, onEnter, focusKey }: { icon: ReactNode; lab
   )
 }
 
-export function CheckRow({ label, sub, on, onEnter }: { label: string; sub?: string; on: boolean; onEnter: () => void }) {
+export function CheckRow({ label, sub, on, onEnter, below }: { label: string; sub?: string; on: boolean; onEnter: () => void; below?: boolean }) {
   return (
     <Focusable onEnter={onEnter} title={label}>
       <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
         <span className={`grid size-6 shrink-0 place-items-center rounded-md ring-1 transition-colors ${on ? 'bg-accent text-black ring-accent' : 'ring-white/30'}`}>{on && <Check size={15} strokeWidth={3} />}</span>
-        <span className="min-w-0 flex-1 truncate font-semibold">{label}</span>
-        {sub && <span className="shrink-0 text-sm opacity-55">{sub}</span>}
+        <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{label}</span>{sub && below && <span className="block truncate text-sm opacity-55">{sub}</span>}</span>
+        {sub && !below && <span className="shrink-0 text-sm opacity-55">{sub}</span>}
       </div>
     </Focusable>
   )
