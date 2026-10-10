@@ -29,7 +29,7 @@ function RemoteCard({ item, onEnter }: { item: WatchItem; onEnter: () => void })
           ? <img src={item.poster} alt={item.title} loading="lazy" decoding="async" draggable={false} className="absolute inset-0 h-full w-full object-cover brightness-[.8]" />
           : <div className="absolute inset-0 grid place-items-center bg-linear-to-br from-white/10 to-white/[0.03] p-4 text-center text-lg font-bold text-white/70">{item.title}</div>}
         <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 via-black/40 to-transparent px-2.5 pb-2.5 pt-10">
-          <div className="inline-flex rounded-full bg-white/20 px-2.5 py-1 text-[0.72rem] font-extrabold uppercase tracking-wide backdrop-blur">Not in library</div>
+          <div className="inline-flex rounded-full bg-white/20 px-2.5 py-1 text-[0.72rem] font-extrabold uppercase tracking-wide">Not in library</div>
         </div>
       </div>
       <div className="mt-2.5 px-0.5 opacity-70 transition-opacity group-data-[hl=true]/f:opacity-100 group-hover/f:opacity-100">
@@ -105,7 +105,7 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
         </Layer>
       )}
       {confirm && (
-        <Layer onClose={() => setConfirm(undefined)} scrim="bg-black/60 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(400px,92vw)] -translate-x-1/2 -translate-y-1/2">
+        <Layer onClose={() => setConfirm(undefined)} scrim="bg-black/60" className="absolute left-1/2 top-1/2 w-[min(400px,92vw)] -translate-x-1/2 -translate-y-1/2">
           <div className="pop rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-2xl">
             <div className="text-[1.1rem] font-bold">Remove from Watchlist?</div>
             <p className="mt-1.5 text-sm text-white/60">“{confirm.title}” will be taken off your Plex Watchlist.</p>

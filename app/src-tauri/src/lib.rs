@@ -17,6 +17,20 @@ struct NativeState;
 #[derive(Default)]
 struct Player(Mutex<Option<Child>>);
 
+/// Keeps the Mac awake (screen and system) while something is playing. `caffeinate -w` ends by itself if the app quits or crashes.
+#[derive(Default)]
+struct Awake(Mutex<Option<Child>>);
+
+#[tauri::command]
+fn keep_awake(state: State<Awake>, on: bool) {
+    let mut guard = state.0.lock().unwrap();
+    if let Some(mut c) = guard.take() { let _ = c.kill(); let _ = c.wait(); }
+    #[cfg(target_os = "macos")]
+    if on { *guard = Command::new("caffeinate").args(["-d", "-i", "-w", &std::process::id().to_string()]).spawn().ok(); }
+    #[cfg(not(target_os = "macos"))]
+    let _ = on;
+}
+
 fn mpv_binary() -> String {
     for p in ["/opt/homebrew/bin/mpv", "/usr/local/bin/mpv", "mpv"] {
         if p == "mpv" || std::path::Path::new(p).exists() {
@@ -162,9 +176,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init());
     builder
         .manage(Player::default())
+        .manage(Awake::default())
         .manage(NativeState::default())
         .manage(net::NetState::default())
-        .invoke_handler(tauri::generate_handler![play, stop, mpv_start, mpv_cmd, mpv_set, mpv_get, mpv_tracks, net::requests_http])
+        .invoke_handler(tauri::generate_handler![play, stop, keep_awake, mpv_start, mpv_cmd, mpv_set, mpv_get, mpv_tracks, net::requests_http])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }

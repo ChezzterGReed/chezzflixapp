@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { reveal } from '../lib/scroll'
-import { Bookmark, Film, LayoutGrid, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
+import { Bookmark, Film, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useInputMode, useTyping } from '../lib/input'
@@ -32,6 +32,8 @@ function NavItem({ icon, label, active, onEnter, focusKey }: { icon: ReactNode; 
 
 interface Props {
   sections: PlexSection[]
+  /** Every library on the server, including ones switched off in Settings (for "View all libraries"). */
+  everySection: PlexSection[]
   view: View
   onNavigate: (v: View) => void
   profileName: string
@@ -43,7 +45,7 @@ interface Props {
   showDashboard?: boolean
 }
 
-export function Sidebar({ sections, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard }: Props) {
+export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard }: Props) {
   const mode = useInputMode()
   const typing = useTyping()
   const season = useSeason()
@@ -89,10 +91,10 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
           </div>
         </div>
 
-        {picker && <LibraryPicker sections={sections} activeKey={view.type === 'library' ? view.section.key : undefined} onClose={() => setPicker(false)} onPick={(x) => { setPicker(false); onNavigate({ type: 'library', section: x }) }} />}
+        {picker && <LibraryPicker sections={everySection} shown={sections} activeKey={view.type === 'library' ? view.section.key : undefined} onClose={() => setPicker(false)} onPick={(x) => { setPicker(false); onNavigate({ type: 'library', section: x }) }} />}
 
         <div className="mt-3 shrink-0">
-          {sections.length > 0 && <div className="mb-1"><NavItem focusKey="nav-lib-more" icon={<LayoutGrid size={22} />} label="View all libraries" active={view.type === 'library' && sections.findIndex((x) => isLib(x.key)) >= LIMIT} onEnter={() => setPicker(true)} /></div>}
+          {sections.length > 0 && <div className="mb-1"><NavItem focusKey="nav-lib-more" icon={<LibraryIcon size={22} />} label="View all libraries" active={view.type === 'library' && sections.findIndex((x) => isLib(x.key)) >= LIMIT} onEnter={() => setPicker(true)} /></div>}
           {showDashboard && <div className="mb-1"><NavItem focusKey="nav-dashboard" icon={<LayoutDashboard size={22} />} label="Dashboard" active={view.type === 'dashboard'} onEnter={() => onNavigate({ type: 'dashboard' })} /></div>}
           <Focusable focusKey="nav-profile" onEnter={onProfile} title="Profile" rightToContent>
             <div className="flex h-14 items-center overflow-hidden rounded-xl transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
@@ -121,7 +123,7 @@ export function Sidebar({ sections, view, onNavigate, profileName, profileThumb,
 }
 
 /** Every library in a scrollable popup: pick one to open it. */
-function LibraryPicker({ sections, activeKey, onClose, onPick }: { sections: PlexSection[]; activeKey?: string; onClose: () => void; onPick: (s: PlexSection) => void }) {
+function LibraryPicker({ sections, shown, activeKey, onClose, onPick }: { sections: PlexSection[]; shown: PlexSection[]; activeKey?: string; onClose: () => void; onPick: (s: PlexSection) => void }) {
   return (
     <Layer onClose={onClose} scrim="bg-black/60 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(420px,92vw)] -translate-x-1/2 -translate-y-1/2">
       <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-2xl">
@@ -130,7 +132,7 @@ function LibraryPicker({ sections, activeKey, onClose, onPick }: { sections: Ple
           {sections.map((s) => (
             <Focusable key={s.key} focusKey={`pick-lib-${s.key}`} onEnter={() => onPick(s)} title={s.title}>
               <div className={`flex h-12 items-center gap-3 rounded-xl px-3.5 text-[0.98rem] font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${s.key === activeKey ? 'text-accent' : ''}`}>
-                {s.type === 'movie' ? <Film size={20} /> : <Tv size={20} />}<span className="min-w-0 flex-1 truncate">{s.title}</span>
+                {s.type === 'movie' ? <Film size={20} /> : <Tv size={20} />}<span className="min-w-0 flex-1 truncate">{s.title}</span>{!shown.some((x) => x.key === s.key) && <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-wide text-white/55 group-data-[hl=true]/f:bg-black/10 group-data-[hl=true]/f:text-black/60">Hidden</span>}
               </div>
             </Focusable>
           ))}

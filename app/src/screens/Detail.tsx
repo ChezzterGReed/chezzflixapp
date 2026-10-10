@@ -174,7 +174,7 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
 
           <div className="relative px-[var(--gutter)] pt-8">
             <Focusable focusKey="detail-back" onEnter={onClose} title="Back" onFocus={scrollToTopOf}>
-              <div className="inline-flex h-11 items-center gap-2 rounded-full bg-black/35 pl-3 pr-5 text-sm font-semibold backdrop-blur-md transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ArrowLeft size={18} />Back</div>
+              <div className="inline-flex h-11 items-center gap-2 rounded-full bg-black/35 pl-3 pr-5 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ArrowLeft size={18} />Back</div>
             </Focusable>
 
             <div className={minimal ? 'fade-up mt-8 flex items-start gap-10 max-md:flex-col' : 'fade-up mt-[12vh] max-w-[46rem]'}>
@@ -198,23 +198,23 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
                   </div>
                 </Focusable>
                 <Focusable onEnter={toggleWatched} title={watched ? 'Mark unwatched' : 'Mark watched'} onFocus={scrollToTopOf}>
-                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     {watched ? <EyeOff size={20} /> : <Eye size={20} />}{watched ? 'Mark unwatched' : 'Mark watched'}
                   </div>
                 </Focusable>
                 <Focusable focusKey="detail-preview" onEnter={preview} title="Preview" onFocus={scrollToTopOf}>
-                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     {busy ? <Loader2 size={20} className="animate-spin" /> : <Clapperboard size={20} />}Preview
                   </div>
                 </Focusable>
                 <Focusable onEnter={togglePin} title={pinned ? 'Unpin from Continue Watching' : 'Pin to Continue Watching'} onFocus={scrollToTopOf}>
-                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     {pinned ? <PinOff size={20} /> : <Pin size={20} />}{pinned ? 'Unpin' : 'Pin'}
                   </div>
                 </Focusable>
                 {onList !== undefined && (
                   <Focusable onEnter={toggleList} title={onList ? 'Remove from Watchlist' : 'Add to Watchlist'} onFocus={scrollToTopOf}>
-                    <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                    <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                       {onList ? <BookmarkCheck size={20} className="text-accent" /> : <BookmarkPlus size={20} />}Watchlist
                     </div>
                   </Focusable>
@@ -231,7 +231,7 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
                     <dd className="flex flex-wrap gap-2">
                       {m.Collection!.map((c) => (
                         <Focusable key={c.tag} onEnter={() => onCollection(c.tag, m.librarySectionID)} title={c.tag}>
-                          <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1.5 text-[0.85rem] font-semibold text-white/90 backdrop-blur transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Layers size={14} className="text-accent group-data-[hl=true]/f:text-black" />{c.tag.replace(/^_+/, '')}</div>
+                          <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1.5 text-[0.85rem] font-semibold text-white/90 transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Layers size={14} className="text-accent group-data-[hl=true]/f:text-black" />{c.tag.replace(/^_+/, '')}</div>
                         </Focusable>
                       ))}
                     </dd>

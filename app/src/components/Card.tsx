@@ -21,11 +21,11 @@ function Img({ src, alt, className = '' }: { src: string; alt: string; className
 function PinMark({ m }: { m: PlexMedia }) {
   const { settings } = useSettings()
   if (!settings.pinned[m.ratingKey] && !(m.grandparentRatingKey && settings.pinned[m.grandparentRatingKey])) return null
-  return <div className="absolute left-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 text-accent backdrop-blur"><Pin size={13} fill="currentColor" /></div>
+  return <div className="absolute left-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 text-accent"><Pin size={13} fill="currentColor" /></div>
 }
 
 function Badge({ m }: { m: PlexMedia }) {
-  if (isWatched(m)) return <div className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 backdrop-blur"><Check size={14} strokeWidth={3} /></div>
+  if (isWatched(m)) return <div className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-black/60"><Check size={14} strokeWidth={3} /></div>
   if ((m.type === 'show' || m.type === 'season') && m.leafCount) {
     const left = m.leafCount - (m.viewedLeafCount ?? 0)
     return left > 0 ? <div className="absolute right-2 top-2 min-w-6 rounded-full bg-accent px-1.5 py-0.5 text-center text-[11px] font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,.45)]">{left}</div> : null

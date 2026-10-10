@@ -88,6 +88,7 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
       <p className="px-4 pb-3 text-sm text-white/55">{settings.infoStyle === 'minimal' ? 'The poster, with the play button, description and details beside it. No big background picture.' : 'A cinematic page with a large background picture and the title logo.'} Applies to movies and shows.</p>
       <Toggle label="Use my profile picture as the logo" hint="Shown at the top of the menu instead of the letter tile" on={settings.avatarLogo} onChange={(v) => update({ avatarLogo: v })} />
       <div className="flex items-center gap-3 px-4 pb-2 text-sm text-white/55"><Avatar name={profileName} thumb={profileThumb} size={28} />Preview of the logo style on the menu</div>
+      <Toggle label="Lighter effects" hint="Turns off blur and drifting backgrounds. Uses much less of the graphics chip and battery" on={settings.lightEffects} onChange={(v) => update({ lightEffects: v })} />
       <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
       <Heading>Accent colour</Heading>
       {settings.seasonal && currentSeason() === 'halloween' && (

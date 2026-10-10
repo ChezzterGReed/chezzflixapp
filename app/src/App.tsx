@@ -75,7 +75,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const say = (msg: string) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(undefined), 3500) }
 
   // If the library you're viewing gets hidden, fall back to Home.
-  useEffect(() => { if (view.type === 'library' && !sections.some((s) => s.key === (view as { section: PlexSection }).section.key)) setView({ type: 'home' }) }, [sections, view])
+  useEffect(() => { if (view.type === 'library' && !allSections.some((s) => s.key === (view as { section: PlexSection }).section.key)) setView({ type: 'home' }) }, [allSections, view])
 
   // Rail navigation starts fresh; drilling in (browse -> genre -> title) keeps a back stack.
   const navigate = (v: View) => { setView(v); setHistory([]); setDetails([]); window.scrollTo({ top: 0 }) }
@@ -185,7 +185,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   return (
     <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs })}>
       <SeasonalAmbient />
-      <Sidebar sections={sections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
+      <Sidebar sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
         brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} />
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"

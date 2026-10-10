@@ -40,7 +40,8 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
 
   useEffect(() => {
     if (paused) return
-    const t = setTimeout(() => { auto.current = true; setI((x) => (x + 1) % items.length); setTimeout(() => { auto.current = false }, 700) }, ROTATE_MS)
+    if (document.documentElement.dataset.nativeVideo) return   // a video is playing over the page: stay still
+    const t = setTimeout(() => { if (document.documentElement.dataset.nativeVideo) return; auto.current = true; setI((x) => (x + 1) % items.length); setTimeout(() => { auto.current = false }, 700) }, ROTATE_MS)
     return () => clearTimeout(t)
   }, [i, paused, items.length])
 
@@ -76,7 +77,7 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
               </div>
             </Focusable>
             <Focusable focusKey="hero-info" onEnter={() => onInfo(m)} onFocus={toTop} onArrow={up} title="More info">
-              <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-7 text-[1.05rem] font-semibold backdrop-blur-md transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+              <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-7 text-[1.05rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                 <Info size={20} />More info
               </div>
             </Focusable>

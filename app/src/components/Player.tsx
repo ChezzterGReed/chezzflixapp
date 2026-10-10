@@ -3,7 +3,7 @@ import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2,
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
-import { applySubStyle, isAndroid, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
+import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
 import { clampBoost, dbLabel, useLevelEngine } from '../lib/leveling'
@@ -38,6 +38,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const [buffering, setBuffering] = useState(true)
   const [paused, setPausedState] = useState(true)
   const setPaused = (v: boolean) => { pausedRef.current = v; setPausedState(v) }
+  // No dimming or sleeping while it plays (a paused video may dim, like anywhere else).
+  useEffect(() => { keepAwake(!paused) }, [paused])
+  useEffect(() => () => { keepAwake(false) }, [])
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState((media.duration ?? 0) / 1000)
   const [buffered, setBuffered] = useState(0)
@@ -53,6 +56,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const [fullscreen, setFullscreen] = useState(false)
   const [next, setNext] = useState<PlexMedia | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [stayed, setStayed] = useState(false)   // "Stay" was chosen on the Up Next card: hide it and don't move on by itself
+  useEffect(() => { setStayed(false) }, [media.ratingKey])
   const idle = useRef<number>(0)
   const fallbackStep = useRef<'none' | 'stream' | 'transcode'>('none')
   // ----- cinematic start: fade to black -> hold a beat while loading -> play as the black lifts -----
@@ -328,10 +333,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const boostRow = levelRows.length - 1
   const levelActive = (!isAndroid && (settings.autoLevel || settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
 
-  const showNext = !!next && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
+  const showNext = !!next && !stayed && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
   const goPrev = useCallback(() => { if (prev) fadeOut(() => { continuing = true; onPlayNext(prev) }) }, [prev, onPlayNext, fadeOut])
-  endedRef.current = () => (next && settings.autoplayNext ? goNext() : close())
+  endedRef.current = () => (next && settings.autoplayNext && !stayed ? goNext() : close())
 
   // Up Next countdown (only if autoplay is on)
   useEffect(() => {
@@ -450,7 +455,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         } else if (e.key === 'ArrowUp') { if (ctlRow === 'buttons') setCtlRow('seek'); poke() }
         else if (e.key === 'ArrowDown') {
           if (ctlRow === 'seek') { setCtlRow('buttons'); poke() }
-          else if (showNext && countdown !== null) setCountdown(null)
+          else if (showNext && countdown !== null) { setCountdown(null); setStayed(true) }
           else { setCtlRow(null); setControls(false) }
         } else if (e.key === 'Enter' || e.key === ' ') { if (ctlRow === 'seek') toggle(); else acts[cur]?.(); poke() }
         else if (!['k', 'MediaPlayPause', 'm', 'v', 'f', 'n', 'p', 'c', 's', 'j', 'l'].includes(e.key)) return
@@ -515,7 +520,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
       {/* Paused: the picture dims and says so */}
       <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black/55 transition-opacity duration-300 ${paused && lifted && !closing && !error ? 'opacity-100' : 'opacity-0'}`}>
         <div className="flex flex-col items-center gap-3">
-          <span className="grid size-24 place-items-center rounded-full bg-white/15 ring-1 ring-white/25 backdrop-blur"><Pause size={44} fill="currentColor" /></span>
+          <Pause size={64} fill="currentColor" className="drop-shadow-lg" />
           <span className="text-sm font-bold uppercase tracking-[0.3em] text-white/70">Paused</span>
         </div>
       </div>
@@ -540,7 +545,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
               <div className="truncate font-bold">{episodeLabel(next)} · {next.title}</div></div></div>
           <div className="flex gap-2 p-3">
             <button onClick={goNext} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-2.5 text-sm font-bold text-black ring-2 ring-white/40 transition hover:scale-[1.04] hover:bg-accent hover:ring-accent active:scale-95"><Play size={15} fill="currentColor" />Play now</button>
-            <button onClick={() => setCountdown(null)} className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/25 active:scale-95">Stay</button>
+            <button onClick={() => { setCountdown(null); setStayed(true) }} className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/25 active:scale-95">Stay</button>
           </div>
         </div>
       )}

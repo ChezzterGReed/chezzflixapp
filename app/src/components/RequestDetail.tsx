@@ -75,7 +75,7 @@ export function RequestDetail({ item, base, plexToken, tmdbKey, onClose }: Props
 
         <div className="relative px-[var(--gutter)] pt-8">
           <Focusable focusKey="request-back" onEnter={onClose} title="Back">
-            <div className="inline-flex h-11 items-center gap-2 rounded-full bg-black/35 pl-3 pr-5 text-sm font-semibold backdrop-blur-md transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ArrowLeft size={18} />Back</div>
+            <div className="inline-flex h-11 items-center gap-2 rounded-full bg-black/35 pl-3 pr-5 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ArrowLeft size={18} />Back</div>
           </Focusable>
 
           <div className="fade-up mt-[12vh] max-w-[46rem]">

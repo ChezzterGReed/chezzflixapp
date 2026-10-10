@@ -210,6 +210,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   @Command fun setMute(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { muted = a.value; applyVolume(); emit("mute", muted) } }
   // 0 dB is exactly off: the samples pass through untouched.
   @Command fun setGain(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { gainDb = a.value; gain.linear = if (kotlin.math.abs(gainDb) < 0.05) 1.0f else 10.0.pow(gainDb.coerceIn(-12.0, 12.0) / 20.0).toFloat() } }
+  @Command fun setKeepAwake(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { web?.keepScreenOn = a.value } }   // no screensaver while watching
   @Command fun setSubStyle(invoke: Invoke) { val a = invoke.parseArgs(SubStyleArg::class.java); onUi(invoke) { subStyle = a; applySubStyle() } }
 
   @Command fun stop(invoke: Invoke) {

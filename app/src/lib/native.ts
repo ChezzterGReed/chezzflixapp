@@ -60,6 +60,17 @@ export async function mpvSet(name: string, value: string | number | boolean) {
   }
 }
 
+let wakeLock: { release: () => Promise<void> } | null = null
+/** Stops the screen dimming / sleeping while something plays (and lets it again afterwards). */
+export async function keepAwake(on: boolean) {
+  try {
+    if (isAndroid) await droid('setKeepAwake', { value: on })
+    else if ('__TAURI_INTERNALS__' in window) await (await core()).invoke('keep_awake', { on })
+    else if (on) wakeLock = await (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock?.request('screen') ?? null
+    else { await wakeLock?.release(); wakeLock = null }
+  } catch { /* best effort */ }
+}
+
 export interface SubStyle { subSize: string; subFont: string; subColor: string; subEdge: string; subBackground: boolean }
 export const SUB_SIZES = { small: 0.75, medium: 1, large: 1.3, huge: 1.7 } as const
 /** Applies the subtitle look to the player (plain-text subtitles; styled .ass ones keep their own). */

@@ -1,3 +1,4 @@
+import { LOW_POWER } from './perf'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 export const ACCENTS: { name: string; value: string }[] = [
@@ -29,6 +30,8 @@ export interface Settings {
   /** Saved row layout per tab. A tab with no entry uses its built-in default layout. */
   homeRows: Partial<Record<HomeTab, HomeRowCfg[]>>
   seasonal: boolean
+  /** Fewer visual effects (no blur-behind, no drifting backgrounds): lighter on the graphics chip and battery. */
+  lightEffects: boolean
   /** The one-time "choose your libraries" step has been completed for this profile. */
   setupDone: boolean
   /** Genres picked during setup (in order). They become the default genre rows on Home, Movies and Shows. Empty = built-in defaults. */
@@ -78,7 +81,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
 }
 
 export const PUMPKIN = '#ff7a1a'
@@ -134,6 +137,7 @@ export function SettingsProvider({ profileKey, shared: sharedValues, children }:
     // Spooky season is always pumpkin orange (turn Seasonal themes off to keep your own colour).
     document.documentElement.style.setProperty('--accent', season === 'halloween' ? PUMPKIN : settings.accent)
     document.documentElement.dataset.season = season ?? ''
+    document.documentElement.dataset.perf = LOW_POWER || settings.lightEffects ? 'low' : 'high'
     document.title = brandName(settings)
     try {
       localStorage.setItem('chezzflix_last_brand', brandName(settings))

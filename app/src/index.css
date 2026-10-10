@@ -52,6 +52,11 @@ button, [role=button] { cursor: pointer; outline: none; }
 html[data-native-video], html[data-native-video] body { background: transparent !important; }
 html[data-native-video] #root > :not([data-player]), html[data-native-video] body > :not(#root) { visibility: hidden; }
 
+/* While a video plays, the rest of the app does nothing: no ambient animation, no blur, no shimmer. */
+html[data-native-video]:not([data-native-video="exit"]) .orb, html[data-native-video]:not([data-native-video="exit"]) .fog, html[data-native-video]:not([data-native-video="exit"]) .mote,
+html[data-native-video]:not([data-native-video="exit"]) .skeleton, html[data-native-video]:not([data-native-video="exit"]) .logo-breathe { display: none !important; }
+html[data-native-video]:not([data-native-video="exit"]) #root > :not([data-player]) * { animation-play-state: paused !important; transition: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
 /* Leaving a video: the whole page (app + popups) grows from the middle like an iris over the still-playing picture. */
 html[data-native-video="exit"] body { background: var(--color-bg) !important; animation: iris .95s cubic-bezier(.65, .05, .25, 1) both; }
 html[data-native-video="exit"] #root > :not([data-player]), html[data-native-video="exit"] body > :not(#root) { visibility: visible; }
@@ -82,14 +87,14 @@ html[data-season=halloween] .orb-c { background: radial-gradient(closest-side, #
 @keyframes load-bar { 0% { transform: translateX(-120%) } 100% { transform: translateX(380%) } }
 
 .mote { position: absolute; bottom: -20px; border-radius: 9999px; background: rgba(255, 255, 255, .35); animation: rise linear infinite; }
-html[data-season=halloween] .mote { background: #ff9a3c; box-shadow: 0 0 10px 2px rgba(255, 140, 40, .55); }
-.mote.ember { background: #ff9a3c; box-shadow: 0 0 10px 2px rgba(255, 140, 40, .4); opacity: .0; }
+html[data-season=halloween] .mote { background: radial-gradient(circle, #ffb15c 0 40%, rgba(255, 140, 40, .35) 41% 70%, transparent 71%); transform: scale(2.4); }
+.mote.ember { opacity: .0; }
 @keyframes rise { 0% { transform: translate(0, 0); opacity: 0 } 12% { opacity: .85 } 100% { transform: translate(var(--drift, 0), -110vh); opacity: 0 } }
 
 /* ---------- Spooky season ambience (very faint) ---------- */
 .fog { position: absolute; width: 90vmax; height: 40vmax; border-radius: 50%; opacity: .1; }
-.fog-1 { left: -20vmax; bottom: -14vmax; background: radial-gradient(closest-side, #ff7a1a, transparent); animation: fog-move 40s ease-in-out infinite alternate; }
-.fog-2 { right: -26vmax; top: 30vh; background: radial-gradient(closest-side, #7c3aed, transparent); animation: fog-move 52s ease-in-out infinite alternate-reverse; }
+.fog-1 { left: -20vmax; bottom: -14vmax; background: radial-gradient(closest-side, #ff7a1a, transparent); animation: fog-move 90s ease-in-out infinite alternate; }
+.fog-2 { right: -26vmax; top: 30vh; background: radial-gradient(closest-side, #7c3aed, transparent); animation: fog-move 120s ease-in-out infinite alternate-reverse; }
 @keyframes fog-move { from { transform: translateX(0) } to { transform: translateX(14vmax) } }
 
 @media (prefers-reduced-motion: reduce) {
