@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Radio, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
@@ -172,6 +172,25 @@ function SubtitleStyle() {
       {row('Edge', [['outline', 'Outline'], ['shadow', 'Shadow'], ['none', 'None']], 'subEdge')}
       <Toggle label="Background box" hint="A dark box behind the text, easier to read over bright scenes" on={s.subBackground} onChange={(v) => update({ subBackground: v })} />
       <p className="px-4 pb-3 text-sm text-white/55">Applies to plain-text subtitles (.srt and similar). Styled subtitles (.ass) and picture-based ones keep the look they were made with.</p>
+    </>
+  )
+}
+
+function GuideSettings() {
+  const { settings, update } = useSettings()
+  return (
+    <>
+      <Toggle label="TV Guide" hint="Channels built from your library that are always on, like live TV. Switch off to hide it everywhere" on={settings.tvGuide} onChange={(v) => update({ tvGuide: v })} />
+      <Heading>Guide length</Heading>
+      <div className="flex gap-2 px-4 py-2">
+        {[12, 18, 24].map((h) => <Pill key={h} active={settings.guideHours === h} onEnter={() => update({ guideHours: h })}>{h} hours</Pill>)}
+      </div>
+      <p className="px-4 pb-3 text-sm text-white/55">How far ahead the guide is built. It is created when you open the TV Guide and topped up as you watch, never in the background.</p>
+      <Heading>Channels</Heading>
+      <p className="px-4 pb-2 text-sm text-white/55">{settings.channels.length ? `${settings.channels.length} channel${settings.channels.length === 1 ? '' : 's'} on this device. Add, rename or delete them from the TV Guide.` : 'No channels yet. Open the TV Guide to add some.'}</p>
+      <Row label="Reset the guide" hint="Forget the current schedule; the next time you open the guide it starts fresh" onEnter={() => { try { Object.keys(localStorage).filter((k) => k.startsWith('chezzflix_guide_')).forEach((k) => localStorage.removeItem(k)) } catch { /* ignore */ } }}>
+        <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">Reset</span>
+      </Row>
     </>
   )
 }
@@ -407,6 +426,7 @@ const PANELS = [
   { id: 'appearance', label: 'Appearance', icon: Palette }, { id: 'playback', label: 'Playback', icon: Play },
   { id: 'libraries', label: 'Libraries', icon: Film }, { id: 'home', label: 'Home', icon: Home }, { id: 'content', label: 'Content', icon: Eye },
   { id: 'recs', label: 'Recommendations', icon: Sparkles },
+  { id: 'guide', label: 'TV Guide', icon: Radio },
   { id: 'requests', label: 'Requests', icon: Inbox },
   { id: 'about', label: 'About', icon: Info },
 ] as const
@@ -443,6 +463,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           {panel === 'home' && <><ContinueStyle /><HomeEditor server={server} sections={sections} /></>}
           {panel === 'content' && <Content />}
           {panel === 'recs' && <Recommendations />}
+          {panel === 'guide' && <GuideSettings />}
           {panel === 'requests' && <Requests token={token} />}
           {panel === 'about' && <About server={server} />}
           <div className="mt-6 rounded-xl bg-white/5 px-4 py-3 text-sm text-white/55">Connected to <b className="text-white">{server.name}</b>. These settings belong to <b className="text-white">{profileName}</b>.</div>

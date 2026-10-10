@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.2.8',
+    'X-Plex-Version': '0.3.0',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -342,6 +342,11 @@ export async function getMetadata(server: PlexServer, ratingKey: string): Promis
   return c.Metadata[0]
 }
 
+/** Every episode of a show in one request (season and episode numbers included). */
+export async function getAllLeaves(server: PlexServer, ratingKey: string): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/metadata/${ratingKey}/allLeaves`, 300_000)
+  return c.Metadata ?? []
+}
 export async function getChildren(server: PlexServer, ratingKey: string): Promise<PlexMedia[]> {
   const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/metadata/${ratingKey}/children`)
   return c.Metadata ?? []

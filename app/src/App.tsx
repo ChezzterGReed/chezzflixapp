@@ -7,7 +7,7 @@ import {
 import { loadAnime, tabOk } from './lib/homeData'
 import { setBooted, useBooted } from './lib/boot'
 import { useBack } from './lib/back'
-import { justMoved, settleMs } from './lib/input'
+import { justMoved, moveCount, settleMs } from './lib/input'
 import { ensureFocus, rescueSoon } from './lib/focusRescue'
 import { isAndroid } from './lib/native'
 import { inTauri, startPlayback } from './lib/player'
@@ -21,6 +21,7 @@ import { Home } from './screens/Home'
 import { Library } from './screens/Library'
 import { Search } from './screens/Search'
 import { Watchlist } from './screens/Watchlist'
+import { TVGuide } from './screens/TVGuide'
 import { Dashboard } from './screens/Dashboard'
 import { BrowseIndex } from './screens/BrowseIndex'
 import { ListView } from './screens/ListView'
@@ -74,6 +75,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const sections = useMemo(() => allSections.filter((s) => !settings.hiddenLibraries.includes(s.key)), [allSections, settings.hiddenLibraries])
   const say = (msg: string) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(undefined), 3500) }
 
+  // Switching the TV Guide off while you're in it returns Home.
+  useEffect(() => { if (view.type === 'guide' && !settings.tvGuide) setView({ type: 'home' }) }, [settings.tvGuide, view])
   // If the library you're viewing gets hidden, fall back to Home.
   useEffect(() => { if (view.type === 'library' && !allSections.some((s) => s.key === (view as { section: PlexSection }).section.key)) setView({ type: 'home' }) }, [allSections, view])
 
@@ -82,7 +85,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const push = (v: View) => { setHistory((h) => [...h, view]); setView(v); setDetails([]); window.scrollTo({ top: 0 }) }
   const back = () => { setView(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); window.scrollTo({ top: 0 }) }
   // Back: go back a screen; with nothing to go back to, a TV remote's Back goes Home, and from Home it opens/closes the side menu.
-  const railKey = () => (view.type === 'library' ? `nav-lib-${view.section.key}` : view.type === 'search' ? 'nav-search' : view.type === 'watchlist' ? 'nav-watchlist' : view.type === 'dashboard' ? 'nav-dashboard' : 'nav-home')
+  const railKey = () => (view.type === 'library' ? `nav-lib-${view.section.key}` : view.type === 'search' ? 'nav-search' : view.type === 'watchlist' ? 'nav-watchlist' : view.type === 'guide' ? 'nav-guide' : view.type === 'dashboard' ? 'nav-dashboard' : 'nav-home')
   const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
   useBack(() => {
     if (history.length > 0) return back()
@@ -93,10 +96,10 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowLeft' || e.repeat || justMoved() || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      const before = getCurrentFocusKey()
+      const before = getCurrentFocusKey(), m0 = moveCount()
       if (!before || before === 'SN:ROOT' || before.startsWith('nav-')) return
       setTimeout(() => {
-        if (getCurrentFocusKey() !== before || document.querySelector('[data-layer], [data-player]')) return   // it moved, or a popup / the player owns the keys
+        if (getCurrentFocusKey() !== before || moveCount() !== m0 || document.querySelector('[data-layer], [data-player]')) return   // it moved, or a popup / the player owns the keys
         const k = railKeyRef.current
         setFocus(doesFocusableExist(k) ? k : 'SIDEBAR')
       }, settleMs())
@@ -185,7 +188,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   return (
     <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs })}>
       <SeasonalAmbient />
-      <Sidebar sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
+      <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
         brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} />
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
@@ -199,6 +202,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
+          {view.type === 'guide' && settings.tvGuide && <TVGuide server={server} sections={sections} scope={me.key} onLeave={() => navigate({ type: 'home' })} />}
           {view.type === 'watchlist' && <Watchlist server={server} token={token} sections={allSections} onOpen={open} />}
           {view.type === 'search' && <Search server={server} token={token} sections={allSections} onOpen={open} />}
         </main>

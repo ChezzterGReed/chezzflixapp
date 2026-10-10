@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { reveal } from '../lib/scroll'
-import { Bookmark, Film, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
+import { Bookmark, Film, Radio, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useInputMode, useTyping } from '../lib/input'
@@ -14,7 +14,7 @@ import type { HomeTab } from '../lib/settings'
 
 export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string }
 export type View =
-  | { type: 'home' } | { type: 'search' } | { type: 'watchlist' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
+  | { type: 'home' } | { type: 'search' } | { type: 'watchlist' } | { type: 'guide' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
   | { type: 'list'; title: string; subtitle?: string; source: ListSource }
 
@@ -43,9 +43,11 @@ interface Props {
   onProfile: () => void
   /** Server owner only. */
   showDashboard?: boolean
+  /** The TV Guide is switched on in Settings. */
+  tvGuide?: boolean
 }
 
-export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard }: Props) {
+export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, tvGuide }: Props) {
   const mode = useInputMode()
   const typing = useTyping()
   const season = useSeason()
@@ -79,6 +81,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           <NavItem focusKey="nav-home" icon={<Home size={22} />} label="Home" active={view.type === 'home'} onEnter={() => onNavigate({ type: 'home' })} />
           <NavItem focusKey="nav-search" icon={<Search size={22} />} label="Search" active={view.type === 'search'} onEnter={() => onNavigate({ type: 'search' })} />
           <NavItem focusKey="nav-watchlist" icon={<Bookmark size={22} />} label="Watchlist" active={view.type === 'watchlist'} onEnter={() => onNavigate({ type: 'watchlist' })} />
+          {tvGuide && <NavItem focusKey="nav-guide" icon={<Radio size={22} />} label="TV Guide" active={view.type === 'guide'} onEnter={() => onNavigate({ type: 'guide' })} />}
         </div>
 
         {/* Libraries scroll on their own so a long list never pushes the profile button off screen */}
@@ -109,6 +112,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           { label: 'Home', icon: <Home size={22} />, active: view.type === 'home', go: () => onNavigate({ type: 'home' }) },
           { label: 'Search', icon: <Search size={22} />, active: view.type === 'search', go: () => onNavigate({ type: 'search' }) },
           { label: 'Watchlist', icon: <Bookmark size={22} />, active: view.type === 'watchlist', go: () => onNavigate({ type: 'watchlist' }) },
+          ...(tvGuide ? [{ label: 'TV Guide', icon: <Radio size={22} />, active: view.type === 'guide', go: () => onNavigate({ type: 'guide' }) }] : []),
           ...sections.map((s) => ({ label: s.title, icon: s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />, active: isLib(s.key), go: () => onNavigate({ type: 'library', section: s }) })),
           ...(showDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={22} />, active: view.type === 'dashboard', go: () => onNavigate({ type: 'dashboard' }) }] : []),
           { label: 'You', icon: <Avatar name={profileName} thumb={profileThumb} size={24} />, active: false, go: onProfile },

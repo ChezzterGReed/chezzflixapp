@@ -34,6 +34,10 @@ export function setFocusedKey(key: string | null) {
 /** How long to wait after an arrow press before deciding focus really had nowhere to go (adapts to how slow this device is). */
 export const settleMs = () => Math.round(Math.max(130, Math.min(650, latency * 1.8 + 60)))
 /** True if focus just arrived somewhere, or the key is being held: pressing Left then shouldn't also open the side menu. */
+// Screens that move their own cursor (the TV Guide grid) call noteMove(), so "nothing moved" checks elsewhere don't fire.
+let moves = 0
+export const noteMove = () => { moves++; focusAt = performance.now() }
+export const moveCount = () => moves
 export const justMoved = () => arrowRepeat || performance.now() - focusAt < 300
 
 // Holding OK to open a menu must not also "press" whatever gets focus in it (the key keeps repeating until released).
