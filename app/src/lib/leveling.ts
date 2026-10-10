@@ -19,6 +19,7 @@ export const TARGET_LUFS = -22
 const MIN_GAIN = -6, MAX_GAIN = 15
 const FIRST_AT = 20, REFINE_AT = [60, 180], STOP_AT = 300   // seconds of playback
 const FAST_FIRST_AT = 6, FAST_REFINE_AT = [20, 60], FAST_STOP_AT = 120   // the TV Guide: you're surfing, so settle quickly
+export const GUIDE_MAX_GAIN = 5   // ...and never change anything by more than this many dB, up or down
 const LIMITER = 'alimiter=limit=0.97:attack=5:release=60:level=disabled'
 const DIALOGUE = 1.8   // center channel x1.8 (about +5 dB)
 
@@ -56,7 +57,10 @@ interface Opts { active: boolean; loaded: number; media: PlexMedia; autoLevel: b
 /** Drives mpv's audio filters for the current title. `loaded` ticks up each time a file finishes loading. */
 export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost, fast }: Opts) {
   const firstAt = fast ? FAST_FIRST_AT : FIRST_AT, refineAt = fast ? FAST_REFINE_AT : REFINE_AT, stopAt = fast ? FAST_STOP_AT : STOP_AT
-  const key = memKey(media)
+  // The guide keeps its own remembered levels (capped), separate from the player's, so neither affects the other.
+  const key = (fast ? 'guide:' : '') + memKey(media)
+  const lo = fast ? -GUIDE_MAX_GAIN : MIN_GAIN, hi = fast ? GUIDE_MAX_GAIN : MAX_GAIN
+  const limit = useCallback((v: number) => Math.max(lo, Math.min(hi, v)), [lo, hi])
   const [boost, setBoostState] = useState<Boost>(() => readMem(key).boost ?? 'auto')
   const [gain, setGain] = useState(0)
   const g = useRef({ gain: 0, sig: '', ticks: 0, lastPos: -1, timer: 0, ramp: 0 })
@@ -86,7 +90,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
       const mem = readMem(key)
       const measuring = boost === 'auto' && autoLevel
       const holds = typeof boost === 'number' || autoLevel
-      const want = typeof boost === 'number' ? boost : autoLevel ? mem.gain ?? 0 : 0
+      const want = limit(typeof boost === 'number' ? boost : autoLevel ? mem.gain ?? 0 : 0)
       const layout = dialogueBoost ? await mpvGet('audio-params/hr-channels').catch(() => null) : null
       const pan = layout ? dialoguePan(layout) : null
       const parts = [pan, measuring ? '@m:lavfi=[ebur128=metadata=1]' : null, holds ? 'GAIN' : null].filter(Boolean) as string[]
@@ -112,13 +116,13 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
         if (!first && !refineAt.includes(s.ticks)) return
         const lufs = Number(await mpvGet('af-metadata/m/lavfi.r128.I').catch(() => null))
         if (!isFinite(lufs) || lufs < -60) return   // nothing but silence so far
-        let next = clamp(TARGET_LUFS - lufs)
-        if (!first) next = Math.max(s.gain - 3, Math.min(s.gain + 3, next))   // later corrections stay small
+        let next = limit(clamp(TARGET_LUFS - lufs))
+        if (!first) next = limit(Math.max(s.gain - 3, Math.min(s.gain + 3, next)))   // later corrections stay small
         writeMem(key, { gain: next }); rampTo(next)
       }, 1000)
     })()
     return () => { dead = true; clearInterval(s.timer) }
-  }, [active, loaded, key, boost, autoLevel, dialogueBoost, rampTo, fast, firstAt, refineAt, stopAt])
+  }, [active, loaded, key, boost, autoLevel, dialogueBoost, rampTo, fast, firstAt, refineAt, stopAt, limit])
 
   useEffect(() => () => { clearInterval(g.current.timer); clearInterval(g.current.ramp); g.current.sig = '' }, [])
   return { boost, setBoost, gain }

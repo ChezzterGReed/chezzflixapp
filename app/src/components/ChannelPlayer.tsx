@@ -109,6 +109,13 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
   }, [])
   useEffect(() => () => { clearInterval(fade.current) }, [])
 
+  // With leveling off, the guide plays at normal volume: clear any gain left over from earlier (and clean up on the way out).
+  useEffect(() => {
+    if (mode !== 'native') return
+    if (!settings.guideLeveling) mpvSet('af', '').catch(() => {})
+    return () => { mpvSet('af', '').catch(() => {}) }
+  }, [mode, settings.guideLeveling])
+
   // Even out loudness between channels and programs (measures a few seconds, then holds one steady gain; remembered per show / movie).
   useLevelEngine({ active: mode === 'native' && settings.guideLeveling && !!media, loaded: loadedTick, media: media ?? ({ ratingKey: 'none', type: 'movie', title: '' } as PlexMedia), autoLevel: true, dialogueBoost: false, fast: true })
 
