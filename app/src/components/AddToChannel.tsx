@@ -23,7 +23,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
   const [note, setNote] = useState('')
 
   const showEntries = items.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art }))
-  const movieEntries = items.map((m) => ({ key: m.ratingKey, title: m.title, year: m.year, dur: m.duration ?? 100 * 60_000, date: m.originallyAvailableAt, thumb: m.thumb, art: m.art }))
+  const movieEntries = items.map((m) => ({ key: m.ratingKey, title: m.title, year: m.year, dur: m.duration ?? 100 * 60_000, date: m.originallyAvailableAt, thumb: m.thumb, art: m.art, rating: m.contentRating ?? '' }))
   // A channel is a candidate when at least one of these isn't on it yet.
   const missing = (c: Channel) => (isShow ? showEntries.filter((s) => !c.shows?.some((x) => x.key === s.key)) : movieEntries.filter((s) => !c.movieItems?.some((x) => x.key === s.key)))
   const eligible = channels.filter((c) => (isShow ? c.kind === 'shows' : c.kind === 'movies') && missing(c).length > 0)

@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.7',
+    'X-Plex-Version': '0.3.8',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -340,6 +340,19 @@ export async function getOnDeck(server: PlexServer): Promise<PlexMedia[]> {
 export async function getMetadata(server: PlexServer, ratingKey: string): Promise<PlexMedia> {
   const c = await get<{ Metadata: PlexMedia[] }>(server, `/library/metadata/${ratingKey}?includeOnDeck=1&includeMarkers=1`, 30_000)
   return c.Metadata[0]
+}
+
+/** The letters a library's titles start with (A-Z, and # for the rest), for the jump-to-letter strip. */
+export async function getFirstCharacters(server: PlexServer, sectionKey: string): Promise<string[]> {
+  const norm = (t: string) => { const c = t.trim().charAt(0).toUpperCase(); return c >= 'A' && c <= 'Z' ? c : '#' }
+  try {
+    if (server.uri === DEMO_URI) {
+      const all = await getAllSectionItems(server, sectionKey, 'titleAsc')
+      return [...new Set(all.map((m) => norm((m as { titleSort?: string }).titleSort || m.title)))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)))
+    }
+    const c = await get<{ Directory?: { key: string; title?: string }[] }>(server, `/library/sections/${sectionKey}/firstCharacter`, 600_000)
+    return [...new Set((c.Directory ?? []).map((d) => norm(d.title || d.key)))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)))
+  } catch { return [] }
 }
 
 /** Every episode of a show in one request (season and episode numbers included). */

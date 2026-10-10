@@ -38,12 +38,12 @@ export async function matchList(server: PlexServer, sections: PlexSection[], lis
 }
 
 // ---------- Seasonal TV Guide channels ----------
-/** Ratings for the after-dark channel; everything else (G, PG, PG-13, TV ratings, unrated kids' titles) is the family one. */
-const ADULT = /^(r|nc-17|tv-ma|unrated|x)$/i
+/** Ratings for the after-dark channel (PG-13 and up); everything else (G, PG, kids' TV ratings, unrated kids' titles) is the family one. */
+const ADULT = /^(pg-13|r|nc-17|tv-14|tv-ma|unrated|x)$/i
 const adult = (m: PlexMedia) => ADULT.test((m.contentRating ?? '').replace(/^[a-z]{2}\//i, '').trim())
 export const PUMPKIN_ORANGE = '#ff7a1a'
 
-/** In season, two channels built from the season's list: one for the whole family, one for after dark (R and up). Only those with enough movies. */
+/** In season, two channels built from the season's list: one for the whole family (G and PG), one for after dark (PG-13 and up). Only those with enough movies. */
 export async function seasonalChannels(server: PlexServer, sections: PlexSection[], season: Season): Promise<Channel[]> {
   const out: Channel[] = []
   for (const list of listsFor(season)) {

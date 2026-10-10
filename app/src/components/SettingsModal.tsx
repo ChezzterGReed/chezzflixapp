@@ -204,6 +204,11 @@ function ContinueStyle() {
         <Pill active={settings.continueStyle === 'episode'} onEnter={() => update({ continueStyle: 'episode' })}>Episode thumbnail</Pill>
         <Pill active={settings.continueStyle === 'poster'} onEnter={() => update({ continueStyle: 'poster' })}>Show poster</Pill>
       </div>
+      <div className="px-4 pt-1 text-sm font-semibold text-white/80">When you click an episode</div>
+      <div className="flex flex-wrap gap-2 px-4 py-2">
+        <Pill active={settings.continueOpen !== 'episode'} onEnter={() => update({ continueOpen: 'play' })}>Start playing it</Pill>
+        <Pill active={settings.continueOpen === 'episode'} onEnter={() => update({ continueOpen: 'episode' })}>Open the show at that episode</Pill>
+      </div>
       <p className="px-4 pb-3 text-sm text-white/55">{settings.continueStyle === 'poster' ? 'Shows appear as their poster, with the season and episode underneath.' : 'Each tile is a wide picture from the episode or movie you were watching.'}</p>
       <div className="px-4 pt-1 text-sm font-semibold text-white/80">How far back to look</div>
       <div className="flex flex-wrap gap-2 px-4 py-2">

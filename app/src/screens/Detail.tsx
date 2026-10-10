@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BIG_IMAGE } from '../lib/perf'
 import { reveal, scrollToTopOf } from '../lib/scroll'
 import { ArrowLeft, BookmarkCheck, BookmarkPlus, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Pin, PinOff, Play, Radio } from 'lucide-react'
@@ -63,9 +63,9 @@ function Episode({ ep, server, spoiler, onReveal, onPlay, onRecap, upTo }: { ep:
   )
 }
 
-interface Props { ratingKey: string; server: PlexServer; token: string; onClose: () => void; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onCollection: (title: string, sectionId?: string | number) => void }
+interface Props { ratingKey: string; server: PlexServer; token: string; /** Land on this episode (its season selected) instead of the Play button. */ focusEpisode?: { season?: string; ep: string }; onClose: () => void; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onCollection: (title: string, sectionId?: string | number) => void }
 
-export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCollection }: Props) {
+export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay, onOpen, onCollection }: Props) {
   const [m, setM] = useState<PlexMedia>()
   const [seasons, setSeasons] = useState<PlexMedia[]>([])
   const [season, setSeason] = useState<string>()
@@ -89,7 +89,7 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
         if (!alive) return
         setSeasons(ss)
         const current = full.OnDeck?.Metadata?.parentRatingKey
-        setSeason((ss.find((s) => s.ratingKey === current) ?? ss[0])?.ratingKey)
+        setSeason((ss.find((s) => s.ratingKey === focusEpisode?.season) ?? ss.find((s) => s.ratingKey === current) ?? ss[0])?.ratingKey)
       }
     })
     getRelated(server, ratingKey).then((r) => alive && setRelated(r))
@@ -104,7 +104,14 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
   }, [season, server])
 
   // Land on Play as soon as the page has content — the fastest path to watching.
-  useEffect(() => { if (m) setTimeout(() => setFocus('detail-play'), 80) }, [m])
+  useEffect(() => { if (m && !focusEpisode) setTimeout(() => setFocus('detail-play'), 80) }, [m]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Opened from Continue Watching with "open at that episode": go straight to it once its season's list is in.
+  const landed = useRef(false)
+  useEffect(() => {
+    if (!focusEpisode || landed.current || !episodes.some((e) => e.ratingKey === focusEpisode.ep)) return
+    landed.current = true
+    setTimeout(() => setFocus(`ep-${focusEpisode.ep}`), 150)
+  }, [episodes, focusEpisode])
 
   // Pin to Continue Watching: stays there, started or not, until unpinned.
   const pinned = !!(m && settings.pinned[m.ratingKey])

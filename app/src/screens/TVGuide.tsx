@@ -141,6 +141,11 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
       <Focusable focusKey="guide-add" onEnter={() => setAdding(true)} title="Add channel" leftToRail onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
         <div className="flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[0.95rem] font-bold text-black transition-transform group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Plus size={18} />Add channel</div>
       </Focusable>
+      {channels.length > 0 && (
+        <Focusable focusKey="guide-options" onEnter={() => { const c = channels[selRef.current.row]; if (c) setMenu(c) }} title="Edit the highlighted channel" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
+          <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ListChecks size={17} />Edit channel</div>
+        </Focusable>
+      )}
       <Focusable focusKey="guide-settings" onEnter={() => setGuideSettings(true)} title="Guide settings" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
         <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><SlidersHorizontal size={17} />Settings</div>
       </Focusable>

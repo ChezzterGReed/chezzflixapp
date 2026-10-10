@@ -3,7 +3,7 @@ import { ArrowLeft, Loader2, Plus, X } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
-import { Btn, CheckRow, LetterBar, NameField, Pill, letterOf, lettersIn } from './AddChannel'
+import { Btn, CheckRow, LetterBar, NameField, Pill, RatingPicker, letterOf, lettersIn } from './AddChannel'
 import { getAllSectionItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import type { Channel } from '../lib/tvguide'
 
@@ -34,7 +34,7 @@ function ContentPicker({ kind, server, sections, exclude, onPick, onClose }: { k
       return all.filter((m) => m.type === type && !seen.has(m.ratingKey) && !exclude.has(m.ratingKey) && !!seen.add(m.ratingKey)).sort((a, b) => a.title.localeCompare(b.title)).map((m) => (
         kind === 'shows'
           ? { id: m.ratingKey, label: m.title, sub: m.year ? String(m.year) : undefined, show: { key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art } }
-          : { id: m.ratingKey, label: m.title, sub: m.year ? String(m.year) : undefined, movie: { key: m.ratingKey, title: m.title, year: m.year, dur: m.duration ?? 100 * 60_000, date: m.originallyAvailableAt, thumb: m.thumb, art: m.art } }
+          : { id: m.ratingKey, label: m.title, sub: m.year ? String(m.year) : undefined, movie: { key: m.ratingKey, title: m.title, year: m.year, dur: m.duration ?? 100 * 60_000, date: m.originallyAvailableAt, thumb: m.thumb, art: m.art, rating: m.contentRating ?? '' } }
       ))
     }
     load().then((l) => alive && setList(l)).catch(() => alive && setList([]))
@@ -124,6 +124,8 @@ export function ChannelEditor({ channel, server, sections, onChange, onClose }: 
             <div className="flex flex-wrap gap-2 px-1 pb-1"><Pill active={channel.movieOrder === 'release'} onEnter={() => onChange({ movieOrder: 'release' })}>Release date</Pill><Pill active={channel.movieOrder !== 'release'} onEnter={() => onChange({ movieOrder: 'random' })}>Random</Pill></div>
             {genres.length > 0 && <>{heading(`Genres (${onGenres.length})`)}{genres.map((g) => <CheckRow key={g} label={g} sub="every movie in it" on={onGenres.includes(g)} onEnter={() => toggleGenre(g)} />)}</>}
             {movies.length > 0 && <>{heading(`Movies added one by one (${onMovies.length})`)}{movies.map((m) => <CheckRow key={m.key} label={m.title} sub={m.year ? String(m.year) : undefined} on={onMovies.some((x) => x.key === m.key)} onEnter={() => toggleMovie(m)} />)}</>}
+            {heading(`Ratings (${channel.ratings?.length ? channel.ratings.length + ' chosen' : 'all'})`)}
+            <RatingPicker value={channel.ratings ?? []} onChange={(v) => onChange({ ratings: v.length ? v : undefined })} />
             <div className="flex flex-wrap gap-2 pt-3"><Btn onEnter={() => setAdding('genres')}><Plus size={16} />Add genres</Btn><Btn onEnter={() => setAdding('movies')}><Plus size={16} />Add movies</Btn></div>
           </>}
         </div>

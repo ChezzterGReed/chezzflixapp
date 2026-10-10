@@ -3,6 +3,7 @@ import { reveal } from '../lib/scroll'
 import { Search as SearchIcon } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { useTitleSelection } from '../components/Bulk'
+import { useGridNav } from '../lib/gridNav'
 import { RequestCard } from '../components/RequestCard'
 import { RequestDetail } from '../components/RequestDetail'
 import { search, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
@@ -32,6 +33,8 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
   const [remote, setRemote] = useState<RequestItem[]>([])
   const [requesting, setRequesting] = useState<RequestItem>()
   const input = useRef<HTMLInputElement>(null)
+  const page = useRef<HTMLDivElement>(null)
+  useGridNav(page)
 
   // On a computer, start typing right away. On a TV, focus the search bar like any other button: OK opens the on-screen keyboard.
   useEffect(() => { if (isAndroid) { const t = setTimeout(() => setFocus('search-field'), 200); return () => clearTimeout(t) } input.current?.focus() }, [])
@@ -59,7 +62,7 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
   const grid = 'fade-in grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]'
 
   return (
-    <div className="px-[var(--gutter)] pb-24 pt-14">
+    <div ref={page} className="px-[var(--gutter)] pb-24 pt-14">
       <Focusable focusKey="search-field" onEnter={() => input.current?.focus()} title="Search">
         <div className="relative mb-10 max-w-3xl">
           <SearchIcon size={28} className="absolute left-0 top-1/2 -translate-y-1/2 text-white/50" />
@@ -77,7 +80,7 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
         <section>
           <h2 className="mb-5 text-[1.3rem] font-bold tracking-tight">Available to watch</h2>
           <div className={grid}>
-            {available.map((m) => <div key={m.ratingKey} className="[--card-w:100%]"><PosterCard m={m} server={server} onFocus={scroll} selecting={sel.active} checked={sel.has(m)} onEnter={() => (sel.active ? sel.toggle(m) : onOpen(m))} onLongPress={sel.active ? () => sel.toggle(m) : undefined} onSelect={m.type === 'movie' || m.type === 'show' ? () => sel.start(m) : undefined} /></div>)}
+            {available.map((m) => <div key={m.ratingKey} data-grid-cell className="[--card-w:100%]"><PosterCard m={m} server={server} onFocus={scroll} selecting={sel.active} checked={sel.has(m)} onEnter={() => (sel.active ? sel.toggle(m) : onOpen(m))} onLongPress={sel.active ? () => sel.toggle(m) : undefined} onSelect={m.type === 'movie' || m.type === 'show' ? () => sel.start(m) : undefined} /></div>)}
           </div>
         </section>
       )}
@@ -86,7 +89,7 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
           <h2 className="text-[1.3rem] font-bold tracking-tight">Request something</h2>
           <p className="mb-5 mt-1 text-sm text-white/50">{available.length === 0 && local ? `Nothing in your library matches “${q}”, but you can request it.` : 'Not in your library yet. Request it and it will be added.'}</p>
           <div className={grid}>
-            {requestable.map((r) => <div key={`${r.type}:${r.tmdbId}`} className="[--card-w:100%]"><RequestCard item={r} onEnter={() => setRequesting(r)} onFocus={scroll} /></div>)}
+            {requestable.map((r) => <div key={`${r.type}:${r.tmdbId}`} data-grid-cell className="[--card-w:100%]"><RequestCard item={r} onEnter={() => setRequesting(r)} onFocus={scroll} /></div>)}
           </div>
         </section>
       )}

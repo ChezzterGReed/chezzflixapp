@@ -1,12 +1,15 @@
 import { useTitleSelection } from '../components/Bulk'
+import { AlphaRail, alphaOf } from '../components/AlphaRail'
+import { useGridNav } from '../lib/gridNav'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { reveal } from '../lib/scroll'
 import { Eye, EyeOff, Layers, Tags } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
 import { Focusable } from '../components/Focusable'
-import { getAllSectionItems, getCollections, getSectionItems, getYears, isWatched, type PlexCollectionRef, type PlexMedia, type PlexSection, type PlexServer, type SortKey } from '../lib/plex'
+import { getAllSectionItems, getCollections, getFirstCharacters, getSectionItems, getYears, isWatched, type PlexCollectionRef, type PlexMedia, type PlexSection, type PlexServer, type SortKey } from '../lib/plex'
 import { useSettings } from '../lib/settings'
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 
 const PAGE = 120
 
@@ -46,6 +49,30 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const sentinel = useRef<HTMLDivElement>(null)
+  const page = useRef<HTMLDivElement>(null)
+  useGridNav(page)
+  // Jump-to-letter strip: only when the list is in plain A-Z order (no filters), and long enough to need it.
+  const [letters, setLetters] = useState<string[]>([])
+  const [jumping, setJumping] = useState(false)
+  const jumpTo = useRef<string | null>(null)
+  useEffect(() => { let alive = true; getFirstCharacters(server, section.key).then((l) => alive && setLetters(l)); return () => { alive = false } }, [server, section.key])
+  const railOn = (sort === 'titleAsc' || sort === 'titleDesc') && !collapse && !unwatched && !year && total > 60
+  const sortedLetters = sort === 'titleDesc' ? [...letters].reverse() : letters
+  const focusLetter = (l: string) => {
+    const hit = items.find((m) => alphaOf((m as { titleSort?: string }).titleSort || m.title) === l)
+    const el = hit && document.querySelector<HTMLElement>(`[data-rk="${hit.ratingKey}"] [data-fk]`)
+    const fk = el?.getAttribute('data-fk')
+    if (fk) setFocus(fk)
+  }
+  const pickLetter = async (l: string) => {
+    if (items.length < total) {   // not every title is loaded yet: load the lot (once), then jump
+      setJumping(true)
+      const all = await getAllSectionItems(server, section.key, sort, undefined, 8000, false).catch(() => items)
+      setItems(all); setTotal(all.length); setJumping(false)
+      jumpTo.current = l
+    } else focusLetter(l)
+  }
+  useEffect(() => { if (jumpTo.current && items.length >= total) { const l = jumpTo.current; jumpTo.current = null; setTimeout(() => focusLetter(l), 120) } }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { getYears(server, section.key).then(setYears) }, [server, section.key])
 
@@ -83,7 +110,8 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
   const toolBtn = 'flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black'
 
   return (
-    <div className="px-[var(--gutter)] pb-24 pt-14">
+    <div ref={page} className="px-[var(--gutter)] pb-24 pt-14">
+      {railOn && <AlphaRail letters={sortedLetters} onPick={pickLetter} busy={jumping} />}
       <div className="fade-up mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-5">
         <div>
           <h1 className="text-[2.6rem] font-extrabold tracking-[-0.03em]">{section.title}</h1>
@@ -105,7 +133,7 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
       </div>
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {items.map((m) => (
-          <div key={m.ratingKey} className="[--card-w:100%]">
+          <div key={m.ratingKey} data-grid-cell data-rk={m.ratingKey} className="[--card-w:100%]">
             {(() => {
               const pickable = m.type === 'movie' || m.type === 'show'
               return <PosterCard m={m} server={server} onFocus={(el) => reveal(el)} selecting={sel.active && pickable} checked={sel.has(m)}

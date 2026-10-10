@@ -64,6 +64,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const { settings, update } = useSettings()
   const [menu, setMenu] = useState<{ item: PlexMedia; fromContinue?: boolean; fromRecs?: boolean; onSelect?: () => void }>()
   const [view, setView] = useState<View>({ type: 'home' })
+  const [epFocus, setEpFocus] = useState<{ show: string; season?: string; ep: string }>()   // open a show's page and land on this episode
   const [history, setHistory] = useState<View[]>([])
   const [details, setDetails] = useState<string[]>([])
   const [layer, setLayer] = useState<'profile' | 'settings' | null>(null)
@@ -195,7 +196,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
-          {view.type === 'home' && <Home server={server} sections={allSections} refreshKey={refreshKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
+          {view.type === 'home' && <Home server={server} sections={allSections} refreshKey={refreshKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
@@ -211,7 +212,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       </FocusContext.Provider>
 
       {details.length > 0 && <Detail key={details[details.length - 1] + refreshKey} ratingKey={details[details.length - 1]} server={server} token={token}
-        onClose={() => setDetails((d) => d.slice(0, -1))} onPlay={play} onOpen={open} onCollection={openCollection} />}
+        focusEpisode={epFocus && epFocus.show === details[details.length - 1] ? epFocus : undefined}
+        onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onOpen={open} onCollection={openCollection} />}
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}

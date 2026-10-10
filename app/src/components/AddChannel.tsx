@@ -4,9 +4,9 @@ import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { getAllSectionItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
-import { uniqueName, type Channel, type ChannelDraft } from '../lib/tvguide'
+import { RATING_OPTIONS, uniqueName, type Channel, type ChannelDraft } from '../lib/tvguide'
 
-type Step = 'type' | 'shows' | 'showOpts' | 'movies' | 'movieOpts' | 'name'
+type Step = 'type' | 'shows' | 'showOpts' | 'movies' | 'ratings' | 'movieOpts' | 'name'
 const PAGE = 60
 
 export function Choice({ icon, label, hint, onEnter, focusKey }: { icon: ReactNode; label: string; hint?: string; onEnter: () => void; focusKey?: string }) {
@@ -97,6 +97,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
   const [pickedGenres, setPickedGenres] = useState<string[]>([])
   const [perBlock, setPerBlock] = useState(1)
   const [episodeOrder, setEpisodeOrder] = useState<'ordered' | 'random'>('ordered')
+  const [ratings, setRatings] = useState<string[]>([])   // empty = every rating
   const [movieOrder, setMovieOrder] = useState<'release' | 'random'>('random')
   const [name, setName] = useState('')
 
@@ -116,7 +117,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
 
   // Land on something sensible whenever the step changes.
   useEffect(() => {
-    const k = { type: 'add-shows', shows: 'add-filter', showOpts: 'add-next', movies: 'add-next', movieOpts: 'add-next', name: 'name-field' }[step]
+    const k = { type: 'add-shows', shows: 'add-filter', showOpts: 'add-next', movies: 'add-next', ratings: 'add-next', movieOpts: 'add-next', name: 'name-field' }[step]
     const t = setTimeout(() => setFocus(k), 120)
     return () => clearTimeout(t)
   }, [step])
@@ -131,19 +132,19 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
 
   const finish = () => {
     const finalName = uniqueName(name.trim() || suggestedName || 'Channel', existing.map((c) => c.name))
-    if (movieMode()) onCreate({ name: finalName, kind: 'movies', genres: pickedGenres, movieOrder })
+    if (movieMode()) onCreate({ name: finalName, kind: 'movies', genres: pickedGenres, movieOrder, ratings: ratings.length ? ratings : undefined })
     else onCreate({ name: finalName, kind: 'shows', shows: pickedShows.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art })), perBlock: pickedShows.length > 1 ? perBlock : 1, episodeOrder })
   }
 
   const back = () => {
     if (step === 'type') return onClose()
-    setStep({ shows: 'type', showOpts: 'shows', movies: 'type', movieOpts: 'movies', name: movieMode() ? 'movieOpts' : 'showOpts' }[step] as Step)
+    setStep({ shows: 'type', showOpts: 'shows', movies: 'type', ratings: 'movies', movieOpts: 'ratings', name: movieMode() ? 'movieOpts' : 'showOpts' }[step] as Step)
   }
 
   const letters = useMemo(() => lettersIn((shows ?? []).map((m) => m.title)), [shows])
   // Typing in the filter box takes over from a chosen letter.
   const filtered = (shows ?? []).filter((m) => (filter ? m.title.toLowerCase().includes(filter.toLowerCase()) : letter ? letterOf(m.title) === letter : true))
-  const title = { type: 'Add a channel', shows: 'Choose shows', showOpts: 'How should it play?', movies: 'Choose genres', movieOpts: 'How should it play?', name: 'Name your channel' }[step]
+  const title = { type: 'Add a channel', shows: 'Choose shows', showOpts: 'How should it play?', movies: 'Choose genres', ratings: 'Which ratings?', movieOpts: 'How should it play?', name: 'Name your channel' }[step]
 
   return (
     <Layer onClose={back} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 flex max-h-[88vh] w-[min(660px,94vw)] -translate-x-1/2 -translate-y-1/2 flex-col">
@@ -196,6 +197,8 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
             </>
           )}
 
+          {step === 'ratings' && <RatingPicker value={ratings} onChange={setRatings} />}
+
           {step === 'movieOpts' && (
             <div className="px-1 py-2"><div className="mb-2 font-bold">Movie order</div><div className="flex flex-wrap gap-2"><Pill active={movieOrder === 'release'} onEnter={() => setMovieOrder('release')}>Release date</Pill><Pill active={movieOrder === 'random'} onEnter={() => setMovieOrder('random')}>Random</Pill></div>
               <p className="mt-2 text-sm text-white/50">Every movie plays before any repeats.</p></div>
@@ -212,11 +215,24 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
           <div className="flex-1" />
           {step === 'shows' && <Btn focusKey="add-next" primary disabled={!pickedShows.length} onEnter={() => setStep(pickedShows.length > 1 ? 'showOpts' : 'showOpts')}>Next · {pickedShows.length} selected</Btn>}
           {step === 'showOpts' && <Btn focusKey="add-next" primary onEnter={() => { setName(''); setStep('name') }}>Next</Btn>}
-          {step === 'movies' && <Btn focusKey="add-next" primary disabled={!pickedGenres.length} onEnter={() => setStep('movieOpts')}>Next · {pickedGenres.length} selected</Btn>}
+          {step === 'movies' && <Btn focusKey="add-next" primary disabled={!pickedGenres.length} onEnter={() => setStep('ratings')}>Next · {pickedGenres.length} selected</Btn>}
+          {step === 'ratings' && <Btn focusKey="add-next" primary onEnter={() => setStep('movieOpts')}>Next</Btn>}
           {step === 'movieOpts' && <Btn focusKey="add-next" primary onEnter={() => { setName(''); setStep('name') }}>Next</Btn>}
           {step === 'name' && <Btn focusKey="add-next" primary onEnter={finish}>Create channel</Btn>}
         </div>
       </div>
     </Layer>
+  )
+}
+
+/** Which content ratings a movie channel may play. Nothing ticked = every rating. */
+export function RatingPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  return (
+    <>
+      <p className="px-2 pb-2 text-sm text-white/50">Only movies with the ratings you tick will play. Leave all unticked for every rating.</p>
+      <CheckRow label="All ratings" sub={value.length ? undefined : 'no filter'} on={value.length === 0} onEnter={() => onChange([])} />
+      {RATING_OPTIONS.map((r) => <CheckRow key={r.id} label={r.label} sub={r.hint} on={value.includes(r.id)} onEnter={() => toggle(r.id)} />)}
+    </>
   )
 }

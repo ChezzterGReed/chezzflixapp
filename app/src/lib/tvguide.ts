@@ -19,7 +19,9 @@ export interface Channel {
   episodeOrder?: 'ordered' | 'random'
   /** Movie channels: genre names (all movies in any of them), movies added one by one, and the order. */
   genres?: string[]
-  movieItems?: { key: string; title: string; year?: number; dur: number; date?: string; thumb?: string; art?: string }[]
+  movieItems?: { key: string; title: string; year?: number; dur: number; date?: string; thumb?: string; art?: string; rating?: string }[]
+  /** Movie channels: only these ratings play (see RATING_OPTIONS). Empty or missing = every rating. */
+  ratings?: string[]
   movieOrder?: 'release' | 'random'
   /** Audio and subtitle choices for this channel (they override the guide's defaults). */
   prefs?: ChannelPrefs
@@ -28,6 +30,29 @@ export interface Channel {
   accent?: string
 }
 export interface ChannelPrefs { subs?: 'default' | 'on' | 'off'; subLang?: string; audioLang?: string }
+
+// ---------- Content ratings for movie channels ----------
+export const RATING_OPTIONS: { id: string; label: string; hint?: string }[] = [
+  { id: 'G', label: 'G' }, { id: 'PG', label: 'PG' }, { id: 'PG-13', label: 'PG-13' }, { id: 'R', label: 'R' }, { id: 'NC-17', label: 'NC-17' },
+  { id: 'Unrated', label: 'Unrated / Not Rated' },
+  { id: 'TV-Y', label: 'TV-Y, TV-Y7, TV-G', hint: 'kids and family TV movies' }, { id: 'TV-PG', label: 'TV-PG' }, { id: 'TV-14', label: 'TV-14' }, { id: 'TV-MA', label: 'TV-MA' },
+  { id: 'none', label: 'No rating', hint: 'nothing listed on the server' }, { id: 'other', label: 'Other', hint: 'international or unusual ratings' },
+]
+/** Which of the options a movie's content rating falls under. */
+export function ratingBucket(raw?: string): string {
+  const r = (raw ?? '').replace(/^[a-z]{2}\//i, '').trim().toUpperCase()
+  if (!r) return 'none'
+  if (r === 'G' || r === 'PG' || r === 'PG-13' || r === 'R') return r === 'G' ? 'G' : r === 'PG' ? 'PG' : r === 'PG-13' ? 'PG-13' : 'R'
+  if (r === 'NC-17' || r === 'X') return 'NC-17'
+  if (['NR', 'NOT RATED', 'UNRATED', 'UR', 'APPROVED', 'PASSED'].includes(r)) return 'Unrated'
+  if (['TV-Y', 'TV-Y7', 'TV-Y7-FV', 'TV-G'].includes(r)) return 'TV-Y'
+  if (r === 'TV-PG') return 'TV-PG'
+  if (r === 'TV-14') return 'TV-14'
+  if (r === 'TV-MA') return 'TV-MA'
+  return 'other'
+}
+/** Is a movie with this content rating allowed on the channel? (Titles with no rating field at all, from older channels, always are.) */
+export const ratingAllowed = (picked: string[] | undefined, raw: string | undefined) => !picked?.length || raw === undefined || picked.includes(ratingBucket(raw))
 
 // ---------- Languages for audio / subtitle preferences ----------
 export const LANGS: { id: string; name: string; codes: string[] }[] = [
@@ -84,7 +109,7 @@ export function cloneChannel(c: Channel, existing: Channel[]): Channel {
   return newChannel({ ...draft, name: c.name }, existing)
 }
 /** What the schedule depends on: when this changes, the channel's schedule is rebuilt. */
-const signature = (c: Channel) => JSON.stringify([c.kind, c.shows?.map((s) => s.key), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder])
+const signature = (c: Channel) => JSON.stringify([c.kind, c.shows?.map((s) => s.key), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings])
 
 // ---------- Schedule ----------
 export interface Slot {
@@ -101,7 +126,7 @@ interface ChanState { rot: number; inBlock: number; shows: Record<string, ShowSt
 interface Stored { sig: string; slots: Slot[]; st: ChanState }
 interface Source { eps?: Record<string, Ep[]>; movies?: Movie[] }
 interface Ep { key: string; dur: number; label: string; title: string }
-interface Movie { key: string; dur: number; title: string; year?: number; date: string; th?: string; ar?: string }
+interface Movie { key: string; dur: number; title: string; year?: number; date: string; th?: string; ar?: string; rating?: string }
 
 // ---------- Seeded randomness (so a saved position can be resumed exactly) ----------
 function mulberry32(a: number) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
@@ -163,7 +188,7 @@ export async function loadMovies(server: PlexServer, sections: PlexSection[], ge
   }))
   const list = [...best.values()].map(({ m }): Movie => ({
     key: m.ratingKey, dur: m.duration && m.duration > 10 * MIN ? m.duration : 100 * MIN, title: m.title, year: m.year,
-    date: m.originallyAvailableAt ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art,
+    date: m.originallyAvailableAt ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art, rating: m.contentRating ?? '',
   }))
   movieCache.set(ck, list)
   return list
@@ -176,12 +201,12 @@ async function sources(server: PlexServer, sections: PlexSection[], ch: Channel)
     await Promise.all((ch.shows ?? []).map(async (s) => { eps[s.key] = await loadEpisodes(server, s.key) }))
     return { eps }
   }
-  const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art }))
+  const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art, rating: m.rating }))
   const fromGenres = (ch.genres ?? []).length ? await loadMovies(server, sections, ch.genres ?? []) : []
   const seen = new Set(own.map((m) => m.key))
   // One copy of each film: the same title and year from two libraries (say regular and 4K) counts once.
   const byName = new Set<string>()
-  const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))].filter((m) => { const k = `${lower(m.title)}:${m.year ?? ''}`; if (byName.has(k)) return false; byName.add(k); return true })
+  const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))].filter((m) => ratingAllowed(ch.ratings, m.rating)).filter((m) => { const k = `${lower(m.title)}:${m.year ?? ''}`; if (byName.has(k)) return false; byName.add(k); return true })
   return { movies: ch.movieOrder === 'release' ? [...movies].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)) : movies }
 }
 

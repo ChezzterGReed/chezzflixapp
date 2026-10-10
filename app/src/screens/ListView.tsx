@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
+import { AlphaRail, alphaOf } from '../components/AlphaRail'
+import { useGridNav } from '../lib/gridNav'
 import { reveal } from '../lib/scroll'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
@@ -15,6 +18,8 @@ export function ListView({ server, title, subtitle, load, onOpen, onBack }: Prop
   const [items, setItems] = useState<PlexMedia[]>()
   const [sort, setSort] = useState<SortKey>('added')
   const [year, setYear] = useState<number>()
+  const page = useRef<HTMLDivElement>(null)
+  useGridNav(page)
 
   useEffect(() => { let alive = true; load().then((r) => alive && setItems(r)).catch(() => alive && setItems([])); return () => { alive = false } }, [load])
 
@@ -30,8 +35,21 @@ export function ListView({ server, title, subtitle, load, onOpen, onBack }: Prop
     return [...list].sort(cmp[sort])
   }, [items, sort, year])
 
+  // Jump-to-letter strip for long lists in A-Z (or Z-A) order.
+  const alpha = sort === 'titleAsc' || sort === 'titleDesc'
+  const letters = useMemo(() => {
+    const set = [...new Set(shown.map((m) => alphaOf(titleOf(m))))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)))
+    return sort === 'titleDesc' ? set.reverse() : set
+  }, [shown, sort])
+  const pickLetter = (l: string) => {
+    const hit = shown.find((m) => alphaOf(titleOf(m)) === l)
+    const fk = hit && document.querySelector<HTMLElement>(`[data-rk="${hit.ratingKey}"] [data-fk]`)?.getAttribute('data-fk')
+    if (fk) setFocus(fk)
+  }
+
   return (
-    <div className="px-[var(--gutter)] pb-24 pt-10">
+    <div ref={page} className="px-[var(--gutter)] pb-24 pt-10">
+      {alpha && shown.length > 40 && <AlphaRail letters={letters} onPick={pickLetter} />}
       <BackButton onBack={onBack} />
       <div className="fade-up mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -43,7 +61,7 @@ export function ListView({ server, title, subtitle, load, onOpen, onBack }: Prop
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {!items ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[2/3] rounded-xl" />)
           : shown.map((m) => (
-            <div key={m.ratingKey} className="[--card-w:100%]">
+            <div key={m.ratingKey} data-grid-cell data-rk={m.ratingKey} className="[--card-w:100%]">
               <PosterCard m={m} server={server} onEnter={() => onOpen(m)} onFocus={(el) => reveal(el)} />
             </div>
           ))}

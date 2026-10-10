@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useGridNav } from '../lib/gridNav'
 import { BookmarkMinus, CheckSquare, Info, Plus } from 'lucide-react'
 import { Focusable } from '../components/Focusable'
 import { Layer } from '../components/Layer'
@@ -54,6 +55,8 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   const [menu, setMenu] = useState<WatchItem>()
   const [confirm, setConfirm] = useState<WatchItem[]>()
   const [tab, setTab] = useState<'all' | 'movie' | 'show'>('all')
+  const page = useRef<HTMLDivElement>(null)
+  useGridNav(page)
   const [selecting, setSelecting] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [requesting, setRequesting] = useState<RequestItem>()
@@ -86,7 +89,7 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
 
   const onList = menu ? local.get(menu.key) : undefined
   return (
-    <div className="px-[var(--gutter)] pb-24 pt-14">
+    <div ref={page} className="px-[var(--gutter)] pb-24 pt-14">
       <h1 className="fade-up text-[2.6rem] font-extrabold tracking-[-0.03em]">Watchlist</h1>
       <p className="mb-5 mt-1 text-white/55">{items ? `${items.length} title${items.length === 1 ? '' : 's'} on your Plex Watchlist · hold OK on one for options, or choose Select to pick several` : ' '}</p>
       <div className="mb-7 flex gap-2">
@@ -100,7 +103,7 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
         {!items ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[2/3] rounded-xl" />)
           : items.filter((x) => tab === 'all' || x.type === tab).map((i) => {
             const m = local.get(i.key)
-            return <div key={i.key} className="[--card-w:100%]">
+            return <div key={i.key} data-grid-cell className="[--card-w:100%]">
               {m ? <PosterCard m={m} server={server} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : onOpen(m))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} onFocus={(el) => reveal(el)} />
                 : <RemoteCard item={i} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : setMenu(i))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} />}
             </div>
