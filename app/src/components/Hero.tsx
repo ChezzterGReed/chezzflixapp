@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { scrollTo } from '../lib/scroll'
+import { holdScroll, scrollTo } from '../lib/scroll'
 import { BIG_IMAGE } from '../lib/perf'
 import { Info, Play } from 'lucide-react'
 import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
@@ -34,14 +34,23 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
   // Pauses only while the pointer rests on the title/buttons (so you can read or click) — never because the Play button happens to hold focus.
   const [hover, setHover] = useState(false)
   const { ref, focusKey } = useFocusable({ trackChildren: true, focusKey: 'HERO', saveLastFocusedChild: true, autoRestoreFocus: false })
-  const paused = hover || !rotate || items.length < 2
+  const [onScreen, setOnScreen] = useState(true)
+  // No sliding while the banner is scrolled out of view (and its buttons changing mustn't pull the page back up).
+  useEffect(() => {
+    const el = ref.current as HTMLElement | null
+    if (!el) return
+    const io = new IntersectionObserver(([e]) => setOnScreen(e.isIntersecting && e.intersectionRatio > 0.4), { threshold: [0, 0.4, 1] })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [ref])
+  const paused = hover || !rotate || items.length < 2 || !onScreen
   // Set while the slideshow advances itself: the buttons remount and briefly regain focus, which must not scroll the page.
   const auto = useRef(false)
 
   useEffect(() => {
     if (paused) return
     if (document.documentElement.dataset.nativeVideo) return   // a video is playing over the page: stay still
-    const t = setTimeout(() => { if (document.documentElement.dataset.nativeVideo) return; auto.current = true; setI((x) => (x + 1) % items.length); setTimeout(() => { auto.current = false }, 700) }, ROTATE_MS)
+    const t = setTimeout(() => { if (document.documentElement.dataset.nativeVideo) return; auto.current = true; holdScroll(1600); setI((x) => (x + 1) % items.length); setTimeout(() => { auto.current = false }, 700) }, ROTATE_MS)
     return () => clearTimeout(t)
   }, [i, paused, items.length])
 

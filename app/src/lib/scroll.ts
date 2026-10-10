@@ -75,7 +75,12 @@ export function scrollToTopOf(el: HTMLElement) { scrollTo(scroller(el, 'y'), 'y'
  * When the cursor lands on something near the top (or bottom) of a page or panel, scroll all the way to that end, so the title or other
  * content above (or below) it is visible too, rather than stopping at the item itself. "Near" = it would still be fully on screen there.
  */
+let heldUntil = 0
+/** Briefly stops focus changes from scrolling the page (used when something swaps its own buttons, like the banner changing slide). */
+export const holdScroll = (ms: number) => { heldUntil = performance.now() + ms }
+
 export function edgeSnap(el: HTMLElement) {
+  if (performance.now() < heldUntil) return
   const s = scroller(el, 'y')
   if (isRoot(s) && el.closest('nav, [data-layer]')) return   // fixed things (side menu, popups) don't move with the page
   const max = maxPos(s, 'y'), cur = pos(s, 'y')

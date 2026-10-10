@@ -20,6 +20,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
   const [order, setOrder] = useState<'ordered' | 'random' | 'release'>(isShow ? 'ordered' : 'random')
   const [perBlock, setPerBlock] = useState(1)
   const [added, setAdded] = useState('')
+  const [note, setNote] = useState('')
 
   const showEntries = items.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art }))
   const movieEntries = items.map((m) => ({ key: m.ratingKey, title: m.title, year: m.year, dur: m.duration ?? 100 * 60_000, date: m.originallyAvailableAt, thumb: m.thumb, art: m.art }))
@@ -37,6 +38,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
 
   const addTo = (c: Channel) => {
     const add = missing(c)
+    setNote(add.length < items.length ? `${add.length} new added · ${items.length - add.length} ${items.length - add.length === 1 ? 'was' : 'were'} already on it` : '')
     onSave(channels.map((x) => (x.id !== c.id ? x : isShow ? { ...x, shows: [...(x.shows ?? []), ...(add as typeof showEntries)] } : { ...x, movieItems: [...(x.movieItems ?? []), ...(add as typeof movieEntries)] })))
     setAdded(c.name); setStep('done')
   }
@@ -75,7 +77,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
 
         {step === 'existing' && (
           <div className="mt-4 space-y-2">
-            {eligible.map((c, i) => <Choice key={c.id} focusKey={i === 0 ? 'atc-first' : undefined} icon={<span className="text-lg font-extrabold tabular-nums">{c.number}</span>} label={c.name} hint={c.kind === 'shows' ? `${c.shows?.length ?? 0} show${(c.shows?.length ?? 0) === 1 ? '' : 's'}` : 'Movies'} onEnter={() => addTo(c)} />)}
+            {eligible.map((c, i) => <Choice key={c.id} focusKey={i === 0 ? 'atc-first' : undefined} icon={<span className="text-lg font-extrabold tabular-nums">{c.number}</span>} label={c.name} hint={`${missing(c).length === items.length ? `Adds ${items.length}` : `Adds ${missing(c).length} of ${items.length} (the rest are already on it)`} · ${c.kind === 'shows' ? `${c.shows?.length ?? 0} show${(c.shows?.length ?? 0) === 1 ? '' : 's'} now` : 'movies'}`} onEnter={() => addTo(c)} />)}
           </div>
         )}
 
@@ -93,7 +95,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
 
         {step === 'done' && (
           <div className="mt-5 flex items-center gap-4"><span className="grid size-12 place-items-center rounded-full bg-accent text-black"><Check size={26} strokeWidth={3} /></span>
-            <div className="min-w-0 flex-1"><div className="font-bold">On “{added}”</div><div className="text-sm text-white/55">It will appear in the TV Guide the next time you open it.</div></div>
+            <div className="min-w-0 flex-1"><div className="font-bold">On “{added}”</div><div className="text-sm text-white/55">{note ? `${note}. ` : ''}It will appear in the TV Guide the next time you open it.</div></div>
             <Btn primary focusKey="atc-done" onEnter={onClose}>Done</Btn></div>
         )}
       </div>

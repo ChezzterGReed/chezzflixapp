@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
+import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
@@ -32,7 +33,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const video = useRef<HTMLVideoElement>(null)
   const hls = useRef<{ destroy: () => void } | null>(null)
   const timeRef = useRef(0)
-  const [choice, setChoice] = useState<TrackChoice>({})
+  // Start from what you chose last time on this show (web player); the native player applies it once the file loads.
+  const [choice, setChoice] = useState<TrackChoice>(() => webChoice(media, streamsOf(media, 2), streamsOf(media, 3)))
   const [plan, setPlan] = useState<PlaybackPlan>()
   const [error, setError] = useState<string>()
   const [buffering, setBuffering] = useState(true)
@@ -165,6 +167,19 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     let off: (() => void) | undefined, dead = false
     const flags = { cache: false, seeking: false }
     const refreshTracks = () => mpvTracks().then(setNTracks).catch(() => {})
+    // Audio / subtitle choices remembered for this show (applied twice: embedded tracks right away, sidecar subtitles a moment later).
+    const applyPrefs = async (tries = 0): Promise<void> => {
+      const pref = getTrackPref(media)
+      if (!pref) return
+      try {
+        const tracks = await mpvTracks()
+        if (!tracks.length && tries < 3) { await new Promise((r) => setTimeout(r, 500)); return applyPrefs(tries + 1) }
+        const pick = pickTracks(tracks, pref)
+        if (pick.aid !== undefined) await mpvSet('aid', pick.aid)
+        if (pick.sid !== undefined) await mpvSet('sid', pick.sid)
+        refreshTracks()
+      } catch { /* keep the file's defaults */ }
+    }
     onMpv((p) => {
       const n = typeof p.value === 'number' ? p.value : undefined
       switch (p.name) {
@@ -181,6 +196,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     }, (e) => {
       if (e.event === 'loaded') {
         setBuffering(false); setReady(true); refreshTracks(); setLoadedTick((n) => n + 1)
+        applyPrefs(); setTimeout(applyPrefs, 1100)
         // Sidecar subtitles Plex knows about (embedded ones are already in mpv's track list).
         plexSubs.filter((s) => s.key).forEach((s) => mpvCmd('sub-add', `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, 'auto').catch(() => {}))
         setTimeout(refreshTracks, 800)
@@ -366,10 +382,18 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     if (mode === 'native') {
       // The player applies a track change a moment later, so re-read the list a few times until it shows the new choice.
       const reread = () => [0, 350, 1000].forEach((ms) => setTimeout(reloadTracks, ms))
-      if (col === 0) mpvSet('aid', audio[idx].id).then(reread).catch(() => {})
-      else mpvSet('sid', idx === 0 ? 'no' : subs[idx - 1].id).then(reread).catch(() => {})
-    } else if (col === 0) setChoice((c) => ({ ...c, audioId: audio[idx].id }))
-    else setChoice((c) => ({ ...c, subtitleId: idx === 0 ? null : subs[idx - 1].id }))
+      if (col === 0) { mpvSet('aid', audio[idx].id).then(reread).catch(() => {}); const t = nTracks.find((x) => x.type === 'audio' && x.id === audio[idx].id); if (t) saveTrackPref(media, { audio: { lang: t.lang, title: t.title } }) }
+      else {
+        mpvSet('sid', idx === 0 ? 'no' : subs[idx - 1].id).then(reread).catch(() => {})
+        const t = idx === 0 ? undefined : nTracks.find((x) => x.type === 'sub' && x.id === subs[idx - 1].id)
+        saveTrackPref(media, { sub: idx === 0 ? 'off' : { lang: t?.lang, title: t?.title, forced: t?.forced } })   // for the rest of this show's episodes
+      }
+    } else if (col === 0) { setChoice((c) => ({ ...c, audioId: audio[idx].id })); const s = plexAudio.find((x) => x.id === audio[idx].id); if (s) saveTrackPref(media, { audio: { lang: s.languageCode ?? s.language, title: s.displayTitle } }) }
+    else {
+      setChoice((c) => ({ ...c, subtitleId: idx === 0 ? null : subs[idx - 1].id }))
+      const s = idx === 0 ? undefined : plexSubs.find((x) => x.id === subs[idx - 1].id)
+      saveTrackPref(media, { sub: idx === 0 ? 'off' : { lang: s?.languageCode ?? s?.language, title: s?.displayTitle, forced: s?.forced } })
+    }
     setPanel(null)
   }
   // Subtitle look, adjustable while watching (same settings as Settings → Playback).

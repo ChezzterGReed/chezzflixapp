@@ -179,7 +179,9 @@ async function sources(server: PlexServer, sections: PlexSection[], ch: Channel)
   const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art }))
   const fromGenres = (ch.genres ?? []).length ? await loadMovies(server, sections, ch.genres ?? []) : []
   const seen = new Set(own.map((m) => m.key))
-  const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))]
+  // One copy of each film: the same title and year from two libraries (say regular and 4K) counts once.
+  const byName = new Set<string>()
+  const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))].filter((m) => { const k = `${lower(m.title)}:${m.year ?? ''}`; if (byName.has(k)) return false; byName.add(k); return true })
   return { movies: ch.movieOrder === 'release' ? [...movies].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)) : movies }
 }
 

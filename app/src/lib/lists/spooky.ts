@@ -143,6 +143,7 @@ export const SPOOKY: [string, number][] = [
   ['Nosferatu', 1922],
   ['Nosferatu', 2024],
   ['The Nun', 2018],
+  ['Obsession', 2026],
   ['The Omen', 1976],
   ['The Others', 2001],
   ['Paranormal Activity', 2007],

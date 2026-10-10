@@ -53,6 +53,7 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   const [error, setError] = useState(false)
   const [menu, setMenu] = useState<WatchItem>()
   const [confirm, setConfirm] = useState<WatchItem[]>()
+  const [tab, setTab] = useState<'all' | 'movie' | 'show'>('all')
   const [selecting, setSelecting] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [requesting, setRequesting] = useState<RequestItem>()
@@ -87,10 +88,17 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   return (
     <div className="px-[var(--gutter)] pb-24 pt-14">
       <h1 className="fade-up text-[2.6rem] font-extrabold tracking-[-0.03em]">Watchlist</h1>
-      <p className="mb-8 mt-1 text-white/55">{items ? `${items.length} title${items.length === 1 ? '' : 's'} on your Plex Watchlist · hold OK on one for options, or choose Select to pick several` : ' '}</p>
+      <p className="mb-5 mt-1 text-white/55">{items ? `${items.length} title${items.length === 1 ? '' : 's'} on your Plex Watchlist · hold OK on one for options, or choose Select to pick several` : ' '}</p>
+      <div className="mb-7 flex gap-2">
+        {([['all', 'All'], ['movie', 'Movies'], ['show', 'TV Shows']] as const).map(([id, label], n) => (
+          <Focusable key={id} focusKey={`wl-tab-${id}`} onEnter={() => setTab(id)} title={label} leftToRail={n === 0}>
+            <div className={`rounded-full px-5 py-2 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${tab === id ? 'bg-accent text-black' : 'bg-white/10 text-white/70'}`}>{label}{items ? <span className="ml-2 opacity-60">{id === 'all' ? items.length : items.filter((x) => x.type === id).length}</span> : null}</div>
+          </Focusable>
+        ))}
+      </div>
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {!items ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[2/3] rounded-xl" />)
-          : items.map((i) => {
+          : items.filter((x) => tab === 'all' || x.type === tab).map((i) => {
             const m = local.get(i.key)
             return <div key={i.key} className="[--card-w:100%]">
               {m ? <PosterCard m={m} server={server} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : onOpen(m))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} onFocus={(el) => reveal(el)} />
@@ -98,6 +106,7 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
             </div>
           })}
       </div>
+      {items && items.length > 0 && !items.some((x) => tab === 'all' || x.type === tab) && <p className="py-16 text-white/55">{tab === 'movie' ? 'No movies on your Watchlist.' : 'No TV shows on your Watchlist.'}</p>}
       {items && items.length === 0 && <p className="py-16 text-white/55">{error ? "Couldn't load your Watchlist right now." : 'Nothing here yet. Open a movie or show and choose Watchlist to save it.'}</p>}
 
       {menu && (
