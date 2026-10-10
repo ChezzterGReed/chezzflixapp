@@ -1,3 +1,4 @@
+import { useTitleSelection } from '../components/Bulk'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { reveal } from '../lib/scroll'
 import { Eye, EyeOff, Layers, Tags } from 'lucide-react'
@@ -27,14 +28,15 @@ function groupByCollection(items: PlexMedia[], cols: PlexCollectionRef[]): PlexM
 }
 
 interface Props {
-  server: PlexServer; section: PlexSection
+  server: PlexServer; token: string; section: PlexSection
   onOpen: (m: PlexMedia) => void
   onBrowse: (kind: 'genres' | 'collections') => void
   onCollection: (c: { ratingKey: string; title: string }) => void
 }
 
-export function Library({ server, section, onOpen, onBrowse, onCollection }: Props) {
+export function Library({ server, token, section, onOpen, onBrowse, onCollection }: Props) {
   const { settings, update } = useSettings()
+  const sel = useTitleSelection(server, token)
   const collapse = !!settings.collapseCollections[section.key]
   const unwatched = !!settings.unwatchedOnly[section.key]
   const [sort, setSort] = useState<SortKey>('titleAsc')
@@ -104,13 +106,19 @@ export function Library({ server, section, onOpen, onBrowse, onCollection }: Pro
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {items.map((m) => (
           <div key={m.ratingKey} className="[--card-w:100%]">
-            <PosterCard m={m} server={server} onEnter={() => (m.type === 'collection' ? onCollection(m) : onOpen(m))} onFocus={(el) => reveal(el)} />
+            {(() => {
+              const pickable = m.type === 'movie' || m.type === 'show'
+              return <PosterCard m={m} server={server} onFocus={(el) => reveal(el)} selecting={sel.active && pickable} checked={sel.has(m)}
+                onEnter={() => (sel.active ? pickable && sel.toggle(m) : m.type === 'collection' ? onCollection(m) : onOpen(m))}
+                onLongPress={sel.active ? () => pickable && sel.toggle(m) : undefined} onSelect={pickable ? () => sel.start(m) : undefined} />
+            })()}
           </div>
         ))}
         {loading && Array.from({ length: items.length ? 6 : 18 }, (_, i) => <div key={'s' + i} className="skeleton aspect-[2/3] rounded-xl" />)}
       </div>
       {!loading && items.length === 0 && <p className="py-16 text-white/55">{year ? `Nothing from ${year} here. Try another year.` : (unwatched ? 'Nothing unwatched here. You\'ve seen it all!' : 'This library is empty.')}</p>}
       <div ref={sentinel} className="h-px" />
+      {sel.bar}
     </div>
   )
 }

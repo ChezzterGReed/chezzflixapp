@@ -61,7 +61,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   onSwitch: (p: PlexProfile, pin?: string) => Promise<void>; onSignOut: () => void
 }) {
   const { settings, update } = useSettings()
-  const [menu, setMenu] = useState<{ item: PlexMedia; fromContinue?: boolean; fromRecs?: boolean }>()
+  const [menu, setMenu] = useState<{ item: PlexMedia; fromContinue?: boolean; fromRecs?: boolean; onSelect?: () => void }>()
   const [view, setView] = useState<View>({ type: 'home' })
   const [history, setHistory] = useState<View[]>([])
   const [details, setDetails] = useState<string[]>([])
@@ -186,7 +186,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
   void token
   return (
-    <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs })}>
+    <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs, onSelect: opts?.onSelect })}>
       <SeasonalAmbient />
       <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
         brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} />
@@ -198,7 +198,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'list' && listLoader && <ListView server={server} title={view.title} subtitle={view.subtitle} load={listLoader} onOpen={open} onBack={back} />}
-          {view.type === 'library' && <Library server={server} section={view.section} onOpen={open}
+          {view.type === 'library' && <Library server={server} token={token} section={view.section} onOpen={open}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
@@ -213,7 +213,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
-      {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onClose={() => setMenu(undefined)}
+      {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
         onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)} />}
       {playing && <Player key={playing.ratingKey} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} />}
 

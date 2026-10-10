@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Copy, Languages, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Languages, ListChecks, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { AddChannel, Btn, CheckRow, NameField, Pill } from '../components/AddChannel'
+import { ChannelEditor } from '../components/ChannelEditor'
 import { ChannelPlayer } from '../components/ChannelPlayer'
 import { Focusable } from '../components/Focusable'
 import { Layer } from '../components/Layer'
@@ -36,6 +37,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
   const [menu, setMenu] = useState<Channel>()
   const [renaming, setRenaming] = useState<Channel>()
   const [prefsFor, setPrefsFor] = useState<Channel>()
+  const [editing, setEditing] = useState<string>()   // id of the channel whose content is being edited
   const [guideSettings, setGuideSettings] = useState(false)
   const [watching, setWatching] = useState<number>()
   const [slow, setSlow] = useState(false)
@@ -107,6 +109,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
     for (const d of drafts) { if (list.length >= 40) break; list = [...list, newChannel(d, list)] }
     update({ channels: list, guideOffered: true })
   }
+  const patchChannel = (id: string, patch: Partial<Channel>) => update({ channels: settings.channels.map((x) => (x.id === id ? { ...x, ...patch } : x)) })
   const clone = (c: Channel) => { if (settings.channels.length < 40) update({ channels: [...settings.channels, cloneChannel(c, settings.channels)] }) }
   const setPrefs = (c: Channel, prefs: Channel['prefs']) => update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, prefs } : x)) })
   const remove = (c: Channel) => { update({ channels: settings.channels.filter((x) => x.id !== c.id) }); setMenu(undefined); setSel({ row: 0, t: Date.now() }) }
@@ -185,10 +188,10 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
             <div ref={track} className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="relative" style={{ width: CH_W + span }}>
                 {/* "Now": a line down the whole guide */}
-                {now >= origin && now < origin + hours * HOUR && <div className="pointer-events-none absolute inset-y-0 z-[5] w-[2px] bg-accent/80 shadow-[0_0_10px_var(--accent)]" style={{ left: CH_W + ((now - origin) / MIN) * PPM }}><i className="absolute -left-[5px] top-0 size-3 rounded-full bg-accent" /></div>}
+                {now >= origin && now < origin + hours * HOUR && <div className="pointer-events-none absolute inset-y-0 z-[4] w-[2px] bg-accent/80 shadow-[0_0_10px_var(--accent)]" style={{ left: CH_W + ((now - origin) / MIN) * PPM }}><i className="absolute -left-[5px] top-0 size-3 rounded-full bg-accent" /></div>}
                 {/* Time ruler */}
-                <div className="sticky top-0 z-30 flex h-11 border-b border-white/10 bg-[#1a1a22]" style={{ width: CH_W + span }}>
-                  <div className="sticky left-0 z-20 flex shrink-0 items-center bg-[#16161d] px-4 text-sm font-bold text-white/70" style={{ width: CH_W }}>{new Date(origin).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                <div className="sticky top-0 z-[8] flex h-11 border-b border-white/10 bg-[#1a1a22]" style={{ width: CH_W + span }}>
+                  <div className="sticky left-0 z-[9] flex shrink-0 items-center bg-[#16161d] px-4 text-sm font-bold text-white/70" style={{ width: CH_W }}>{new Date(origin).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</div>
                   <div className="relative" style={{ width: span }}>
                     {ticks.map((t) => <span key={t} className="absolute border-l border-white/15 pl-2 text-sm font-semibold text-white/70" style={{ left: ((t - origin) / MIN) * PPM, height: 44, lineHeight: '44px', top: 0 }}>{clock(t)}</span>)}
                   </div>
@@ -197,7 +200,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
                   const slots = (guide.slots[ch.id] ?? []).filter(aired)
                   return (
                     <div key={ch.id} className="relative flex border-b border-white/[0.07]" style={{ height: ROW_H, width: CH_W + span }}>
-                      <div className={`sticky left-0 z-10 flex shrink-0 items-center gap-3 px-4 transition-colors ${sel.row === row ? 'bg-[#26262f]' : 'bg-[#16161d]'}`} style={{ width: CH_W }}>
+                      <div className={`sticky left-0 z-[6] flex shrink-0 items-center gap-3 px-4 transition-colors ${sel.row === row ? 'bg-[#26262f]' : 'bg-[#16161d]'}`} style={{ width: CH_W }}>
                         <span className="text-xl font-extrabold tabular-nums text-white/90">{ch.number}</span>
                         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white/65">{ch.name}</span>
                       </div>
@@ -245,6 +248,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
         <Layer onClose={() => setMenu(undefined)} scrim="bg-black/55 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(380px,92vw)] -translate-x-1/2 -translate-y-1/2">
           <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
             <div className="px-3.5 pb-2 pt-3"><div className="truncate text-[1.02rem] font-bold">{menu.number} · {menu.name}</div><div className="text-sm text-white/55">Channel options</div></div>
+            <MenuItem icon={<ListChecks size={20} />} label="Edit content" onEnter={() => { setEditing(menu.id); setMenu(undefined) }} />
             <MenuItem icon={<Languages size={20} />} label="Preferences" onEnter={() => { setPrefsFor(menu); setMenu(undefined) }} />
             <MenuItem icon={<Copy size={20} />} label="Clone channel" onEnter={() => { clone(menu); setMenu(undefined) }} />
             <MenuItem icon={<Pencil size={20} />} label="Rename" onEnter={() => { setRenaming(menu); setMenu(undefined) }} />
@@ -252,6 +256,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
           </div>
         </Layer>
       )}
+      {editing && settings.channels.find((c) => c.id === editing) && <ChannelEditor channel={settings.channels.find((c) => c.id === editing)!} server={server} sections={sections} onChange={(patch) => patchChannel(editing, patch)} onClose={() => setEditing(undefined)} />}
       {prefsFor && <Prefs channel={settings.channels.find((c) => c.id === prefsFor.id) ?? prefsFor} onChange={(p) => setPrefs(prefsFor, p)} onClose={() => setPrefsFor(undefined)} />}
       {guideSettings && <GuideDefaults onClose={() => setGuideSettings(false)} />}
       {renaming && <Rename channel={renaming} onClose={() => setRenaming(undefined)} onSave={(n) => rename(renaming, n)} />}
@@ -334,6 +339,7 @@ function GuideDefaults({ onClose }: { onClose: () => void }) {
         <div className="mt-5 space-y-5">
           <div><div className="mb-2 font-bold">Subtitles</div><div className="flex gap-2"><Pill active={settings.guideSubs === 'off'} onEnter={() => update({ guideSubs: 'off' })}>Off</Pill><Pill active={settings.guideSubs === 'on'} onEnter={() => update({ guideSubs: 'on' })}>On</Pill></div></div>
           {settings.guideSubs === 'on' && <div><div className="mb-2 font-bold">Subtitle language</div>{langPills(settings.guideSubLang, (v) => update({ guideSubLang: v || 'en' }), 'English')}</div>}
+          <div><div className="mb-2 font-bold">Even out volume between channels</div><div className="flex gap-2"><Pill active={settings.guideLeveling} onEnter={() => update({ guideLeveling: true })}>On</Pill><Pill active={!settings.guideLeveling} onEnter={() => update({ guideLeveling: false })}>Off</Pill></div><p className="mt-2 text-sm text-white/50">Measures each program for a few seconds and holds one steady volume, and remembers it, so channel changes aren’t jarring. Dolby and DTS sent straight to a receiver can’t be adjusted.</p></div>
           <div><div className="mb-2 font-bold">Audio language</div>{langPills(settings.guideAudioLang, (v) => update({ guideAudioLang: v }), 'Whatever the file plays by default')}</div>
         </div>
         <div className="mt-6"><Btn primary focusKey="gd-done" onEnter={onClose}>Done</Btn></div>

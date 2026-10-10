@@ -6,6 +6,7 @@ import { DEMO_URI, directPlayUrl, getMetadata, type PlexMedia, type PlexServer }
 import { planPlayback } from '../lib/playback'
 import { applySubStyle, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive } from '../lib/native'
 import { useSettings } from '../lib/settings'
+import { useLevelEngine } from '../lib/leveling'
 import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
 
 interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void }
@@ -24,6 +25,8 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
   const [idx, setIdx] = useState(start)
   const [status, setStatus] = useState<'tuning' | 'playing' | 'error'>('tuning')
   const [slot, setSlot] = useState<Slot>()
+  const [media, setMedia] = useState<PlexMedia>()
+  const [loadedTick, setLoadedTick] = useState(0)
   const [banner, setBanner] = useState(true)
   const [leaving, setLeaving] = useState(false)
   const seq = useRef(0)
@@ -69,6 +72,7 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
     try {
       const media: PlexMedia = await getMetadata(server, s.key)
       if (my !== seq.current) return
+      setMedia(media)
       const dur = (media.duration ?? s.end - s.start) / 1000
       const offset = Math.max(0, Math.min((Date.now() - s.start) / 1000, Math.max(0, dur - 8)))
       advance.current = window.setTimeout(() => { if (my === seq.current) tune(idxRef.current) }, Math.max(1000, s.end - Date.now()))
@@ -94,17 +98,31 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
     } catch (e) { console.warn('[tv guide] tune failed', e); if (my === seq.current) setStatus('error') }
   }, [channels, server, flash])
 
+  // A short fade-up on each tune, so the first moments of a louder program don't jolt, while the level evens out.
+  const fade = useRef<number>(0)
+  const fadeIn = useCallback(() => {
+    clearInterval(fade.current)
+    mpvSet('volume', 0).catch(() => {})
+    let i = 0
+    fade.current = window.setInterval(() => { i++; mpvSet('volume', Math.min(100, Math.round((i / 8) * 100))).catch(() => {}); if (i >= 8) clearInterval(fade.current) }, 80)
+  }, [])
+  useEffect(() => () => { clearInterval(fade.current) }, [])
+
+  // Even out loudness between channels and programs (measures a few seconds, then holds one steady gain; remembered per show / movie).
+  useLevelEngine({ active: mode === 'native' && settings.guideLeveling && !!media, loaded: loadedTick, media: media ?? ({ ratingKey: 'none', type: 'movie', title: '' } as PlexMedia), autoLevel: true, dialogueBoost: false, fast: true })
+
   // Native engine events (loaded / ended / failed).
   useEffect(() => {
     if (mode !== 'native') return
     let off: (() => void) | undefined, dead = false
     onMpv((p) => { if (p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
-      if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); flash(); applyTracks() }
+      if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() }
       if ((e.event === 'end' && e.reason === 4) || e.event === 'error') setStatus('error')
     }).then((u) => { if (dead) u(); else off = u })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
     return () => {
       dead = true; off?.()
+      mpvSet('volume', 100).catch(() => {})   // leave things audible for whatever plays next
       mpvCmd('stop').catch(() => {})
       setNativeVideoActive(false)
       document.documentElement.classList.add('ui-fade')

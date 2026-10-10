@@ -8,6 +8,7 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
+import kotlin.math.log10
 import kotlin.math.tanh
 
 /**
@@ -18,8 +19,31 @@ import kotlin.math.tanh
 class GainProcessor : BaseAudioProcessor() {
   @Volatile var linear = 1.0f
 
+  // ---- loudness measurement (feeds auto leveling) ----
+  // The picture is the same as the desktop's: average the power of 0.4-second blocks, ignoring near-silence, and report it in dB.
+  // It is an unweighted estimate, so it is only meant to compare titles with each other, not to match a loudness meter exactly.
+  private var blockLen = 1
+  private var acc = 0.0
+  private var cnt = 0
+  private val lock = Any()
+  private var sumPower = 0.0
+  private var blocks = 0
+
+  fun resetMeasure() = synchronized(lock) { acc = 0.0; cnt = 0; sumPower = 0.0; blocks = 0 }
+  /** Approximate loudness in LUFS-like dB so far, or null until there is enough audio to say. */
+  fun loudness(): Double? = synchronized(lock) { if (blocks >= 3) 10.0 * log10(sumPower / blocks) - 0.7 else null }
+  private fun measure(v: Float) {
+    acc += (v * v).toDouble()
+    if (++cnt >= blockLen) {
+      val p = acc / cnt
+      if (p > 1e-6) synchronized(lock) { sumPower += p; blocks++ }   // gate: -60 dBFS
+      acc = 0.0; cnt = 0
+    }
+  }
+
   override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
     if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+    blockLen = (inputAudioFormat.sampleRate * 0.4).toInt().coerceAtLeast(1) * inputAudioFormat.channelCount.coerceAtLeast(1)
     return inputAudioFormat
   }
 
@@ -28,14 +52,16 @@ class GainProcessor : BaseAudioProcessor() {
     if (n == 0) return
     val out = replaceOutputBuffer(n)
     val g = linear
+    inputBuffer.order(ByteOrder.nativeOrder()); out.order(ByteOrder.nativeOrder())
+    // Measure the audio as it arrives (before any gain), then pass it on.
+    val look = inputBuffer.duplicate().order(ByteOrder.nativeOrder())
+    if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) { while (look.remaining() >= 2) measure(look.short / 32768f) }
+    else { while (look.remaining() >= 4) measure(look.float) }
     if (g == 1.0f) { out.put(inputBuffer) }
-    else {
-      inputBuffer.order(ByteOrder.nativeOrder()); out.order(ByteOrder.nativeOrder())
-      if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) {
-        while (inputBuffer.remaining() >= 2) out.putShort(limit16(inputBuffer.short * g))
-      } else {
-        while (inputBuffer.remaining() >= 4) out.putFloat(limitF(inputBuffer.float * g))
-      }
+    else if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) {
+      while (inputBuffer.remaining() >= 2) out.putShort(limit16(inputBuffer.short * g))
+    } else {
+      while (inputBuffer.remaining() >= 4) out.putFloat(limitF(inputBuffer.float * g))
     }
     out.flip()
   }

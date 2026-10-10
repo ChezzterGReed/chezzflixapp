@@ -105,6 +105,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
         emit("demuxer-cache-time", p.bufferedPosition / 1000.0)
         if (p.duration != C.TIME_UNSET) emit("duration", p.duration / 1000.0)
       }
+      gain.loudness()?.let { emit("loudness", it) }
       ui.postDelayed(this, 500)
     }
   }
@@ -183,6 +184,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     onUi(invoke) {
       val p = ensure()
       loadedFired = false; nudges = 0
+      gain.resetMeasure()
       view?.visibility = View.VISIBLE
       val item = MediaItem.Builder().setUri(a.url).apply {
         val subs = a.subs?.map { s ->
@@ -229,6 +231,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       when (a.name) {
         "time-pos" -> out.put("value", (p?.currentPosition ?: 0L) / 1000.0)
         "duration" -> out.put("value", if (p == null || p.duration == C.TIME_UNSET) JSONObject.NULL else p.duration / 1000.0)
+        "af-metadata/m/lavfi.r128.I" -> out.put("value", gain.loudness() ?: JSONObject.NULL)   // same name the desktop engine uses, so auto leveling is shared
         "audio-params/hr-channels" -> {
           val n = p?.audioFormat?.channelCount ?: 0
           out.put("value", when (n) { 0 -> JSONObject.NULL; 1 -> "mono"; 2 -> "stereo"; 6 -> "5.1"; 8 -> "7.1"; else -> "${n}ch" })

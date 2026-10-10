@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { BookmarkMinus, Info, Plus } from 'lucide-react'
+import { BookmarkMinus, CheckSquare, Info, Plus } from 'lucide-react'
 import { Focusable } from '../components/Focusable'
 import { Layer } from '../components/Layer'
+import { CheckMark, SelectionBar } from '../components/SelectionBar'
 import { PosterCard, focusRing } from '../components/Card'
 import { RequestDetail } from '../components/RequestDetail'
 import { normalizeBase, type RequestItem } from '../lib/overseerr'
@@ -21,10 +22,11 @@ function MenuItem({ icon, label, onEnter, danger }: { icon: React.ReactNode; lab
 
 
 /** A Watchlist title that isn't in the library. */
-function RemoteCard({ item, onEnter }: { item: WatchItem; onEnter: () => void }) {
+function RemoteCard({ item, onEnter, onLongPress, selecting, checked }: { item: WatchItem; onEnter: () => void; onLongPress?: () => void; selecting?: boolean; checked?: boolean }) {
   return (
-    <Focusable onEnter={onEnter} onLongPress={onEnter} onFocus={(el) => reveal(el)} title={`${item.title} — not in your library`} className="w-full shrink-0">
-      <div className={`relative aspect-[2/3] overflow-hidden rounded-xl bg-surface ${focusRing}`}>
+    <Focusable onEnter={onEnter} onLongPress={onLongPress ?? onEnter} onFocus={(el) => reveal(el)} title={`${item.title} — not in your library`} className="w-full shrink-0">
+      <div className={`relative aspect-[2/3] overflow-hidden rounded-xl bg-surface ${focusRing} ${selecting && checked ? 'ring-4 ring-accent' : ''}`}>
+        {selecting && <CheckMark checked={!!checked} />}
         {item.poster
           ? <img src={item.poster} alt={item.title} loading="lazy" decoding="async" draggable={false} className="absolute inset-0 h-full w-full object-cover brightness-[.8]" />
           : <div className="absolute inset-0 grid place-items-center bg-linear-to-br from-white/10 to-white/[0.03] p-4 text-center text-lg font-bold text-white/70">{item.title}</div>}
@@ -50,7 +52,9 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   const [local, setLocal] = useState<Map<string, PlexMedia>>(new Map())
   const [error, setError] = useState(false)
   const [menu, setMenu] = useState<WatchItem>()
-  const [confirm, setConfirm] = useState<WatchItem>()
+  const [confirm, setConfirm] = useState<WatchItem[]>()
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
   const [requesting, setRequesting] = useState<RequestItem>()
 
   useEffect(() => {
@@ -64,11 +68,14 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
     return () => { alive = false }
   }, [server, token, sections])
 
-  const remove = async (i: WatchItem) => {
-    setConfirm(undefined)
-    setItems((l) => l?.filter((x) => x.key !== i.key))
-    await setOnWatchlist(token, i, false).catch(() => {})
+  const remove = async (gone: WatchItem[]) => {
+    setConfirm(undefined); setSelecting(false); setPicked(new Set())
+    const keys = new Set(gone.map((x) => x.key))
+    setItems((l) => l?.filter((x) => !keys.has(x.key)))
+    await Promise.all(gone.map((i) => setOnWatchlist(token, i, false).catch(() => {})))
   }
+  const togglePick = (k: string) => setPicked((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const cancelSelect = () => { setSelecting(false); setPicked(new Set()) }
   const request = async (i: WatchItem) => {
     setMenu(undefined)
     const hits = await searchTmdb(settings.tmdbKey, i.title).catch(() => [])
@@ -80,13 +87,14 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   return (
     <div className="px-[var(--gutter)] pb-24 pt-14">
       <h1 className="fade-up text-[2.6rem] font-extrabold tracking-[-0.03em]">Watchlist</h1>
-      <p className="mb-8 mt-1 text-white/55">{items ? `${items.length} title${items.length === 1 ? '' : 's'} on your Plex Watchlist · hold OK on one to remove it` : ' '}</p>
+      <p className="mb-8 mt-1 text-white/55">{items ? `${items.length} title${items.length === 1 ? '' : 's'} on your Plex Watchlist · hold OK on one for options, or choose Select to pick several` : ' '}</p>
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {!items ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[2/3] rounded-xl" />)
           : items.map((i) => {
             const m = local.get(i.key)
             return <div key={i.key} className="[--card-w:100%]">
-              {m ? <PosterCard m={m} server={server} onEnter={() => onOpen(m)} onLongPress={() => setMenu(i)} onFocus={(el) => reveal(el)} /> : <RemoteCard item={i} onEnter={() => setMenu(i)} />}
+              {m ? <PosterCard m={m} server={server} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : onOpen(m))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} onFocus={(el) => reveal(el)} />
+                : <RemoteCard item={i} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : setMenu(i))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} />}
             </div>
           })}
       </div>
@@ -99,7 +107,8 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
             <div className="space-y-0.5">
               {onList && <MenuItem icon={<Info size={20} />} label="More info" onEnter={() => { setMenu(undefined); onOpen(onList) }} />}
               {!onList && canRequest && <MenuItem icon={<Plus size={20} />} label="Request" onEnter={() => request(menu)} />}
-              <MenuItem danger icon={<BookmarkMinus size={20} />} label="Remove from Watchlist" onEnter={() => { setConfirm(menu); setMenu(undefined) }} />
+              <MenuItem icon={<CheckSquare size={20} />} label="Select" onEnter={() => { setSelecting(true); setPicked(new Set([menu.key])); setMenu(undefined) }} />
+              <MenuItem danger icon={<BookmarkMinus size={20} />} label="Remove from Watchlist" onEnter={() => { setConfirm([menu]); setMenu(undefined) }} />
             </div>
           </div>
         </Layer>
@@ -107,8 +116,8 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
       {confirm && (
         <Layer onClose={() => setConfirm(undefined)} scrim="bg-black/60" className="absolute left-1/2 top-1/2 w-[min(400px,92vw)] -translate-x-1/2 -translate-y-1/2">
           <div className="pop rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-2xl">
-            <div className="text-[1.1rem] font-bold">Remove from Watchlist?</div>
-            <p className="mt-1.5 text-sm text-white/60">“{confirm.title}” will be taken off your Plex Watchlist.</p>
+            <div className="text-[1.1rem] font-bold">{confirm.length === 1 ? 'Remove from Watchlist?' : `Remove ${confirm.length} titles?`}</div>
+            <p className="mt-1.5 text-sm text-white/60">{confirm.length === 1 ? `“${confirm[0].title}” will be taken off your Plex Watchlist.` : `${confirm.length} titles will be taken off your Plex Watchlist.`}</p>
             <div className="mt-5 flex gap-2.5">
               <Focusable focusKey="wl-no" onEnter={() => setConfirm(undefined)} title="No">
                 <div className="rounded-full bg-white/10 px-7 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">No</div>
@@ -120,6 +129,8 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
           </div>
         </Layer>
       )}
+      <SelectionBar active={selecting} count={picked.size} noun={picked.size === 1 ? 'title' : 'titles'} onCancel={cancelSelect}
+        actions={[{ label: 'Remove from Watchlist', icon: <BookmarkMinus size={20} />, danger: true, disabled: picked.size === 0, onEnter: () => setConfirm((items ?? []).filter((x) => picked.has(x.key))) }]} />
       {requesting && <RequestDetail item={requesting} base={normalizeBase(settings.overseerrUrl)} plexToken={token} tmdbKey={settings.tmdbKey} onClose={() => setRequesting(undefined)} />}
     </div>
   )

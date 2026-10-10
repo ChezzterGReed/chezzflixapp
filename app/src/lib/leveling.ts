@@ -18,6 +18,7 @@ export const dbLabel = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math
 export const TARGET_LUFS = -22
 const MIN_GAIN = -6, MAX_GAIN = 15
 const FIRST_AT = 20, REFINE_AT = [60, 180], STOP_AT = 300   // seconds of playback
+const FAST_FIRST_AT = 6, FAST_REFINE_AT = [20, 60], FAST_STOP_AT = 120   // the TV Guide: you're surfing, so settle quickly
 const LIMITER = 'alimiter=limit=0.97:attack=5:release=60:level=disabled'
 const DIALOGUE = 1.8   // center channel x1.8 (about +5 dB)
 
@@ -50,10 +51,11 @@ export function clipAf(media: PlexMedia, autoLevel: boolean): string {
   return Math.abs(g) < 0.1 ? '' : `lavfi=[volume=${g.toFixed(2)}dB,${LIMITER}]`
 }
 
-interface Opts { active: boolean; loaded: number; media: PlexMedia; autoLevel: boolean; dialogueBoost: boolean }
+interface Opts { active: boolean; loaded: number; media: PlexMedia; autoLevel: boolean; dialogueBoost: boolean; /** Settle sooner and jump straight to a remembered gain (TV Guide). */ fast?: boolean }
 
 /** Drives mpv's audio filters for the current title. `loaded` ticks up each time a file finishes loading. */
-export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost }: Opts) {
+export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost, fast }: Opts) {
+  const firstAt = fast ? FAST_FIRST_AT : FIRST_AT, refineAt = fast ? FAST_REFINE_AT : REFINE_AT, stopAt = fast ? FAST_STOP_AT : STOP_AT
   const key = memKey(media)
   const [boost, setBoostState] = useState<Boost>(() => readMem(key).boost ?? 'auto')
   const [gain, setGain] = useState(0)
@@ -93,7 +95,10 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
       if (sig !== s.sig) {
         s.sig = sig; s.gain = want; setGain(want)
         await mpvSet('af', parts.map((p) => (p === 'GAIN' ? gainFilter(want) : p)).join(',')).catch(() => {})
-      } else if (holds && Math.abs(want - s.gain) > 0.05) rampTo(want)
+      } else if (holds && Math.abs(want - s.gain) > 0.05) {
+        if (fast) { clearInterval(s.ramp); s.gain = want; setGain(want); mpvCmd('af-command', 'g', 'volume', `${want.toFixed(2)}dB`, 'volume').catch(() => {}) }   // a channel change: no slow glide
+        else rampTo(want)
+      }
       if (!measuring || dead) return
 
       // Measure while it plays; hold one gain.
@@ -102,9 +107,9 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
         const pos = Number(await mpvGet('time-pos').catch(() => null))
         if (!isFinite(pos) || pos === s.lastPos) return   // paused or seeking
         s.lastPos = pos; s.ticks++
-        if (s.ticks > STOP_AT) return clearInterval(s.timer)
-        const first = !mem.gain && s.ticks === FIRST_AT
-        if (!first && !REFINE_AT.includes(s.ticks)) return
+        if (s.ticks > stopAt) return clearInterval(s.timer)
+        const first = !mem.gain && s.ticks === firstAt
+        if (!first && !refineAt.includes(s.ticks)) return
         const lufs = Number(await mpvGet('af-metadata/m/lavfi.r128.I').catch(() => null))
         if (!isFinite(lufs) || lufs < -60) return   // nothing but silence so far
         let next = clamp(TARGET_LUFS - lufs)
@@ -113,7 +118,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
       }, 1000)
     })()
     return () => { dead = true; clearInterval(s.timer) }
-  }, [active, loaded, key, boost, autoLevel, dialogueBoost, rampTo])
+  }, [active, loaded, key, boost, autoLevel, dialogueBoost, rampTo, fast, firstAt, refineAt, stopAt])
 
   useEffect(() => () => { clearInterval(g.current.timer); clearInterval(g.current.ramp); g.current.sig = '' }, [])
   return { boost, setBoost, gain }

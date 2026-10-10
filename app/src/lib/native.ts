@@ -43,7 +43,8 @@ export async function mpvCmd(...args: (string | number)[]) {
     case 'seek': return droid('seek', { value: parseFloat(a[1]) })
     case 'cycle': if (a[1] === 'pause') return droid('setPause', { value: !paused }); return
     case 'stop': return droid('stop')
-    default: return   // sub-add, af-command, ...: not needed by this engine
+    case 'af-command': { const m = /(-?[\d.]+)dB/.exec(a[3] ?? ''); if (m) return droid('setGain', { value: parseFloat(m[1]) }); return }   // auto leveling's gain changes
+    default: return   // sub-add, ...: not needed by this engine
   }
 }
 
@@ -56,7 +57,8 @@ export async function mpvSet(name: string, value: string | number | boolean) {
     case 'aid': return droid('selectAudio', { value: Number(value) })
     case 'sid': return droid('selectSubtitle', { value: value === 'no' ? 0 : Number(value) })
     case 'gain-db': return droid('setGain', { value: Number(value) })
-    default: return   // af, video-zoom, brightness...
+    case 'af': { const m = /volume=(-?[\d.]+)dB/.exec(String(value)); return droid('setGain', { value: m ? parseFloat(m[1]) : 0 }) }   // the engine's filter list: only its volume part applies here
+    default: return   // video-zoom, brightness...
   }
 }
 

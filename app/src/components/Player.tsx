@@ -317,21 +317,19 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   }, [])
 
   // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
-  const level = useLevelEngine({ active: mode === 'native' && !isAndroid, loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost })
+  const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost && !isAndroid })
   // Subtitle look (plain-text subtitles; styled .ass ones keep their own).
   useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, loadedTick, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
   // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +10).
   const nudgeBoost = (d: 1 | -1) => level.setBoost(clampBoost((level.boost === 'auto' ? Math.round(level.gain) : level.boost) + d))
-  // Android's engine has no live loudness analysis yet, so it offers the manual boost only (applied as a steady gain).
-  useEffect(() => { if (isAndroid && mode === 'native') mpvSet('gain-db', typeof level.boost === 'number' ? level.boost : 0).catch(() => {}) }, [mode, level.boost])
   const allLevelRows = [
     { label: 'Auto leveling', value: settings.autoLevel ? 'On' : 'Off', hint: 'Measures the title, holds one steady boost', act: () => update({ autoLevel: !settings.autoLevel }) },
     { label: 'Dialogue boost', value: settings.dialogueBoost ? 'On' : 'Off', hint: 'Lifts voices in surround audio', act: () => update({ dialogueBoost: !settings.dialogueBoost }) },
     { label: 'Boost', value: level.boost === 'auto' ? (settings.autoLevel && level.gain ? `Auto · ${dbLabel(Math.round(level.gain))}` : 'Auto') : dbLabel(level.boost), hint: level.boost === 'auto' ? 'Use − and + to set it yourself' : 'Set by you · press OK for Auto', act: () => level.setBoost('auto') },
   ]
-  const levelRows = isAndroid ? allLevelRows.slice(2) : allLevelRows   // the boost row is always the last one
+  const levelRows = isAndroid ? [allLevelRows[0], allLevelRows[2]] : allLevelRows   // (no dialogue boost on Android); the boost row is always the last one
   const boostRow = levelRows.length - 1
-  const levelActive = (!isAndroid && (settings.autoLevel || settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
+  const levelActive = (settings.autoLevel || (!isAndroid && settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
 
   const showNext = !!next && !stayed && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])

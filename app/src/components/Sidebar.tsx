@@ -64,7 +64,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
   return (
     <FocusContext.Provider value={focusKey}>
       <nav ref={ref} data-open={open} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-        className={`group/nav fixed inset-y-0 left-0 z-30 flex flex-col px-3 py-6 transition-[width] duration-300 ease-out-expo max-md:hidden ${open ? 'w-[264px]' : 'w-[var(--rail)]'}`}>
+        className={`group/nav fixed inset-y-0 left-0 z-[45] flex flex-col px-3 py-6 transition-[width] duration-300 ease-out-expo max-md:hidden ${open ? 'w-[264px]' : 'w-[var(--rail)]'}`}>
         {/* Soft scrim instead of a hard panel, so the artwork behind stays part of the page */}
         <div aria-hidden className={`pointer-events-none absolute inset-y-0 left-0 -z-10 bg-linear-to-r transition-all duration-500 ease-out-expo ${open ? 'w-[520px] from-black/95 via-black/80 via-45% to-transparent' : 'w-[160px] from-black/60 to-transparent'}`} />
         <div className="mb-6 flex h-14 items-center overflow-hidden">

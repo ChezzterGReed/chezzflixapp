@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { reveal } from '../lib/scroll'
 import { Search as SearchIcon } from 'lucide-react'
 import { PosterCard } from '../components/Card'
+import { useTitleSelection } from '../components/Bulk'
 import { RequestCard } from '../components/RequestCard'
 import { RequestDetail } from '../components/RequestDetail'
 import { search, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
@@ -24,6 +25,7 @@ function closeness(title: string, q: string): number {
 
 export function Search({ server, token, sections, onOpen }: { server: PlexServer; token: string; sections: PlexSection[]; onOpen: (m: PlexMedia) => void }) {
   const { settings } = useSettings()
+  const sel = useTitleSelection(server, token)
   const canRequest = settings.requests && !!settings.tmdbKey && !!settings.overseerrUrl
   const [q, setQ] = useState('')
   const [local, setLocal] = useState<PlexMedia[]>()
@@ -75,7 +77,7 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
         <section>
           <h2 className="mb-5 text-[1.3rem] font-bold tracking-tight">Available to watch</h2>
           <div className={grid}>
-            {available.map((m) => <div key={m.ratingKey} className="[--card-w:100%]"><PosterCard m={m} server={server} onEnter={() => onOpen(m)} onFocus={scroll} /></div>)}
+            {available.map((m) => <div key={m.ratingKey} className="[--card-w:100%]"><PosterCard m={m} server={server} onFocus={scroll} selecting={sel.active} checked={sel.has(m)} onEnter={() => (sel.active ? sel.toggle(m) : onOpen(m))} onLongPress={sel.active ? () => sel.toggle(m) : undefined} onSelect={m.type === 'movie' || m.type === 'show' ? () => sel.start(m) : undefined} /></div>)}
           </div>
         </section>
       )}
@@ -88,6 +90,7 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
           </div>
         </section>
       )}
+      {sel.bar}
       {requesting && <RequestDetail item={requesting} base={normalizeBase(settings.overseerrUrl)} plexToken={token} tmdbKey={settings.tmdbKey} onClose={() => setRequesting(undefined)} />}
     </div>
   )

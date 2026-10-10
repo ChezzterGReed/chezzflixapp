@@ -288,7 +288,7 @@ export function Detail({ ratingKey, server, token, onClose, onPlay, onOpen, onCo
           {related.length > 0 && <div className="relative mt-14"><Row title="More like this" items={related} server={server} onSelect={onOpen} /></div>}
         </div>
       )}
-      {addToChannel && m && <AddToChannel media={m} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => setAddToChannel(false)} />}
+      {addToChannel && m && <AddToChannel items={[m]} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => setAddToChannel(false)} />}
       {clip && <ClipPopup key={clip.media.ratingKey + clip.segments.length} server={server} media={clip.media} segments={clip.segments} heading={clip.heading} subheading={clip.subheading} onClose={() => setClip(undefined)} />}
     </Layer>
   )

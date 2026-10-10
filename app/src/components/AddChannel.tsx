@@ -32,6 +32,27 @@ export function CheckRow({ label, sub, on, onEnter, below }: { label: string; su
   )
 }
 
+/** The first letter a title is filed under (digits and symbols go under #). */
+export const letterOf = (title: string) => { const c = title.trim().charAt(0).toUpperCase(); return c >= 'A' && c <= 'Z' ? c : '#' }
+export const lettersIn = (titles: string[]) => [...new Set(titles.map(letterOf))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)))
+
+/** A row of letters to jump to: only the letters that have something under them. Picking one again clears it. */
+export function LetterBar({ letters, value, onPick }: { letters: string[]; value: string; onPick: (l: string) => void }) {
+  if (letters.length < 2) return null
+  return (
+    <div className="mb-3 flex flex-wrap gap-1.5">
+      <Focusable onEnter={() => onPick('')} title="All">
+        <div className={`grid h-9 place-items-center rounded-lg px-3 text-sm font-bold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${!value ? 'bg-accent text-black' : 'bg-white/10 text-white/75'}`}>All</div>
+      </Focusable>
+      {letters.map((l) => (
+        <Focusable key={l} onEnter={() => onPick(value === l ? '' : l)} title={`Titles starting with ${l}`}>
+          <div className={`grid h-9 min-w-9 place-items-center rounded-lg px-2 text-sm font-bold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${value === l ? 'bg-accent text-black' : 'bg-white/10 text-white/75'}`}>{l}</div>
+        </Focusable>
+      ))}
+    </div>
+  )
+}
+
 export function Pill({ active, onEnter, children }: { active?: boolean; onEnter: () => void; children: ReactNode }) {
   return (
     <Focusable onEnter={onEnter}>
@@ -70,6 +91,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
   const [shows, setShows] = useState<PlexMedia[]>()
   const [pickedShows, setPickedShows] = useState<PlexMedia[]>([])
   const [filter, setFilter] = useState('')
+  const [letter, setLetter] = useState('')
   const [limit, setLimit] = useState(PAGE)
   const [genres, setGenres] = useState<string[]>()
   const [pickedGenres, setPickedGenres] = useState<string[]>([])
@@ -118,7 +140,9 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
     setStep({ shows: 'type', showOpts: 'shows', movies: 'type', movieOpts: 'movies', name: movieMode() ? 'movieOpts' : 'showOpts' }[step] as Step)
   }
 
-  const filtered = (shows ?? []).filter((m) => !filter || m.title.toLowerCase().includes(filter.toLowerCase()))
+  const letters = useMemo(() => lettersIn((shows ?? []).map((m) => m.title)), [shows])
+  // Typing in the filter box takes over from a chosen letter.
+  const filtered = (shows ?? []).filter((m) => (filter ? m.title.toLowerCase().includes(filter.toLowerCase()) : letter ? letterOf(m.title) === letter : true))
   const title = { type: 'Add a channel', shows: 'Choose shows', showOpts: 'How should it play?', movies: 'Choose genres', movieOpts: 'How should it play?', name: 'Name your channel' }[step]
 
   return (
@@ -139,7 +163,8 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
 
           {step === 'shows' && (
             <>
-              <div className="mb-3"><NameField focusKey="add-filter" value={filter} onChange={(v) => { setFilter(v); setLimit(PAGE) }} placeholder="Filter shows…" /></div>
+              <div className="mb-3"><NameField focusKey="add-filter" value={filter} onChange={(v) => { setFilter(v); if (v) setLetter(''); setLimit(PAGE) }} placeholder="Filter shows…" /></div>
+              {shows && <LetterBar letters={letters} value={filter ? '' : letter} onPick={(l) => { setLetter(l); setFilter(''); setLimit(PAGE) }} />}
               {!shows ? <div className="grid place-items-center py-16"><Loader2 className="animate-spin text-white/50" size={30} /></div>
                 : <>
                   {filtered.slice(0, limit).map((m) => <CheckRow key={m.ratingKey} label={m.title} sub={m.year ? String(m.year) : undefined} on={pickedShows.some((x) => x.ratingKey === m.ratingKey)} onEnter={() => toggleShow(m)} />)}
