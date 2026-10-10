@@ -65,6 +65,9 @@ if (typeof window !== 'undefined') {
 
 const subscribe = (cb: () => void) => { subs.add(cb); return () => { subs.delete(cb) } }
 
+/** The key of the one focused element (null if none): the source of truth for "where is the cursor". */
+export function useFocusedKey(): string | null { return useSyncExternalStore(subscribe, () => focusedKey) }
+
 export function useInputMode(): InputMode {
   return useSyncExternalStore(subscribe, () => mode)
 }

@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { reveal } from '../lib/scroll'
 import { Bookmark, Film, Radio, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
-import { useInputMode, useTyping } from '../lib/input'
+import { useFocusedKey, useInputMode, useTyping } from '../lib/input'
 import { useSeason } from '../lib/settings'
 import { Pumpkin } from './Pumpkin'
 import { Layer } from './Layer'
@@ -54,7 +54,12 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
   const [hover, setHover] = useState(false)
   const { ref, focusKey, hasFocusedChild } = useFocusable({ focusKey: 'SIDEBAR', trackChildren: true, saveLastFocusedChild: true })
   // With a mouse, the rail follows the pointer; with a remote/keyboard it follows focus. (Fixes it staying open after you click away.)
-  const open = hover || (hasFocusedChild && mode === 'key' && !typing)
+  // With a remote or keyboard it follows focus only: a pointer that merely rests over the rail (or a TV that reports a phantom hover) must
+  // never hold it open once you've moved off it. With a mouse it follows the pointer.
+  const focusedKey = useFocusedKey()
+  const railFocused = !!focusedKey && (focusedKey.startsWith('nav-') || focusedKey === 'SIDEBAR')   // where the cursor really is, not a cached flag
+  const open = mode === 'mouse' ? hover : (hasFocusedChild || railFocused) && railFocused && !typing
+  useEffect(() => { if (mode === 'key') setHover(false) }, [mode])
   const isLib = (k: string) => view.type === 'library' && view.section.key === k
   // Only the first few libraries are listed; "View all" opens a scrollable picker with every one.
   const LIMIT = 5
