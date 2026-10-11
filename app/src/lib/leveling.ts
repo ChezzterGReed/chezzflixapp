@@ -15,8 +15,10 @@ export const MAX_BOOST = 10
 export const clampBoost = (n: number) => Math.max(-MAX_BOOST, Math.min(MAX_BOOST, Math.round(n)))
 export const dbLabel = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)} dB`
 
+export const NOTE_MS = 3500        // the "Boost applied" pill stays this long if left alone...
+const NOTE_TOUCHED_MS = 4000  // ...or this long after the last time it was touched
 export const TARGET_LUFS = -22
-const MIN_GAIN = 0, MAX_GAIN = 15   // auto leveling only ever boosts: it never turns a title down
+const MIN_GAIN = -5, MAX_GAIN = 15   // automatic leveling lifts a quiet title by up to 15 dB and can lower a loud one by up to 5
 const FIRST_AT = 20, REFINE_AT = [60, 180], STOP_AT = 300   // seconds of playback
 const FAST_FIRST_AT = 6, FAST_REFINE_AT = [20, 60], FAST_STOP_AT = 120   // the TV Guide: you're surfing, so settle quickly
 export const GUIDE_MAX_GAIN = 5   // ...and never boost by more than this many dB
@@ -32,7 +34,7 @@ const LAYOUTS: Record<string, string[]> = {
 const dialoguePan = (layout: string) => { const ch = LAYOUTS[layout]; return ch ? `lavfi=[pan=${layout}|${ch.map((c) => (c === 'FC' ? `FC=${DIALOGUE}*FC` : `${c}=${c}`)).join('|')}]` : null }
 
 // ---- what we remember per title (a whole show shares one entry) ----
-interface Mem { gain?: number; boost?: Boost }
+interface Mem { gain?: number; boost?: Boost; /** The amount was set by hand from the "Boost applied" pill: auto leveling leaves it alone. */ locked?: boolean }
 const MEM_KEY = 'chezzflix_levels'
 export const memKey = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : `item:${m.ratingKey}`)
 function readAll(): Record<string, Mem> { try { return JSON.parse(localStorage.getItem(MEM_KEY) ?? '{}') } catch { return {} } }
@@ -49,7 +51,7 @@ const gainFilter = (g: number) => `@g:lavfi=[volume=${g.toFixed(2)}dB:eval=frame
 /** For short clips (Preview/Recap): the steady gain this title would get, without measuring. */
 export function clipAf(media: PlexMedia, autoLevel: boolean): string {
   const m = readMem(memKey(media))
-  const g = typeof m.boost === 'number' ? m.boost : autoLevel ? Math.max(0, m.gain ?? 0) : 0
+  const g = typeof m.boost === 'number' ? m.boost : autoLevel ? m.gain ?? 0 : 0
   return Math.abs(g) < 0.1 ? '' : `lavfi=[volume=${g.toFixed(2)}dB,${LIMITER}]`
 }
 
@@ -62,7 +64,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   const key = (fast ? 'guide:' : '') + memKey(media)
   const hi = fast ? GUIDE_MAX_GAIN : MAX_GAIN
   const limit = useCallback((v: number) => Math.max(MIN_GAIN, Math.min(hi, v)), [hi])
-  // A boost you set by hand may go either way (-10 to +10); only the automatic one is boost-only.
+  // A boost you set by hand goes from -10 to +10 dB; the automatic one from -5 to +15.
   const manual = (v: number) => Math.max(-MAX_BOOST, Math.min(MAX_BOOST, v))
   const [boost, setBoostState] = useState<Boost>(() => readMem(key).boost ?? 'auto')
   const [gain, setGain] = useState(0)
@@ -70,6 +72,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   const [note, setNote] = useState<null | { kind: 'measuring' } | { kind: 'applied'; gain: number }>(null)
   const noteTimer = useRef(0)
   const [rerunTick, setRerunTick] = useState(0)
+  const armNote = useCallback((ms: number) => { clearTimeout(noteTimer.current); noteTimer.current = window.setTimeout(() => setNote(null), ms) }, [])
   const rerun = useRef(false)
   /** Set (once per title) when auto leveling is off but the title is quiet: the boost it would take. */
   const [quiet, setQuiet] = useState<number | null>(null)
@@ -146,15 +149,15 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
         const pos = Number(await mpvGet('time-pos').catch(() => null))
         if (!isFinite(pos) || pos === s.lastPos) return   // paused or seeking
         s.lastPos = pos; s.ticks++
-        if (s.ticks > stopAt) { clearInterval(s.timer); setNote((n) => (n?.kind === 'measuring' ? null : n)); return }
+        if (s.ticks > stopAt || readMem(key).locked) { clearInterval(s.timer); setNote((n) => (n?.kind === 'measuring' ? null : n)); return }   // (a boost set by hand from the pill is final)
         const first = (!mem.gain || fresh) && s.ticks === firstAt
         if (!first && !refineAt.includes(s.ticks)) return
         const lufs = Number(await mpvGet('af-metadata/m/lavfi.r128.I').catch(() => null))
         if (!isFinite(lufs) || lufs < -60) return   // nothing but silence so far
         let next = limit(clamp(TARGET_LUFS - lufs))
         if (!first) next = limit(Math.max(s.gain - 3, Math.min(s.gain + 3, next)))   // later corrections stay small
-        writeMem(key, { gain: next }); rampTo(next)
-        if (first && !fast) { setNote({ kind: 'applied', gain: next }); clearTimeout(noteTimer.current); noteTimer.current = window.setTimeout(() => setNote(null), 3000) }
+        writeMem(key, { gain: next, locked: false }); rampTo(next)
+        if (first && !fast) { setNote({ kind: 'applied', gain: next }); armNote(NOTE_MS) }
       }, 1000)
     })()
     return () => { dead = true; clearInterval(s.timer); clearTimeout(noteTimer.current); setNote(null) }
@@ -164,6 +167,17 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   /** "Try it" was chosen for a quiet title: remember the boost so turning auto leveling on applies it straight away. */
   const acceptQuiet = useCallback((g: number) => { writeMem(key, { gain: g }) }, [key])
   /** Listen to this title again and pick a fresh boost (the current one stays until the new one is ready). */
-  const remeasure = useCallback(() => { rerun.current = true; setRerunTick((n) => n + 1) }, [])
-  return { boost, setBoost, gain, note, quiet, acceptQuiet, remeasure, clearQuiet: () => setQuiet(null) }
+  const remeasure = useCallback(() => { writeMem(key, { locked: false }); rerun.current = true; setRerunTick((n) => n + 1) }, [key])
+  // The "Boost applied" pill: nudge the amount by 1 dB (it stays put from then on), switch the boost off for this title, or keep the pill open.
+  const holdNote = useCallback(() => armNote(NOTE_TOUCHED_MS), [armNote])
+  const adjustNote = useCallback((d: number) => {
+    const s = g.current, v = limit(Math.round(s.gain + d))
+    clearInterval(s.ramp); s.gain = v; setGain(v)
+    mpvCmd('af-command', 'g', 'volume', `${v.toFixed(2)}dB`, 'volume').catch(() => {})
+    writeMem(key, { gain: v, locked: true })
+    setNote({ kind: 'applied', gain: v }); armNote(NOTE_TOUCHED_MS)
+  }, [key, limit, armNote])
+  const revertNote = useCallback(() => { clearTimeout(noteTimer.current); setNote(null); setBoost(0) }, [setBoost])
+  const closeNote = useCallback(() => { clearTimeout(noteTimer.current); setNote(null) }, [])
+  return { boost, setBoost, gain, note, holdNote, adjustNote, revertNote, closeNote, quiet, acceptQuiet, remeasure, clearQuiet: () => setQuiet(null) }
 }

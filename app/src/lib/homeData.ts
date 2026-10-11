@@ -203,6 +203,16 @@ async function continueItems(server: PlexServer, settings: Settings): Promise<Pl
   return [...lead, ...merged.filter((m) => isPinned(m) && !led.has(m.ratingKey)), ...extras, ...rest.filter((m) => m.viewOffset), ...rest.filter((m) => !m.viewOffset)]
 }
 
+/** Just the Continue Watching row, re-read (it changes when you watch something); returns the rows with it replaced, or null if a full reload is needed. */
+export async function refreshContinue(server: PlexServer, tab: Tab, settings: Settings, anime: AnimeInfo | undefined, rows: HomeRow[]): Promise<HomeRow[] | null> {
+  const at = rows.findIndex((r) => r.continue)
+  if (at < 0) return null
+  const hidden = new Set(settings.hiddenLibraries)
+  const keep = (m: PlexMedia) => tabOk(tab, m, anime) && (m.librarySectionID == null || !hidden.has(String(m.librarySectionID)))
+  const items = (await continueItems(server, settings)).filter(keep)
+  return items.length ? rows.map((r, i) => (i === at ? { ...r, items: items.slice(0, 30) } : r)) : rows.filter((_, i) => i !== at)
+}
+
 export function layoutFor(tab: Tab, settings: Settings, plexHubs: HomeRowCfg[], season: Season): HomeRowCfg[] {
   const saved = settings.homeRows[tab]
   let layout = mergeRows(saved, rowCatalog(tab, plexHubs, settings.genres))

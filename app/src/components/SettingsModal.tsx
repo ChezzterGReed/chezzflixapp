@@ -91,8 +91,9 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
       <div className="flex items-center gap-3 px-4 pb-2 text-sm text-white/55"><Avatar name={profileName} thumb={profileThumb} size={28} />Preview of the logo style on the menu</div>
       <Toggle label="Navigation sounds" hint="A small blip as you move around the screen" on={settings.navSounds} onChange={(v) => update({ navSounds: v })} />
       <Toggle label="Lighter effects" hint="Turns off blur and drifting backgrounds. Uses much less of the graphics chip and battery" on={settings.lightEffects} onChange={(v) => update({ lightEffects: v })} />
-      <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : currentSeason() === 'christmas' ? 'It\'s the holiday season: a seasonal look, holiday movie rows and TV Guide channels. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
-      {settings.seasonal && (
+      <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : currentSeason() === 'christmas' ? 'It\'s the holiday season: a seasonal look, holiday movie rows and TV Guide channels. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on. Season options appear here while the season is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
+      {/* Options that belong to one season only show while that season is on (add future ones the same way). */}
+      {settings.seasonal && currentSeason() === 'christmas' && (
         <>
           <div className="px-4 pt-2 text-sm font-semibold text-white/60">December look</div>
           <div className="flex flex-wrap gap-2 px-4 py-2">

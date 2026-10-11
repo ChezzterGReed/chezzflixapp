@@ -53,23 +53,46 @@ export function synthThock(c: BaseAudioContext, dest: AudioNode, t: number, p: T
   body.start(t); body.stop(t + p.decay + 0.02)
 }
 
+const AC = (): typeof AudioContext => window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+
+let born = 0
+function freshContext() {
+  try { void ctx?.close() } catch { /* already closed */ }
+  ctx = new (AC())({ latencyHint: 'interactive' })
+  born = performance.now()
+}
+
+/**
+ * How long a sound started right now would take to be heard, in ms. Browsers' audio output can fall behind after a while (a busy page, a
+ * long-running audio context) so that every blip arrives late; when that happens the context is simply replaced with a fresh one.
+ */
+function outputDelayMs(c: AudioContext): number {
+  try {
+    const t = c.getOutputTimestamp?.()
+    if (t && t.performanceTime && t.contextTime != null) return t.performanceTime + (c.currentTime - t.contextTime) * 1000 - performance.now()
+  } catch { /* not supported */ }
+  return 0
+}
+
 export function navBlip() {
   if (!enabled) return
   const now = performance.now()
   if (now - last < 40) return   // holding a direction: a steady patter, not a buzz
+  const idle = now - last
   last = now
   if (document.documentElement.dataset.nativeVideo || document.querySelector('[data-player]')) return   // never over a video's sound
   try {
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    ctx ??= new AC()
-    if (ctx.state === 'suspended') void ctx.resume()
+    // A new context after a long pause, after a few minutes of use, or the moment the output is running behind.
+    if (!ctx || ctx.state === 'closed' || idle > 45_000 || now - born > 180_000 || outputDelayMs(ctx) > 200) freshContext()
+    const c = ctx!
+    if (c.state === 'suspended') void c.resume()
     if (navBuf) {
-      const src = ctx.createBufferSource(), g = ctx.createGain()
+      const src = c.createBufferSource(), g = c.createGain()
       src.buffer = navBuf; src.playbackRate.value = 0.97 + Math.random() * 0.06; g.gain.value = 0.28   // each press a hair different
-      src.connect(g).connect(ctx.destination); src.start()
+      src.connect(g).connect(c.destination); src.onended = () => { src.disconnect(); g.disconnect() }; src.start()
     } else {
-      if (!navLoading) { navLoading = true; const c = ctx; fetch(navUrl).then((r) => r.arrayBuffer()).then((b) => c.decodeAudioData(b)).then((d) => { navBuf = d }).catch(() => { navLoading = false }) }
-      synthThock(ctx, ctx.destination, ctx.currentTime, THOCK, 0.96 + Math.random() * 0.08)   // until the sound file has loaded
+      if (!navLoading) { navLoading = true; fetch(navUrl).then((r) => r.arrayBuffer()).then((b) => c.decodeAudioData(b)).then((d) => { navBuf = d }).catch(() => { navLoading = false }) }
+      synthThock(c, c.destination, c.currentTime, THOCK, 0.96 + Math.random() * 0.08)   // until the sound file has loaded
     }
   } catch { /* no audio available: stay silent */ }
 }

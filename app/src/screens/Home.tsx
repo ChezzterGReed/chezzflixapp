@@ -6,17 +6,23 @@ import { Row, RowSkeleton } from '../components/Row'
 import { Layers, Settings as Cog, Tags, TrendingUp } from 'lucide-react'
 import { Focusable } from '../components/Focusable'
 import { setBooted } from '../lib/boot'
-import { animeEnabled, loadAnime, loadHero, loadRows, type AnimeInfo, type HomeNotice, type HomeRow, type Tab } from '../lib/homeData'
+import { animeEnabled, loadAnime, loadHero, loadRows, refreshContinue, type AnimeInfo, type HomeNotice, type HomeRow, type Tab } from '../lib/homeData'
 import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
 import { useSeason, useSettings } from '../lib/settings'
 
-interface Props { server: PlexServer; sections: PlexSection[]; refreshKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
+interface Props { server: PlexServer; sections: PlexSection[]; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
 
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'foryou', label: 'For You' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
 const TAB_KEY = 'chezzflix_home_tab'
 
-export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
+// What Home last showed, per profile / tab / settings. Coming back to Home shows this straight away; only Continue Watching is re-read (and
+// everything, quietly in the background, once it's a few minutes old), so returning to Home never starts from a blank screen.
+interface Cached { rows: HomeRow[]; notices: HomeNotice[]; rowsAnime?: AnimeInfo; anime?: AnimeInfo; hero?: PlexMedia[]; recRows: (HomeRow & { subtitle?: string })[]; heroSig: string; at: number; refreshKey: number; watchKey: number }
+const homeCache = new Map<string, Cached>()
+const FRESH_MS = 10 * 60_000
+
+export function Home({ server, sections, refreshKey, watchKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
   const { settings } = useSettings()
   const season = useSeason()
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(TAB_KEY) as Tab) || 'all')
@@ -30,6 +36,11 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
   const [recsReady, setRecsReady] = useState(false)
   const focusedOnce = useRef(false)
   const heroFor = useRef('')
+  const rowsRef = useRef<HomeRow[] | undefined>(undefined)
+  const meta = useRef({ at: 0, refreshKey, watchKey })   // when the rows on screen were fully loaded
+  const skipRecs = useRef(false)
+  const [fullTick, setFullTick] = useState(0)   // bumped when Continue Watching can't be patched in place and everything has to be read again
+  const putRows = (r: HomeRow[] | undefined) => { rowsRef.current = r; setRows(r) }
 
   useEffect(() => { try { sessionStorage.setItem(TAB_KEY, tab) } catch { /* ignore */ } }, [tab])
 
@@ -38,22 +49,56 @@ export function Home({ server, sections, refreshKey, onPlay, onOpen, onBrowse, o
   const showAnime = animeEnabled(anime)
   const activeTab: Tab = tab === 'anime' && anime && !showAnime ? 'all' : tab === 'foryou' && !settings.recs ? 'all' : tab === 'trending' && !settings.tmdbKey ? 'all' : tab
 
+  // What identifies this view for the cache: who, which tab, and every setting that changes what the rows contain.
+  const cacheSig = [server.uri, server.accessToken, activeTab, season, settings.hiddenLibraries.join(','), settings.tmdbKey, settings.hideWatched, JSON.stringify(settings.homeRows[activeTab] ?? null), settings.genres.join(','), settings.hero].join('|')
+
   // Rows
   useEffect(() => {
     let alive = true
     setError(undefined)
+    const hit = homeCache.get(cacheSig)
+    if (hit) {   // back at a place we've already been: show what was there at once
+      rowsRef.current = hit.rows
+      setRows(hit.rows); setNotices(hit.notices); setRowsAnime(hit.rowsAnime); setAnime(hit.anime); setRecRows(hit.recRows); setRecsReady(true); setHero(hit.hero)
+      heroFor.current = hit.heroSig; meta.current = { at: hit.at, refreshKey: hit.refreshKey, watchKey: hit.watchKey }
+      setBooted(true)
+    }
+    const needFull = !hit || Date.now() - hit.at > FRESH_MS || hit.refreshKey !== refreshKey
+    skipRecs.current = !needFull
+    if (!needFull) return () => { alive = false }   // fresh enough: the Continue Watching effect below brings that row up to date
     const animeP = loadAnime(server, visible, refreshKey)
     animeP.then((a) => alive && setAnime(a)).catch(() => {})
     ;(activeTab === 'all' || activeTab === 'trending' ? Promise.resolve(undefined) : animeP.catch(() => undefined))
-      .then(async (a) => { const r = await loadRows(server, sections, activeTab, settings, a, season); if (alive) { setRowsAnime(a); setNotices(r.notices); setRows(r.rows) } })
-      .catch((e) => { if (alive) { setError(String(e)); setBooted(true) } })
+      .then(async (a) => { const r = await loadRows(server, sections, activeTab, settings, a, season); if (alive) { meta.current = { at: Date.now(), refreshKey, watchKey }; setRowsAnime(a); setNotices(r.notices); putRows(r.rows) } })
+      .catch((e) => { if (alive && !hit) { setError(String(e)); setBooted(true) } })
     return () => { alive = false }
-  }, [server, sections, activeTab, settings.homeRows, settings.hiddenLibraries, settings.hideWatched, settings.tmdbKey, settings.dismissedContinue, settings.pinned, settings.continueDays, season, refreshKey])
+  }, [cacheSig, server, sections, refreshKey, season, fullTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Continue Watching is the one row that changes as you watch: re-read just that when something was watched or its settings changed.
+  const contSig = `${watchKey}|${JSON.stringify(settings.dismissedContinue)}|${JSON.stringify(settings.pinned)}|${settings.continueDays}`
+  const contSeen = useRef('')
+  useEffect(() => {
+    const base = rowsRef.current
+    if (!base) { contSeen.current = contSig; return }
+    if (contSeen.current === contSig && meta.current.watchKey === watchKey) return
+    contSeen.current = contSig
+    let alive = true
+    refreshContinue(server, activeTab, settings, rowsAnime ?? anime, base)
+      .then((r) => { if (!alive) return; meta.current.watchKey = watchKey; if (r) putRows(r); else { homeCache.delete(cacheSig); setFullTick((n) => n + 1) } })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [contSig, rows]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Remember what's on screen (the time stamp is when it was fully loaded, not when it last changed).
+  useEffect(() => {
+    if (rows) homeCache.set(cacheSig, { rows, notices, rowsAnime, anime, hero, recRows, heroSig: heroFor.current, at: meta.current.at, refreshKey: meta.current.refreshKey, watchKey: meta.current.watchKey })
+  }, [rows, notices, rowsAnime, anime, hero, recRows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Personalized rows: built on this device from the profile's watch history (shown after Continue Watching).
   const wantsRecs = settings.recs && (activeTab === 'all' || activeTab === 'movie' || activeTab === 'show' || activeTab === 'foryou')
   useEffect(() => {
     if (!wantsRecs) { setRecRows([]); setRecsReady(true); return }
+    if (skipRecs.current) { skipRecs.current = false; return }   // restored from the cache: those are still good
     let alive = true
     setRecsReady(false)
     loadRecs(server, visible, { tab: activeTab, anime, seedGenres: settings.genres, notInterested: settings.notInterested, bust: refreshKey, maxRows: 12 })

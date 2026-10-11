@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FocusContext, GetBoundingClientRectAdapter, doesFocusableExist, getCurrentFocusKey, init, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import {
-  directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getMetadata, getProfiles, getSections, getServers, invalidateCache,
+  directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getMetadata, getProfiles, getSections, getServers, invalidateCache, invalidateWatchState,
   isScanning, isWatched, removeFromContinueWatching, resolvePlayable, scanSection, setWatched, switchProfile, type PlexCollectionRef, type PlexMedia, type PlexProfile, type PlexSection, type PlexServer,
 } from './lib/plex'
 import { loadAnime, tabOk } from './lib/homeData'
@@ -70,6 +70,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const [layer, setLayer] = useState<'profile' | 'settings' | null>(null)
   const [playing, setPlaying] = useState<PlexMedia>()
   const [refreshKey, setRefreshKey] = useState(0)
+  const [watchKey, setWatchKey] = useState(0)   // bumped after playback: Continue Watching and open detail pages re-read, nothing else
   const [toast, setToast] = useState<string>()
   const toastTimer = useRef<number>(0)
   const { ref: mainRef, focusKey: mainKey } = useFocusable({ focusKey: 'MAIN', saveLastFocusedChild: true, autoRestoreFocus: false })
@@ -163,7 +164,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     } catch (e) { say('Could not start playback: ' + (e as Error).message) }
   }
 
-  const closePlayer = (home?: boolean) => { setPlaying(undefined); invalidateCache(); setRefreshKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
+  const closePlayer = (home?: boolean) => { setPlaying(undefined); invalidateWatchState(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
   const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying(full) }
 
   const open = (m: PlexMedia) => {
@@ -217,7 +218,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
-          {view.type === 'home' && <Home server={server} sections={allSections} refreshKey={refreshKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
+          {view.type === 'home' && <Home server={server} sections={allSections} refreshKey={refreshKey} watchKey={watchKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
@@ -232,7 +233,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
         </main>
       </FocusContext.Provider>
 
-      {details.length > 0 && <Detail key={details[details.length - 1] + refreshKey} ratingKey={details[details.length - 1]} server={server} token={token}
+      {details.length > 0 && <Detail key={`${details[details.length - 1]}.${refreshKey}.${watchKey}`} ratingKey={details[details.length - 1]} server={server} token={token}
         focusEpisode={epFocus && epFocus.show === details[details.length - 1] ? epFocus : undefined}
         onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onOpen={open} onCollection={openCollection} />}
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}

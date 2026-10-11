@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.15',
+    'X-Plex-Version': '0.3.16',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -234,6 +234,10 @@ async function get<T>(server: PlexServer, path: string, ttl = 60_000): Promise<T
 }
 
 export function invalidateCache() { cache.clear() }
+/** After watching something: forget only what depends on watch progress (item details, Continue Watching, hubs); keep the big library lists. */
+export function invalidateWatchState() {
+  for (const k of [...cache.keys()]) if (/\/library\/metadata\/|\/library\/onDeck|\/hubs|\/status\//.test(k)) cache.delete(k)
+}
 
 /** Asks the server to scan a library for new, changed or removed files (what "Scan Library Files" does in Plex). Needs a server admin account. */
 export async function scanSection(server: PlexServer, sectionKey: string): Promise<'started' | 'denied' | 'failed'> {
