@@ -25,7 +25,7 @@ let pending: any
 
 export async function checkForUpdate(): Promise<void> {
   if (state.status === 'checking' || state.status === 'downloading' || state.status === 'installing') return
-  if (fake) { set({ status: 'checking' }); await new Promise((r) => setTimeout(r, 700)); return set({ status: 'available', version: '0.2.0', notes: 'Preview and Recap on every title, plus a smoother home screen.' }) }
+  if (fake) { set({ status: 'checking' }); await new Promise((r) => setTimeout(r, 700)); return set({ status: 'available', version: '0.2.0', notes: 'Previews and Recaps\n\n- Preview and Recap on every title\n- A smoother home screen' }) }
   if (!inTauri) return
   set({ status: 'checking', error: undefined })
   if (isAndroid) {
@@ -86,4 +86,25 @@ export async function installUpdate(): Promise<void> {
     const { relaunch } = await import('@tauri-apps/plugin-process')
     await relaunch()
   } catch (e) { set({ status: 'error', error: String(e) }) }
+}
+
+/** A release's notes are written as a short name, a blank line, then the details. (Older notes are just details.) */
+export function splitNotes(notes?: string): { name: string; details: string } {
+  const t = (notes ?? '').trim()
+  const i = t.indexOf('\n')
+  if (i < 0) return { name: '', details: t }
+  return { name: t.slice(0, i).trim(), details: t.slice(i).trim() }
+}
+
+export interface ReleaseInfo { version: string; name: string; details: string; date?: string }
+
+/** The latest releases from GitHub (newest first), for "what's new". */
+export async function fetchReleases(count = 6): Promise<ReleaseInfo[]> {
+  const r = await fetch(`https://api.github.com/repos/ChezzterGReed/chezzflixapp/releases?per_page=${count}`, { headers: { Accept: 'application/vnd.github+json' } })
+  if (!r.ok) throw new Error(`GitHub ${r.status}`)
+  const list = (await r.json()) as { tag_name: string; name?: string; body?: string; published_at?: string; draft?: boolean }[]
+  return list.filter((x) => !x.draft).map((x) => {
+    const { name, details } = splitNotes(x.body)
+    return { version: x.tag_name.replace(/^v/, ''), name, details, date: x.published_at }
+  })
 }

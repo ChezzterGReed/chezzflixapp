@@ -3,7 +3,7 @@ import { Download, Loader2, Sparkles } from 'lucide-react'
 import { Focusable } from './Focusable'
 import { Layer } from './Layer'
 import { isAndroid } from '../lib/native'
-import { checkForUpdate, installUpdate, useUpdater } from '../lib/updater'
+import { checkForUpdate, installUpdate, splitNotes, useUpdater } from '../lib/updater'
 
 const RECHECK_MS = 6 * 3600_000
 
@@ -30,7 +30,7 @@ export function UpdatePrompt() {
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent/20 text-accent">{busy ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} />}</span>
         <div className="min-w-0 flex-1">
           <div className="font-bold">{u.status === 'installing' ? 'Restarting…' : busy ? `Updating to ${u.version}` : `Version ${u.version} is ready`}</div>
-          {u.notes && !busy && <p className="clamp-3 mt-1 text-sm leading-relaxed text-white/60">{u.notes}</p>}
+          {!busy && splitNotes(u.notes).name && <p className="mt-1 text-sm font-semibold text-white/70">{splitNotes(u.notes).name}</p>}
           {!busy && <p className="mt-1 text-xs text-white/40">You have {u.current}.</p>}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Radio, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
-import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { resetGuide } from '../lib/tvguide'
 import { Focusable } from './Focusable'
@@ -12,7 +12,7 @@ import { inTauri } from '../lib/player'
 import { isAndroid } from '../lib/native'
 import { trendingIds } from '../lib/tmdb'
 import { Pumpkin } from './Pumpkin'
-import { checkForUpdate, installUpdate, useUpdater } from '../lib/updater'
+import { checkForUpdate, fetchReleases, installUpdate, useUpdater, type ReleaseInfo } from '../lib/updater'
 import { normalizeBase, testConnection } from '../lib/overseerr'
 
 const ring = 'group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white'
@@ -402,9 +402,47 @@ function Requests({ token }: { token: string }) {
   )
 }
 
+/** What's included in the latest updates, newest first. */
+function WhatsNew({ current, onClose }: { current: string; onClose: () => void }) {
+  const [list, setList] = useState<ReleaseInfo[]>()
+  const [failed, setFailed] = useState(false)
+  useEffect(() => { let alive = true; fetchReleases(6).then((l) => alive && setList(l)).catch(() => alive && setFailed(true)); return () => { alive = false } }, [])
+  useEffect(() => { const t = setTimeout(() => setFocus('wn-close'), 200); return () => clearTimeout(t) }, [])
+  const lines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean)
+  return (
+    <Layer onClose={onClose} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(700px,94vw)] -translate-x-1/2 -translate-y-1/2">
+      <div className="pop flex max-h-[86vh] flex-col overflow-hidden rounded-3xl bg-[#17171c]/95 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+        <div className="flex shrink-0 items-center gap-3 border-b border-white/8 px-6 py-4">
+          <h2 className="flex-1 text-xl font-extrabold tracking-tight">What’s new</h2>
+          <Focusable focusKey="wn-close" onEnter={onClose} title="Close"><div className="grid size-9 place-items-center rounded-full transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><X size={18} /></div></Focusable>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {!list && !failed && <div className="grid place-items-center py-12"><Loader2 className="animate-spin text-white/50" size={30} /></div>}
+          {failed && <p className="text-white/60">Couldn’t load the release notes right now. Check your connection and try again.</p>}
+          {list?.map((r, n) => (
+            <div key={r.version} className={n ? 'mt-7 border-t border-white/8 pt-6' : ''}>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-lg font-extrabold">Version {r.version}</span>
+                {r.name && <span className="font-semibold text-accent">{r.name}</span>}
+                {r.version === current && <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-white/70">Installed</span>}
+                {r.date && <span className="text-sm text-white/40">{new Date(r.date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+              </div>
+              <div className="mt-2 space-y-1.5 text-[0.95rem] leading-relaxed text-white/70">
+                {lines(r.details).map((l, i) => /^[-*•]\s/.test(l) ? <div key={i} className="flex gap-2.5"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-accent" /><span>{l.replace(/^[-*•]\s+/, '')}</span></div> : <p key={i}>{l}</p>)}
+                {!r.details && <p className="text-white/40">No notes for this version.</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Layer>
+  )
+}
+
 function About({ server }: { server: PlexServer }) {
   const u = useUpdater()
   const [copied, setCopied] = useState(false)
+  const [notes, setNotes] = useState(false)
   const copyId = () => { if (server.id) navigator.clipboard?.writeText(server.id).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }).catch(() => {}) }
   useEffect(() => { checkForUpdate() }, [])
   const busy = u.status === 'checking' || u.status === 'downloading' || u.status === 'installing'
@@ -414,7 +452,10 @@ function About({ server }: { server: PlexServer }) {
   }[u.status]
   return (
     <>
-      <Row label="Chezzflix" hint={u.current ? `Version ${u.current}` : inTauri ? '' : 'Running in a browser'}><span /></Row>
+      <Row label="Chezzflix" hint={u.current ? `Version ${u.current} · see what’s new` : inTauri ? '' : 'Running in a browser'} onEnter={() => setNotes(true)}>
+        <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">What’s new</span>
+      </Row>
+      {notes && <WhatsNew current={u.current} onClose={() => setNotes(false)} />}
       <Row label="Updates" hint={line}>
         {u.status === 'available'
           ? <Focusable onEnter={installUpdate} title="Update now"><div className="flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-black transition-transform group-hover/f:scale-105 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white"><Download size={16} />Update now</div></Focusable>
