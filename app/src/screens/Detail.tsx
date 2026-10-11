@@ -29,7 +29,7 @@ function Pill({ children, onEnter, active, focusKey, onArrow }: { children: Reac
   )
 }
 
-function Episode({ ep, server, spoiler, onReveal, onPlay, onRecap, upTo }: { ep: PlexMedia; server: PlexServer; spoiler: boolean; onReveal: () => void; onPlay: (m: PlexMedia) => void; onRecap: (m: PlexMedia) => void; /** First episode only: where Up goes (the season buttons). */ upTo?: string }) {
+function Episode({ ep, server, spoiler, onReveal, onRevealShow, onPlay, onRecap, upTo }: { ep: PlexMedia; server: PlexServer; spoiler: boolean; onReveal: () => void; /** Set once this episode has been revealed by hand: offers to unblur the whole show. */ onRevealShow?: () => void; onPlay: (m: PlexMedia) => void; onRecap: (m: PlexMedia) => void; /** First episode only: where Up goes (the season buttons). */ upTo?: string }) {
   const p = progressOf(ep)
   return (
     <div className="flex items-center gap-2">
@@ -58,6 +58,11 @@ function Episode({ ep, server, spoiler, onReveal, onPlay, onRecap, upTo }: { ep:
           <div className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-white/10 px-4 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><History size={16} />Recap</div>
         </Focusable>
       )}
+      {!spoiler && onRevealShow && (
+        <Focusable focusKey={`revealshow-${ep.ratingKey}`} onEnter={onRevealShow} title="Reveal whole show?">
+          <div className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-white/12 px-4 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Eye size={16} />Reveal whole show?</div>
+        </Focusable>
+      )}
       {spoiler && (
         <Focusable onEnter={() => { onReveal(); setTimeout(() => setFocus(`ep-${ep.ratingKey}`), 0) }} title="Click to reveal">
           <div className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-white/12 px-4 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Eye size={16} />Click to reveal</div>
@@ -83,6 +88,9 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
   const [clip, setClip] = useState<{ media: PlexMedia; segments: Segment[]; heading: string; subheading?: string }>()
   const [busy, setBusy] = useState(false)
   // Choosing a quality when a title exists in several versions / libraries.
+  const [confirmShow, setConfirmShow] = useState(false)   // "reveal the whole show?" question
+  const showKey = m?.type === 'show' ? m.ratingKey : undefined
+  const showUnblurred = !!showKey && !!settings.spoilerFreeShows[showKey]   // chosen by you: this show's episodes are never blurred
   const [picker, setPicker] = useState<{ anchor: 'button' | 'modal'; versions: Version[]; title: string }>()
   const closePicker = () => { const a = picker?.anchor; setPicker(undefined); if (a === 'button') setTimeout(() => setFocus('detail-play'), 30) }
   useBack(closePicker, picker?.anchor === 'button')
@@ -296,8 +304,9 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
               <div className="space-y-1.5">
                 {episodes.length === 0 ? Array.from({ length: 4 }, (_, i) => <div key={i} className="skeleton h-[130px] rounded-2xl" />)
                   : episodes.map((ep, n) => <Episode key={ep.ratingKey} ep={ep} server={server} onPlay={(e) => requestPlay(e, 'modal')} onRecap={recap} upTo={n === 0 && season ? `season-${season}` : undefined}
-                    spoiler={settings.hideSpoilers && isSpoilerRisk(ep) && !revealed.has(ep.ratingKey)}
-                    onReveal={() => setRevealed((r) => new Set(r).add(ep.ratingKey))} />)}
+                    spoiler={settings.hideSpoilers && !showUnblurred && isSpoilerRisk(ep) && !revealed.has(ep.ratingKey)}
+                    onReveal={() => setRevealed((r) => new Set(r).add(ep.ratingKey))}
+                    onRevealShow={settings.hideSpoilers && !showUnblurred && isSpoilerRisk(ep) && revealed.has(ep.ratingKey) ? () => setConfirmShow(true) : undefined} />)}
               </div>
             </section>
           )}
@@ -322,6 +331,22 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
 
           {related.length > 0 && <div className="relative mt-14"><Row title="More like this" items={related} server={server} onSelect={onOpen} /></div>}
         </div>
+      )}
+      {confirmShow && showKey && (
+        <Layer onClose={() => setConfirmShow(false)} className="absolute left-1/2 top-1/2 w-[min(440px,92vw)] -translate-x-1/2 -translate-y-1/2">
+          <div className="pop rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+            <div className="text-xl font-extrabold tracking-tight">Reveal the whole show?</div>
+            <div className="mt-2 text-sm text-white/65">This removes the spoiler blur from every episode of {m?.title}, for good. Other shows keep their blur.</div>
+            <div className="mt-5 flex gap-3">
+              <Focusable onEnter={() => { update({ spoilerFreeShows: { ...settings.spoilerFreeShows, [showKey]: true } }); setConfirmShow(false) }} title="Yes, reveal it all">
+                <div className="rounded-full bg-white px-6 py-2.5 font-bold text-black transition-all group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">Yes, reveal it all</div>
+              </Focusable>
+              <Focusable onEnter={() => setConfirmShow(false)} title="No">
+                <div className="rounded-full bg-white/15 px-6 py-2.5 font-semibold transition-all group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">No</div>
+              </Focusable>
+            </div>
+          </div>
+        </Layer>
       )}
       {picker?.anchor === 'modal' && (
         <Layer onClose={() => setPicker(undefined)} className="absolute left-1/2 top-1/2 w-[min(420px,92vw)] -translate-x-1/2 -translate-y-1/2">
