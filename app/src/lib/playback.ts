@@ -71,7 +71,7 @@ export function planPlayback(server: PlexServer, m: PlexMedia, choice: TrackChoi
   const vCodecs = ['h264', ...(canVideo('hevc') ? ['hevc'] : []), ...(canVideo('av1') ? ['av1'] : [])]
   const aCodecs = ['aac', ...(canAudio('ac3') ? ['ac3'] : []), ...(canAudio('eac3') ? ['eac3'] : [])]
   const q = new URLSearchParams({
-    path: `/library/metadata/${m.ratingKey}`, mediaIndex: '0', partIndex: '0', protocol: 'hls', fastSeek: '1',
+    path: `/library/metadata/${m.ratingKey}`, mediaIndex: String(m.versionIndex ?? 0), partIndex: '0', protocol: 'hls', fastSeek: '1',
     directPlay: '0', directStream: kind === 'stream' ? '1' : '0', directStreamAudio: '1', subtitleSize: '100', audioBoost: '100',
     session: crypto.randomUUID(), 'X-Plex-Client-Identifier': clientId(), 'X-Plex-Product': 'Chezzflix', 'X-Plex-Platform': 'Chrome', 'X-Plex-Token': server.accessToken,
     'X-Plex-Client-Profile-Extra': `append-transcode-target-codec(type=videoProfile&context=streaming&protocol=hls&videoCodec=${vCodecs.join(',')}&audioCodec=${aCodecs.join(',')})`,

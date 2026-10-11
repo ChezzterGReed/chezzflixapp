@@ -106,7 +106,7 @@ function item(s: Seed, extra: Partial<PlexMedia> = {}): PlexMedia {
     Guid: [{ id: `tmdb://${1000 + s.id}` }],
     originallyAvailableAt: `${s.year}-${String(((s.id * 5) % 12) + 1).padStart(2, '0')}-15`,
     Role: ['Mara Ellison', 'Theo Navarro', 'Priya Anand', 'Jonas Webb', 'Lena Okafor', 'Daniel Ruiz', 'Ines Falk'].map((tag, i) => ({ tag, role: ['Lead', 'Support', 'Support', 'Guest', 'Support', 'Lead', 'Cameo'][i] })),
-    ...(isShow ? { leafCount: (s.seasons ?? 1) * 8, viewedLeafCount: (s.id * 3) % ((s.seasons ?? 1) * 8), childCount: s.seasons } : { Media: [STREAMS(`/demo/${s.id}.mkv`)], Marker: [{ type: 'credits', startTimeOffset: 540000, endTimeOffset: s.min * 60000 }] }),
+    ...(isShow ? { leafCount: (s.seasons ?? 1) * 8, viewedLeafCount: (s.id * 3) % ((s.seasons ?? 1) * 8), childCount: s.seasons } : { Media: [STREAMS(`/demo/${s.id}.mkv`), ...(s.id % 4 === 0 ? [{ ...STREAMS(`/demo/${s.id}-4k.mkv`), videoCodec: 'hevc', videoResolution: '4k', bitrate: 38000, Part: [{ key: `/demo/${s.id}-4k.mkv`, size: 41e9, Stream: [{ id: 1, streamType: 1, codec: 'hevc', displayTitle: '4K (HEVC Main 10 HDR10)' }] }] }] : [])], Marker: [{ type: 'credits', startTimeOffset: 540000, endTimeOffset: s.min * 60000 }] }),
     ...extra,
   }
 }

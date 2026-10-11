@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, TriangleAlert } from 'lucide-react'
+import { useStillWatching } from '../lib/stillWatching'
+import { StillWatching } from './StillWatching'
 import { Layer } from './Layer'
 import { Pumpkin } from './Pumpkin'
 import { Focusable } from './Focusable'
@@ -10,7 +12,7 @@ import { useSettings } from '../lib/settings'
 import { useLevelEngine } from '../lib/leveling'
 import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
 
-interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void }
+interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void; /** Nobody answered "Are you still watching?" */ onIdle?: () => void }
 
 const TUNE_DELAY = 350   // wait for the remote to settle before loading, so flipping through channels doesn't hammer the server
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -19,7 +21,7 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric
  * Full-screen live-TV viewing: tunes a channel to whatever is "on" right now (part-way through, like cable) and flips channels with Up / Down.
  * Back returns to the guide. No pausing or seeking, and nothing is reported to Plex: no watch history, no Continue Watching.
  */
-export function ChannelPlayer({ server, channels, start, onClose }: Props) {
+export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Props) {
   const { settings } = useSettings()
   const guide = useGuide()
   const [mode, setMode] = useState<'pending' | 'native' | 'web'>('pending')
@@ -148,13 +150,15 @@ export function ChannelPlayer({ server, channels, start, onClose }: Props) {
   }, [idx, mode, tune, start, flash])
 
   const flip = (d: 1 | -1) => setIdx((i) => (i + d + channels.length) % channels.length)
-  const close = () => { if (leaving) return; setLeaving(true); setTimeout(onClose, 300) }
+  const close = (idle = false) => { if (leaving) return; setLeaving(true); setTimeout(idle && onIdle ? onIdle : onClose, 300) }
+  const { asking: askingStill, confirm: stillHere } = useStillWatching(status === 'playing' && !leaving)
 
   const ch = channels[idx]
   const now = Date.now()
   return (
-    <Layer player onClose={close} scrim="bg-transparent">
+    <Layer player onClose={() => close()} scrim="bg-transparent">
       <div className="absolute inset-0">
+        {askingStill && !leaving && <StillWatching onStay={stillHere} onTimeout={() => close(true)} />}
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => setStatus('error')} />}
         {/* Receives the remote: Up / Down flip channels, OK shows the banner */}
         <Focusable focusKey="channel-surface" title="Channel" onEnter={flash} onArrow={(d) => { if (d === 'up') { flip(-1); return false } if (d === 'down') { flip(1); return false } return false }} className="absolute inset-0">

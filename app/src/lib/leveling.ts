@@ -21,6 +21,7 @@ const FIRST_AT = 20, REFINE_AT = [60, 180], STOP_AT = 300   // seconds of playba
 const FAST_FIRST_AT = 6, FAST_REFINE_AT = [20, 60], FAST_STOP_AT = 120   // the TV Guide: you're surfing, so settle quickly
 export const GUIDE_MAX_GAIN = 5   // ...and never change anything by more than this many dB, up or down
 const LIMITER = 'alimiter=limit=0.97:attack=5:release=60:level=disabled'
+export const QUIET_NEEDS_DB = 6   // a title that would need at least this much boost counts as quiet
 const DIALOGUE = 1.8   // center channel x1.8 (about +5 dB)
 
 const LAYOUTS: Record<string, string[]> = {
@@ -52,10 +53,10 @@ export function clipAf(media: PlexMedia, autoLevel: boolean): string {
   return Math.abs(g) < 0.1 ? '' : `lavfi=[volume=${g.toFixed(2)}dB,${LIMITER}]`
 }
 
-interface Opts { active: boolean; loaded: number; media: PlexMedia; autoLevel: boolean; dialogueBoost: boolean; /** Settle sooner and jump straight to a remembered gain (TV Guide). */ fast?: boolean }
+interface Opts { active: boolean; loaded: number; media: PlexMedia; autoLevel: boolean; dialogueBoost: boolean; /** Settle sooner and jump straight to a remembered gain (TV Guide). */ fast?: boolean; /** Auto leveling is off, but still listen, and report if this title is quiet enough to be worth turning it on. */ scanQuiet?: boolean }
 
 /** Drives mpv's audio filters for the current title. `loaded` ticks up each time a file finishes loading. */
-export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost, fast }: Opts) {
+export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost, fast, scanQuiet }: Opts) {
   const firstAt = fast ? FAST_FIRST_AT : FIRST_AT, refineAt = fast ? FAST_REFINE_AT : REFINE_AT, stopAt = fast ? FAST_STOP_AT : STOP_AT
   // The guide keeps its own remembered levels (capped), separate from the player's, so neither affects the other.
   const key = (fast ? 'guide:' : '') + memKey(media)
@@ -63,6 +64,12 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   const limit = useCallback((v: number) => Math.max(lo, Math.min(hi, v)), [lo, hi])
   const [boost, setBoostState] = useState<Boost>(() => readMem(key).boost ?? 'auto')
   const [gain, setGain] = useState(0)
+  /** For a title that hasn't been measured yet: 'measuring' while it listens, then 'applied' (briefly) with the boost it chose. */
+  const [note, setNote] = useState<null | { kind: 'measuring' } | { kind: 'applied'; gain: number }>(null)
+  const noteTimer = useRef(0)
+  /** Set (once per title) when auto leveling is off but the title is quiet: the boost it would take. */
+  const [quiet, setQuiet] = useState<number | null>(null)
+  const quietDone = useRef('')
   const g = useRef({ gain: 0, sig: '', ticks: 0, lastPos: -1, timer: 0, ramp: 0 })
 
   const setBoost = useCallback((b: Boost) => { setBoostState(b); writeMem(key, { boost: b }) }, [key])
@@ -89,21 +96,44 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
     ;(async () => {
       const mem = readMem(key)
       const measuring = boost === 'auto' && autoLevel
+      const scanOnly = !measuring && !!scanQuiet && boost === 'auto' && !fast && !autoLevel && !mem.gain && quietDone.current !== key
       const holds = typeof boost === 'number' || autoLevel
       const want = limit(typeof boost === 'number' ? boost : autoLevel ? mem.gain ?? 0 : 0)
       const layout = dialogueBoost ? await mpvGet('audio-params/hr-channels').catch(() => null) : null
       const pan = layout ? dialoguePan(layout) : null
-      const parts = [pan, measuring ? '@m:lavfi=[ebur128=metadata=1]' : null, holds ? 'GAIN' : null].filter(Boolean) as string[]
+      const parts = [pan, measuring || scanOnly ? '@m:lavfi=[ebur128=metadata=1]' : null, holds ? 'GAIN' : null].filter(Boolean) as string[]
       const sig = parts.join(',')
       if (dead) return
       if (sig !== s.sig) {
-        s.sig = sig; s.gain = want; setGain(want)
-        await mpvSet('af', parts.map((p) => (p === 'GAIN' ? gainFilter(want) : p)).join(',')).catch(() => {})
+        // Switching the boost on while something is already playing: begin at what you're hearing now and glide to the new level.
+        const glide = holds && !fast && s.sig !== '' && !s.sig.includes('GAIN') && Math.abs(want) > 0.05
+        const start = glide ? 0 : want
+        s.sig = sig; s.gain = start; setGain(start)
+        await mpvSet('af', parts.map((p) => (p === 'GAIN' ? gainFilter(start) : p)).join(',')).catch(() => {})
+        if (glide && !dead) rampTo(want)
       } else if (holds && Math.abs(want - s.gain) > 0.05) {
         if (fast) { clearInterval(s.ramp); s.gain = want; setGain(want); mpvCmd('af-command', 'g', 'volume', `${want.toFixed(2)}dB`, 'volume').catch(() => {}) }   // a channel change: no slow glide
         else rampTo(want)
       }
+      if (scanOnly && !dead) {
+        // Listen only (nothing is changed): if it's quiet enough to need a big boost, say so once.
+        s.ticks = 0; s.lastPos = -1
+        s.timer = window.setInterval(async () => {
+          const pos = Number(await mpvGet('time-pos').catch(() => null))
+          if (!isFinite(pos) || pos === s.lastPos) return
+          s.lastPos = pos; s.ticks++
+          if (s.ticks > stopAt) return clearInterval(s.timer)
+          if (s.ticks !== firstAt && !refineAt.includes(s.ticks)) return
+          const lufs = Number(await mpvGet('af-metadata/m/lavfi.r128.I').catch(() => null))
+          if (!isFinite(lufs) || lufs < -60) return
+          const need = limit(clamp(TARGET_LUFS - lufs))
+          if (need >= QUIET_NEEDS_DB) { quietDone.current = key; clearInterval(s.timer); setQuiet(need) }
+        }, 1000)
+        return
+      }
       if (!measuring || dead) return
+      clearTimeout(noteTimer.current)
+      setNote(!fast && !mem.gain ? { kind: 'measuring' } : null)   // only a title that has to be measured now gets the heads-up
 
       // Measure while it plays; hold one gain.
       s.ticks = 0; s.lastPos = -1
@@ -111,7 +141,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
         const pos = Number(await mpvGet('time-pos').catch(() => null))
         if (!isFinite(pos) || pos === s.lastPos) return   // paused or seeking
         s.lastPos = pos; s.ticks++
-        if (s.ticks > stopAt) return clearInterval(s.timer)
+        if (s.ticks > stopAt) { clearInterval(s.timer); setNote((n) => (n?.kind === 'measuring' ? null : n)); return }
         const first = !mem.gain && s.ticks === firstAt
         if (!first && !refineAt.includes(s.ticks)) return
         const lufs = Number(await mpvGet('af-metadata/m/lavfi.r128.I').catch(() => null))
@@ -119,11 +149,14 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
         let next = limit(clamp(TARGET_LUFS - lufs))
         if (!first) next = limit(Math.max(s.gain - 3, Math.min(s.gain + 3, next)))   // later corrections stay small
         writeMem(key, { gain: next }); rampTo(next)
+        if (first && !fast) { setNote({ kind: 'applied', gain: next }); clearTimeout(noteTimer.current); noteTimer.current = window.setTimeout(() => setNote(null), 3000) }
       }, 1000)
     })()
-    return () => { dead = true; clearInterval(s.timer) }
-  }, [active, loaded, key, boost, autoLevel, dialogueBoost, rampTo, fast, firstAt, refineAt, stopAt, limit])
+    return () => { dead = true; clearInterval(s.timer); clearTimeout(noteTimer.current); setNote(null) }
+  }, [active, loaded, key, boost, autoLevel, scanQuiet, dialogueBoost, rampTo, fast, firstAt, refineAt, stopAt, limit])
 
   useEffect(() => () => { clearInterval(g.current.timer); clearInterval(g.current.ramp); g.current.sig = '' }, [])
-  return { boost, setBoost, gain }
+  /** "Try it" was chosen for a quiet title: remember the boost so turning auto leveling on applies it straight away. */
+  const acceptQuiet = useCallback((g: number) => { writeMem(key, { gain: g }) }, [key])
+  return { boost, setBoost, gain, note, quiet, acceptQuiet, clearQuiet: () => setQuiet(null) }
 }

@@ -144,7 +144,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
   const play = async (m: PlexMedia) => {
     try {
-      const target = await resolvePlayable(server, m)
+      const target = m.versionIndex !== undefined ? m : await resolvePlayable(server, m)   // a version picked from the list is already complete
       if (!target) return say('No playable file found for ' + m.title)
       if (settings.player === 'mpv' && inTauri) {
         const url = directPlayUrl(server, target)
@@ -156,7 +156,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     } catch (e) { say('Could not start playback: ' + (e as Error).message) }
   }
 
-  const closePlayer = () => { setPlaying(undefined); invalidateCache(); setRefreshKey((k) => k + 1) }
+  const closePlayer = (home?: boolean) => { setPlaying(undefined); invalidateCache(); setRefreshKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
   const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying(full) }
 
   const open = (m: PlexMedia) => {
@@ -233,7 +233,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
       {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
         onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)} />}
-      {playing && <Player key={playing.ratingKey} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} />}
+      {playing && <Player key={`${playing.ratingKey}:${playing.versionIndex ?? 0}`} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} onSwitch={setPlaying} />}
 
       {toast && <div className="pop fixed bottom-8 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black shadow-2xl">{toast}</div>}
     </ItemMenuContext.Provider>

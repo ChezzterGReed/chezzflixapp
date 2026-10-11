@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.11',
+    'X-Plex-Version': '0.3.12',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -98,11 +98,14 @@ export interface PlexMedia {
   librarySectionID?: number | string
   Marker?: PlexMarker[]
   Media?: PlexMediaInfo[]
+  /** Client-side: which of the file versions was picked (that one has been moved to Media[0]); used when asking Plex to transcode it. */
+  versionIndex?: number
+  grandparentGuid?: string
 }
 
 export interface PlexMarker { type: string; startTimeOffset: number; endTimeOffset: number }
-export interface PlexStream { id: number; streamType: 1 | 2 | 3 | number; codec?: string; language?: string; languageCode?: string; displayTitle?: string; selected?: boolean; key?: string; format?: string; forced?: boolean; default?: boolean; channels?: number }
-export interface PlexMediaInfo { Part: { key: string; file?: string; Stream?: PlexStream[] }[]; container?: string; videoCodec?: string; audioCodec?: string; videoResolution?: string; bitrate?: number }
+export interface PlexStream { id: number; colorTrc?: string; DOVIPresent?: boolean; extendedDisplayTitle?: string; streamType: 1 | 2 | 3 | number; codec?: string; language?: string; languageCode?: string; displayTitle?: string; selected?: boolean; key?: string; format?: string; forced?: boolean; default?: boolean; channels?: number }
+export interface PlexMediaInfo { Part: { key: string; file?: string; size?: number; Stream?: PlexStream[] }[]; container?: string; videoCodec?: string; audioCodec?: string; videoResolution?: string; bitrate?: number }
 
 export interface PlexHub {
   title: string
@@ -263,6 +266,12 @@ export async function removeFromContinueWatching(server: PlexServer, ratingKey: 
 /** Every item in a library with its external ids (tmdb://…), for matching against TMDB lists. */
 export async function getSectionWithGuids(server: PlexServer, sectionKey: string): Promise<PlexMedia[]> {
   const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/sections/${sectionKey}/all?includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=10000`, 300_000)
+  return c.Metadata ?? []
+}
+
+/** Look for a title (or an episode: `type=4`) in one library by its Plex guid, or by a plain query like `title=…`. */
+export async function findInSection(server: PlexServer, sectionKey: string, query: string): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/sections/${sectionKey}/all?${query}&X-Plex-Container-Start=0&X-Plex-Container-Size=50`, 120_000)
   return c.Metadata ?? []
 }
 

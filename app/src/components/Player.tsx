@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
+import { findVersions, lighterThan, type Version } from '../lib/versions'
+import { StallOffer } from './StallOffer'
+import { QuietOffer } from './QuietOffer'
+import { useStillWatching } from '../lib/stillWatching'
+import { StillWatching } from './StillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
@@ -18,7 +23,7 @@ const fmt = (s: number) => {
 
 const KIND_STYLE = { direct: 'bg-emerald-400/20 text-emerald-300 ring-emerald-300/30', stream: 'bg-sky-400/20 text-sky-300 ring-sky-300/30', transcode: 'bg-amber-400/20 text-amber-300 ring-amber-300/30' }
 
-interface Props { server: PlexServer; media: PlexMedia; onClose: () => void; onPlayNext: (m: PlexMedia) => void }
+interface Props { server: PlexServer; media: PlexMedia; /** `home`: closed because nobody answered "Are you still watching?" */ onClose: (home?: boolean) => void; onPlayNext: (m: PlexMedia) => void; /** Swap to another version of the same title (already positioned to resume). */ onSwitch: (m: PlexMedia) => void }
 
 // Set when one episode hands over to the next, so the new player starts already black instead of flashing the app UI.
 let continuing = false
@@ -26,7 +31,7 @@ const FADE_MS = 650   // fade to black / fade back
 const IRIS_MS = 950   // the exit: the app grows back over the video
 const BEAT_MS = 900   // time held in black while the video loads
 
-export function Player({ server, media, onClose: finishClose, onPlayNext }: Props) {
+export function Player({ server, media, onClose: finishClose, onPlayNext, onSwitch }: Props) {
   const { settings, update } = useSettings()
   const [stylePanel, setStylePanel] = useState<number | null>(null)   // row highlighted in the subtitle-style menu (null = closed)
   const [levelPanel, setLevelPanel] = useState<number | null>(null)   // row highlighted in the volume menu (null = closed)
@@ -75,6 +80,15 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const blackAt = useRef(cont.current ? Date.now() : 0)
   const liftedRef = useRef(false)
   const closingRef = useRef(false)
+  const homeRef = useRef(false)
+  const bufferingRef = useRef(true)
+  const lastSeek = useRef(0)
+  const stalls = useRef<{ at: number; ms: number }[]>([])
+  const stallStart = useRef(0)
+  const offered = useRef(false)
+  const [offer, setOffer] = useState(false)
+  const [versions, setVersions] = useState<Version[]>([])
+  const { asking: askingStill, confirm: stillHere } = useStillWatching(!paused && ready && !closing)
   const exitStyle = useRef<'none' | 'iris' | 'fade'>('none')
   const volumeRef = useRef(1)
   const [revealing, setRevealing] = useState(false)
@@ -291,11 +305,11 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         mpvSet('volume', Math.round(startVol * (1 - t))).catch(() => {})
         if (n >= steps) clearInterval(iv)
       }, IRIS_MS / steps)
-      setTimeout(finishClose, IRIS_MS + 60)
+      setTimeout(() => finishClose(homeRef.current), IRIS_MS + 60)
     } else {
       exitStyle.current = 'fade'
       setRevealing(true) // the web player eases away over the app, which is already underneath
-      setTimeout(finishClose, 720)
+      setTimeout(() => finishClose(homeRef.current), 720)
     }
   }, [mode, finishClose])
 
@@ -317,12 +331,38 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   // ----- next episode lookup -----
   useEffect(() => { getNextEpisode(server, media).then(setNext).catch(() => setNext(null)); getPreviousEpisode(server, media).then(setPrev).catch(() => setPrev(null)) }, [server, media])
 
+  // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
+  const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost && !isAndroid, scanQuiet: !settings.quietHintOff })
+  // Other versions of this title (other qualities, other libraries): used to suggest a lighter one if playback keeps stalling.
+  useEffect(() => { findVersions(server, media).then(setVersions).catch(() => {}) }, [server, media])
+  const lighter = useMemo(() => lighterThan(versions, media), [versions, media])
+  bufferingRef.current = buffering
+  useEffect(() => {
+    if (!lighter || offered.current) return
+    const t = setInterval(() => {
+      const now = Date.now()
+      if (!liftedRef.current || closingRef.current || pausedRef.current) { stallStart.current = 0; return }
+      if (bufferingRef.current) { if (!stallStart.current && now - lastSeek.current > 5000) stallStart.current = now }   // (waiting after a seek is normal)
+      else if (stallStart.current) { const ms = now - stallStart.current; stallStart.current = 0; if (ms > 1500) stalls.current.push({ at: now, ms }) }
+      stalls.current = stalls.current.filter((x) => now - x.at < 180_000)
+      const ongoing = stallStart.current ? now - stallStart.current : 0
+      const total = stalls.current.reduce((a, x) => a + x.ms, ongoing)
+      if (stalls.current.length >= 3 || total >= 20_000 || ongoing >= 12_000) { offered.current = true; setOffer(true) }   // 3 stalls in 3 minutes, or a long wait
+    }, 1000)
+    return () => clearInterval(t)
+  }, [lighter])
+  const quietOpen = level.quiet !== null && !offer
+  const modalOpen = (askingStill || offer || quietOpen) && !closing
+  const modalRef = useRef(false); modalRef.current = modalOpen
+  useEffect(() => { if (modalOpen) { resumeNav(); return () => pauseNav() } }, [modalOpen])
+
   // ----- keep spatial-nav out of the way; the player owns the keys -----
   useEffect(() => { pauseNav(); return () => resumeNav() }, [])
   useBack(() => { if (stylePanel !== null) setStylePanel(null); else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
   useEffect(() => { poke(); return () => clearTimeout(idle.current) }, [poke])
 
   const seek = useCallback((t: number) => {
+    lastSeek.current = Date.now()
     const target = Math.max(0, Math.min(duration || t, t))
     if (mode === 'native') mpvCmd('seek', target, 'absolute').catch(() => {})
     else { const v = video.current; if (v) v.currentTime = target }
@@ -341,8 +381,6 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     else { await document.documentElement.requestFullscreen().catch(() => {}); setFullscreen(true) }
   }, [])
 
-  // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
-  const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost && !isAndroid })
   // Subtitle look (plain-text subtitles; styled .ass ones keep their own).
   useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, loadedTick, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
   // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +10).
@@ -354,9 +392,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   ]
   const levelRows = isAndroid ? [allLevelRows[0], allLevelRows[2]] : allLevelRows   // (no dialogue boost on Android); the boost row is always the last one
   const boostRow = levelRows.length - 1
+  const noteShown = useRef(level.note); if (level.note) noteShown.current = level.note   // keeps the last text while it fades out
   const levelActive = (settings.autoLevel || (!isAndroid && settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
 
-  const showNext = !!next && !stayed && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
+  const showNext = !!next && !stayed && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 + 3 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
   const goPrev = useCallback(() => { if (prev) fadeOut(() => { continuing = true; onPlayNext(prev) }) }, [prev, onPlayNext, fadeOut])
   endedRef.current = () => (next && settings.autoplayNext && !stayed ? goNext() : finish())
@@ -444,7 +483,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   // ----- keyboard / remote -----
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || suggestRef.current) return   // (the "what next" screen has its own navigation)
+      if (e.target instanceof HTMLInputElement || suggestRef.current || modalRef.current) return   // (the "what next" screen has its own navigation)
       if (panel || levelPanel !== null || stylePanel !== null) setPanelTick((n) => n + 1)
       if (stylePanel !== null) {
         if (e.key === 'ArrowDown') setStylePanel(Math.min(styleRows.length - 1, stylePanel + 1))
@@ -672,6 +711,15 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
       ) : null}
 
       {/* After a movie: what to watch next */}
+      {offer && lighter && !closing && !askingStill && <StallOffer lighter={lighter} onDismiss={() => setOffer(false)} onSwitch={() => { setOffer(false); fadeOut(() => { continuing = true; onSwitch({ ...lighter.media, viewOffset: Math.round(timeRef.current * 1000) }) }) }} />}
+      {/* Auto leveling heads-up: the volume is about to shift by itself, so say so (then say what it did) */}
+      <div aria-live="polite" className={`pointer-events-none absolute left-1/2 z-40 -translate-x-1/2 transition-all duration-700 ${controls ? 'bottom-36' : 'bottom-10'} ${level.note ? 'opacity-100' : 'translate-y-2 opacity-0'}`}>
+        {noteShown.current && <div className="rounded-full bg-black/70 px-5 py-2.5 text-sm font-semibold text-white shadow-xl ring-1 ring-white/10 backdrop-blur-md">
+          {noteShown.current.kind === 'measuring' ? 'Auto-adjusting the volume. Please don’t change your device’s volume for a moment.' : Math.abs(noteShown.current.gain) < 0.5 ? 'Volume checked: no boost needed' : `Boost applied ${dbLabel(Math.round(noteShown.current.gain))}`}
+        </div>}
+      </div>
+      {quietOpen && !askingStill && !closing && <QuietOffer gain={level.quiet!} onClose={level.clearQuiet} onNever={() => { update({ quietHintOff: true }); level.clearQuiet() }} onApply={() => { level.acceptQuiet(level.quiet!); update({ autoLevel: true }) }} />}
+      {askingStill && !closing && <StillWatching onStay={stillHere} onTimeout={() => { homeRef.current = true; close() }} />}
       {suggest && <NextMovies server={server} media={media} onClose={close} onPlay={(m) => fadeOut(() => { continuing = true; onPlayNext(m) })} />}
     </div>
   )

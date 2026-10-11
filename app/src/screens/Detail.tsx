@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { BIG_IMAGE } from '../lib/perf'
 import { reveal, scrollToTopOf } from '../lib/scroll'
+import { VersionRows, focusFirstVersion } from '../components/VersionPicker'
+import { findVersions, type Version } from '../lib/versions'
+import { useBack } from '../lib/back'
 import { ArrowLeft, BookmarkCheck, BookmarkPlus, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Pin, PinOff, Play, Radio } from 'lucide-react'
 import { useSettings } from '../lib/settings'
 import { AddToChannel } from '../components/AddToChannel'
@@ -15,6 +18,7 @@ import { firstEpisode, previewSegments, recapSegments, withFile, type Segment } 
 import {
   backdropPath, posterPath, episodeLabel, formatLeft, formatRuntime, getChildren, getMetadata, getRelated, imageUrl, isSpoilerRisk, isWatched, logoPath,
   progressOf, setWatched, type PlexMedia, type PlexServer,
+  resolvePlayable,
 } from '../lib/plex'
 
 function Pill({ children, onEnter, active, focusKey, onArrow }: { children: React.ReactNode; onEnter: () => void; active?: boolean; focusKey?: string; onArrow?: (d: 'left' | 'right' | 'up' | 'down') => boolean | void }) {
@@ -78,6 +82,17 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
   const [revealed, setRevealed] = useState<Set<string>>(new Set())
   const [clip, setClip] = useState<{ media: PlexMedia; segments: Segment[]; heading: string; subheading?: string }>()
   const [busy, setBusy] = useState(false)
+  // Choosing a quality when a title exists in several versions / libraries.
+  const [picker, setPicker] = useState<{ anchor: 'button' | 'modal'; versions: Version[]; title: string }>()
+  const closePicker = () => { const a = picker?.anchor; setPicker(undefined); if (a === 'button') setTimeout(() => setFocus('detail-play'), 30) }
+  useBack(closePicker, picker?.anchor === 'button')
+  const requestPlay = async (item: PlexMedia, anchor: 'button' | 'modal') => {
+    const target = await resolvePlayable(server, item).catch(() => null)
+    const vs = target ? await findVersions(server, target) : []
+    if (vs.length > 1) { setPicker({ anchor, versions: vs, title: target?.title ?? item.title }); if (anchor === 'button') focusFirstVersion('ver') }
+    else onPlay(item)
+  }
+  const pickVersion = (v: Version) => { setPicker(undefined); onPlay(v.media) }
 
   useEffect(() => {
     let alive = true
@@ -162,6 +177,12 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
   const next = m?.type === 'show' ? m.OnDeck?.Metadata : undefined
   const resumeTarget = next ?? (m?.viewOffset ? m : undefined)
   const playLabel = resumeTarget?.viewOffset ? 'Resume' : 'Play'
+  // Look for other versions in the background so the picker appears instantly when Play is pressed.
+  const playKey = (resumeTarget ?? m)?.ratingKey
+  useEffect(() => {
+    const it = resumeTarget ?? m
+    if (it) resolvePlayable(server, it).then((t) => t && findVersions(server, t)).catch(() => {})
+  }, [playKey, server]) // eslint-disable-line react-hooks/exhaustive-deps
   const sub = next ? episodeLabel(next) : ''
   const score = m?.audienceRating ?? m?.rating
   const cast = (m?.Role ?? []).slice(0, 14)
@@ -201,11 +222,18 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
               <p className="mt-4 max-w-[40rem] text-[1.05rem] leading-relaxed text-white/80">{m.summary}</p>
 
               <div className="mt-7 flex flex-wrap items-center gap-3">
-                <Focusable focusKey="detail-play" onEnter={() => onPlay(resumeTarget ?? m)} title="Play" onFocus={scrollToTopOf}>
+                <div className="relative">
+                <Focusable focusKey="detail-play" onEnter={() => (picker ? closePicker() : requestPlay(resumeTarget ?? m, 'button'))} title="Play" onFocus={scrollToTopOf}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white px-8 text-[1.05rem] font-bold text-black transition-all duration-200 group-hover/f:bg-white/90 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     <Play size={20} fill="currentColor" />{playLabel}{sub && <span className="font-semibold text-black/60">{sub}</span>}
                   </div>
                 </Focusable>
+                {picker?.anchor === 'button' && (
+                  <div data-nopause className="pop absolute left-0 top-full z-30 mt-2 w-[min(24rem,86vw)] rounded-2xl bg-[#17171c]/95 p-1.5 shadow-[0_20px_60px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-xl">
+                    <VersionRows prefix="ver" versions={picker.versions} onPick={pickVersion} onUp={closePicker} />
+                  </div>
+                )}
+                </div>
                 <Focusable onEnter={toggleWatched} title={watched ? 'Mark unwatched' : 'Mark watched'} onFocus={scrollToTopOf}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     {watched ? <EyeOff size={20} /> : <Eye size={20} />}{watched ? 'Mark unwatched' : 'Mark watched'}
@@ -267,7 +295,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
               </div>
               <div className="space-y-1.5">
                 {episodes.length === 0 ? Array.from({ length: 4 }, (_, i) => <div key={i} className="skeleton h-[130px] rounded-2xl" />)
-                  : episodes.map((ep, n) => <Episode key={ep.ratingKey} ep={ep} server={server} onPlay={onPlay} onRecap={recap} upTo={n === 0 && season ? `season-${season}` : undefined}
+                  : episodes.map((ep, n) => <Episode key={ep.ratingKey} ep={ep} server={server} onPlay={(e) => requestPlay(e, 'modal')} onRecap={recap} upTo={n === 0 && season ? `season-${season}` : undefined}
                     spoiler={settings.hideSpoilers && isSpoilerRisk(ep) && !revealed.has(ep.ratingKey)}
                     onReveal={() => setRevealed((r) => new Set(r).add(ep.ratingKey))} />)}
               </div>
@@ -294,6 +322,14 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
 
           {related.length > 0 && <div className="relative mt-14"><Row title="More like this" items={related} server={server} onSelect={onOpen} /></div>}
         </div>
+      )}
+      {picker?.anchor === 'modal' && (
+        <Layer onClose={() => setPicker(undefined)} className="absolute left-1/2 top-1/2 w-[min(420px,92vw)] -translate-x-1/2 -translate-y-1/2">
+          <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+            <div className="px-3.5 pb-2 pt-3"><div className="truncate text-[1.02rem] font-bold">{picker.title}</div><div className="text-sm text-white/55">Choose a version to play</div></div>
+            <VersionRows prefix="vermodal" versions={picker.versions} onPick={pickVersion} />
+          </div>
+        </Layer>
       )}
       {addToChannel && m && <AddToChannel items={[m]} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => setAddToChannel(false)} />}
       {clip && <ClipPopup key={clip.media.ratingKey + clip.segments.length} server={server} media={clip.media} segments={clip.segments} heading={clip.heading} subheading={clip.subheading} onClose={() => setClip(undefined)} />}

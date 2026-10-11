@@ -286,7 +286,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
         onOpen={() => { const s = info.slot; setInfo(undefined); onOpenInfo(s) }} onTune={() => { const r = info.row; setInfo(undefined); setWatching(r) }} onOptions={() => { const c = channels[info.row]; setInfo(undefined); if (c) setMenu(c) }} />}
       {adding && <AddChannel server={server} sections={sections} existing={settings.channels} onClose={() => setAdding(false)} onCreate={draftsDone} />}
       {suggesting && <Suggestions server={server} sections={sections} existing={settings.channels} genres={settings.genres} onClose={() => { setSuggesting(false); if (!settings.guideOffered) update({ guideOffered: true }) }} onAdd={(d) => { create(d); setSuggesting(false) }} />}
-      {watching !== undefined && <ChannelPlayer server={server} channels={channels} start={watching} onClose={() => { setWatching(undefined); setTimeout(() => setFocus('guide-grid'), 150) }} />}
+      {watching !== undefined && <ChannelPlayer server={server} channels={channels} start={watching} onClose={() => { setWatching(undefined); setTimeout(() => setFocus('guide-grid'), 150) }} onIdle={() => { setWatching(undefined); onLeave() }} />}
 
       {menu && (
         <Layer onClose={() => setMenu(undefined)} scrim="bg-black/55 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(380px,92vw)] -translate-x-1/2 -translate-y-1/2">
