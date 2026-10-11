@@ -73,6 +73,10 @@ html.ui-fade #root > * { animation: fade-in .7s ease both; }
 .orb-c { width: 40vmax; height: 40vmax; left: 20vmax; bottom: -24vmax; background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 40%, #0d7a8a) 0%, transparent 100%); opacity: .3 !important; animation: drift-c 38s ease-in-out infinite alternate; }
 html[data-season=halloween] .orb-b { background: radial-gradient(closest-side, #5b21b6 0%, transparent 100%); }
 html[data-season=halloween] .orb-c { background: radial-gradient(closest-side, #7c2d12 0%, transparent 100%); }
+html[data-season=frost] .orb-b { background: radial-gradient(closest-side, #0369a1 0%, transparent 100%); }
+html[data-season=frost] .orb-c { background: radial-gradient(closest-side, #38bdf8 0%, transparent 100%); }
+html[data-season=festive] .orb-b { background: radial-gradient(closest-side, #166534 0%, transparent 100%); }
+html[data-season=festive] .orb-c { background: radial-gradient(closest-side, #9f1239 0%, transparent 100%); }
 @keyframes drift-a { from { transform: translate(0, 0) scale(1) } to { transform: translate(18vmax, 14vmax) scale(1.3) } }
 @keyframes drift-b { from { transform: translate(0, 0) scale(1.1) } to { transform: translate(-20vmax, 10vmax) scale(.9) } }
 @keyframes drift-c { from { transform: translate(0, 0) scale(1) } to { transform: translate(-14vmax, -16vmax) scale(1.35) } }
@@ -88,8 +92,16 @@ html[data-season=halloween] .orb-c { background: radial-gradient(closest-side, #
 
 .mote { position: absolute; bottom: -20px; border-radius: 9999px; background: rgba(255, 255, 255, .35); animation: rise linear infinite; }
 html[data-season=halloween] .mote { background: radial-gradient(circle, #ffb15c 0 40%, rgba(255, 140, 40, .35) 41% 70%, transparent 71%); transform: scale(2.4); }
+/* Christmas: the loading scene's motes are snow, falling instead of rising. */
+html[data-season=frost] .mote, html[data-season=festive] .mote { bottom: auto; top: -20px; background: rgba(255, 255, 255, .8); animation-name: snowfall; }
 .mote.ember { opacity: .0; }
 @keyframes rise { 0% { transform: translate(0, 0); opacity: 0 } 12% { opacity: .85 } 100% { transform: translate(var(--drift, 0), -110vh); opacity: 0 } }
+
+/* ---------- Christmas ambience (very faint) ---------- */
+.flake { position: absolute; top: -14px; border-radius: 9999px; background: rgba(255, 255, 255, .85); animation: snowfall linear infinite; }
+@keyframes snowfall { 0% { transform: translate(0, 0); opacity: 0 } 10% { opacity: .85 } 100% { transform: translate(var(--drift, 0), 112vh); opacity: .15 } }
+.twinkle { animation: twinkle 2.4s ease-in-out infinite; }
+@keyframes twinkle { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 
 /* ---------- Spooky season ambience (very faint) ---------- */
 .fog { position: absolute; width: 90vmax; height: 40vmax; border-radius: 50%; opacity: .1; }
@@ -98,7 +110,7 @@ html[data-season=halloween] .mote { background: radial-gradient(circle, #ffb15c 
 @keyframes fog-move { from { transform: translateX(0) } to { transform: translateX(14vmax) } }
 
 @media (prefers-reduced-motion: reduce) {
-  .loading-scene .orb, .ring-spin, .logo-breathe, .load-bar, .mote, .fog { animation-duration: 120s !important; }
+  .loading-scene .orb, .ring-spin, .logo-breathe, .load-bar, .mote, .fog, .flake, .twinkle { animation-duration: 120s !important; }
 }
 
 /* ---------- Trending banner ---------- */
@@ -111,7 +123,8 @@ html[data-season=halloween] .mote { background: radial-gradient(circle, #ffb15c 
 /* No blur-behind (the costliest effect on a weak GPU), no idle animations, no shimmer. Everything still looks right, just plainer. */
 html[data-perf="low"] *, html[data-perf="low"] *::before, html[data-perf="low"] *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 html[data-perf="low"] .orb, html[data-perf="low"] .banner-sheen, html[data-perf="low"] .logo-breathe { animation: none !important; }
-html[data-perf="low"] .mote, html[data-perf="low"] .fog { display: none !important; }
+html[data-perf="low"] .mote, html[data-perf="low"] .fog, html[data-perf="low"] .flake { display: none !important; }
+html[data-perf="low"] .twinkle { animation: none; }
 html[data-perf="low"] .skeleton { animation: none; background: #1a1a20; }
 html[data-perf="low"] .letter-in { filter: none; }
 

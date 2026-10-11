@@ -9,9 +9,9 @@ import { Layer } from '../components/Layer'
 import { getMetadata, getWatchedItems, imageUrl, type PlexSection, type PlexServer } from '../lib/plex'
 import { reveal } from '../lib/scroll'
 import { noteMove } from '../lib/input'
-import { useSettings, useSeason } from '../lib/settings'
-import { seasonalChannels } from '../lib/seasonal'
-import { Pumpkin } from '../components/Pumpkin'
+import { useSettings, useSeason, useTheme } from '../lib/settings'
+import { hexA, seasonalChannels } from '../lib/seasonal'
+import { SeasonIcon } from '../components/SeasonIcon'
 import { cloneChannel, ensureGuide, HOUR, LANGS, resetGuide, newChannel, slotAt, suggestChannels, topUp, uniqueName, useGuide, type Channel, type ChannelDraft, type Slot, type Suggestion } from '../lib/tvguide'
 
 const MIN = 60_000
@@ -30,6 +30,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   const { settings, update } = useSettings()
   const guide = useGuide()
   const season = useSeason()
+  const { accent: seasonColour } = useTheme()
   const [seasonalBase, setSeasonalBase] = useState<Channel[]>([])
   const [seasonalReady, setSeasonalReady] = useState(false)
   // In season, the app's own channels (e.g. Spooky Season) come first, in the season's colour; the guide waits until they're worked out.
@@ -37,9 +38,9 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
     let alive = true
     if (!season) { setSeasonalBase([]); setSeasonalReady(true); return }
     setSeasonalReady(false)
-    seasonalChannels(server, sections, season).then((c) => { if (alive) { setSeasonalBase(c); setSeasonalReady(true) } }).catch(() => alive && setSeasonalReady(true))
+    seasonalChannels(server, sections, season, seasonColour ?? undefined).then((c) => { if (alive) { setSeasonalBase(c); setSeasonalReady(true) } }).catch(() => alive && setSeasonalReady(true))
     return () => { alive = false }
-  }, [server, sections, season])
+  }, [server, sections, season, seasonColour])
   const seasonalChans = useMemo(() => seasonalBase.map((c) => ({ ...c, prefs: settings.seasonalPrefs[c.id] })), [seasonalBase, settings.seasonalPrefs])
   const userChannels = useMemo(() => [...settings.channels].sort((a, b) => a.number - b.number), [settings.channels])
   const channels = useMemo(() => [...seasonalChans, ...userChannels], [seasonalChans, userChannels])
@@ -240,7 +241,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
                     <div key={ch.id} className="relative flex border-b border-white/[0.07]" style={{ height: ROW_H, width: CH_W + span }}>
                       <div onPointerDown={() => { selRef.current = { row, t: selRef.current.t }; setSel(selRef.current); setChan(true) }} onContextMenu={() => { selRef.current = { row, t: selRef.current.t }; setChan(true) }}
                         className={`sticky left-0 z-[6] flex shrink-0 items-center gap-3 px-4 transition-colors ${sel.row === row && chan ? 'bg-white text-black group-data-[hl=true]/f:shadow-[inset_0_0_0_3px_var(--accent)]' : sel.row === row ? 'bg-[#26262f]' : 'bg-[#16161d]'}`} style={{ width: CH_W, boxShadow: ch.accent ? `inset 3px 0 0 ${ch.accent}` : undefined }}>
-                        {ch.seasonal ? <Pumpkin size={26} /> : <span className={`text-xl font-extrabold tabular-nums ${sel.row === row && chan ? 'text-black' : 'text-white/90'}`}>{ch.number}</span>}
+                        {ch.seasonal ? <SeasonIcon size={26} /> : <span className={`text-xl font-extrabold tabular-nums ${sel.row === row && chan ? 'text-black' : 'text-white/90'}`}>{ch.number}</span>}
                         <span className="min-w-0 flex-1 text-sm font-semibold leading-tight" style={{ color: ch.accent }}><span className={ch.accent ? '' : sel.row === row && chan ? 'text-black' : 'text-white/65'}>{ch.name}</span></span>
                       </div>
                       <div className="relative" style={{ width: span }}>
@@ -251,8 +252,8 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
                           const on = !chan && sel.row === row && cur?.start === s.start
                           return (
                             <div key={s.start} id={`cell-${row}-${s.start}`} onPointerDown={() => { selRef.current = { row, t: s.start + 1 }; setSel(selRef.current); setChan(false) }} onContextMenu={() => { selRef.current = { row, t: s.start + 1 }; setSel(selRef.current); setChan(false) }}
-                              className={`absolute inset-y-[3px] rounded-lg py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : ch.accent ? 'ring-[#ff7a1a]/40' : 'bg-white/[0.07] ring-white/10'}`}
-                              style={{ left: left + 2, width: Math.max(8, right - left - 4), background: !on && ch.accent ? 'rgba(255,122,26,.16)' : undefined }}>
+                              className={`absolute inset-y-[3px] rounded-lg py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : ch.accent ? '' : 'bg-white/[0.07] ring-white/10'}`}
+                              style={{ left: left + 2, width: Math.max(8, right - left - 4), background: !on && ch.accent ? hexA(ch.accent, 0.16) : undefined, ...(!on && ch.accent ? { ['--tw-ring-color' as string]: hexA(ch.accent, 0.4) } : {}) }}>
                               {/* The text stays pinned to the left edge of the visible guide while the block scrolls past, until the block is gone */}
                               <div className="sticky px-3" style={{ left: CH_W + 2, maxWidth: Math.max(8, right - left - 4) }}>
                                 <div className="flex items-center gap-1.5 truncate text-[0.98rem] font-bold">{s.start < origin && <span className="opacity-60">◂</span>}<span className="truncate">{s.title}</span></div>

@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { LandscapeCard, PosterCard } from './Card'
 import { Focusable } from './Focusable'
-import { Pumpkin } from './Pumpkin'
+import { SeasonIcon } from './SeasonIcon'
 import type { PlexMedia, PlexServer } from '../lib/plex'
 
 interface Props {
@@ -37,7 +37,7 @@ export function Row({ title, items, server, variant = 'poster', onSelect, themed
   return (
     <FocusContext.Provider value={focusKey}>
       <section ref={ref} className="group/row relative mb-9">
-        <h2 className={`${subtitle ? 'mb-0.5' : 'mb-3'} px-[var(--gutter)] text-[1.35rem] font-bold tracking-tight ${themed ? 'text-accent drop-shadow-[0_0_14px_var(--accent)]' : ''}`}>{themed && <Pumpkin size={26} className="mr-2 inline-block -translate-y-0.5" />}{title}</h2>
+        <h2 className={`${subtitle ? 'mb-0.5' : 'mb-3'} px-[var(--gutter)] text-[1.35rem] font-bold tracking-tight ${themed ? 'text-accent drop-shadow-[0_0_14px_var(--accent)]' : ''}`}>{themed && <SeasonIcon size={26} className="mr-2 inline-block -translate-y-0.5" />}{title}</h2>
         {subtitle && <p className="mb-3 px-[var(--gutter)] text-sm text-white/45">{subtitle}</p>}
         <div className="relative">
           <div ref={track} className="flex gap-4 overflow-x-auto px-[var(--gutter)] py-5 -my-5">

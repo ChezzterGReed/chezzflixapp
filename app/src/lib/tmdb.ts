@@ -76,6 +76,34 @@ export async function searchTmdb(key: string, query: string): Promise<RequestIte
   return r.results.filter((x) => x.media_type === 'movie' || x.media_type === 'tv').map((x) => toItem(x, x.media_type as 'movie' | 'tv')).filter((x) => x.title)
 }
 
+export interface MovieMeta { item: RequestItem; cert?: string; genres: string[] }
+const META_KEY = 'chezzflix_tmdb_meta'
+const META_TTL = 30 * 86_400_000
+const metaMem = new Map<string, Promise<MovieMeta | null>>()
+const readMeta = (): Record<string, { at: number; v: MovieMeta | null }> => { try { return JSON.parse(localStorage.getItem(META_KEY) ?? '{}') } catch { return {} } }
+const writeMeta = (k: string, v: MovieMeta | null) => { try { const all = readMeta(); all[k] = { at: Date.now(), v }; localStorage.setItem(META_KEY, JSON.stringify(all)) } catch { /* private mode / full */ } }
+
+/** Finds a movie on TMDB by title and year (a year either side is fine), with its US age rating and genres. Remembered for a month. */
+export function tmdbMovieMeta(key: string, title: string, year: number): Promise<MovieMeta | null> {
+  const k = `${title.toLowerCase()}|${year}`
+  let p = metaMem.get(k)
+  if (!p) {
+    const hit = readMeta()[k]
+    p = hit && Date.now() - hit.at < META_TTL ? Promise.resolve(hit.v) : lookupMovie(key, title, year).then((v) => { writeMeta(k, v); return v }).catch(() => null)
+    metaMem.set(k, p)
+  }
+  return p
+}
+async function lookupMovie(key: string, title: string, year: number): Promise<MovieMeta | null> {
+  if (key === DEMO_TMDB_KEY) { const d = DEMO_HITS.find((h) => h.type === 'movie' && h.year && Math.abs(h.year - year) < 3) ?? DEMO_HITS[0]; return { item: { ...d, tmdbId: 6000 + (title.length * 37 + year) % 900, title, year }, cert: 'PG', genres: ['Family'] } }
+  let found = (await tmdbGet<{ results: TmdbHit[] }>(key, '/search/movie', { query: title, year: String(year), include_adult: 'false' })).results[0]
+  if (!found) found = (await tmdbGet<{ results: TmdbHit[] }>(key, '/search/movie', { query: title, include_adult: 'false' })).results.find((x) => { const y = yearOf(x.release_date); return y != null && Math.abs(y - year) <= 1 })!
+  if (!found) return null
+  const d = await tmdbGet<{ genres?: { name: string }[]; release_dates?: { results: { iso_3166_1: string; release_dates: { certification: string }[] }[] } }>(key, `/movie/${found.id}`, { append_to_response: 'release_dates' })
+  const cert = d.release_dates?.results.find((r) => r.iso_3166_1 === 'US')?.release_dates.map((x) => x.certification).find(Boolean)
+  return { item: toItem(found, 'movie'), cert, genres: (d.genres ?? []).map((g) => g.name) }
+}
+
 /** A show's seasons (without specials), for the request picker. */
 export async function tmdbSeasons(key: string, tmdbId: number): Promise<SeasonInfo[]> {
   if (key === DEMO_TMDB_KEY) return [1, 2, 3].map((n) => ({ n, name: `Season ${n}`, episodes: 8, state: 'none' as const }))

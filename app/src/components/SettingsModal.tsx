@@ -11,7 +11,7 @@ import { listPlexHubs, mergeRows, rowCatalog } from '../lib/homeData'
 import { inTauri } from '../lib/player'
 import { isAndroid } from '../lib/native'
 import { trendingIds } from '../lib/tmdb'
-import { Pumpkin } from './Pumpkin'
+import { SeasonIcon } from './SeasonIcon'
 import { checkForUpdate, fetchReleases, installUpdate, useUpdater, type ReleaseInfo } from '../lib/updater'
 import { normalizeBase, testConnection } from '../lib/overseerr'
 
@@ -91,10 +91,19 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
       <div className="flex items-center gap-3 px-4 pb-2 text-sm text-white/55"><Avatar name={profileName} thumb={profileThumb} size={28} />Preview of the logo style on the menu</div>
       <Toggle label="Navigation sounds" hint="A small blip as you move around the screen" on={settings.navSounds} onChange={(v) => update({ navSounds: v })} />
       <Toggle label="Lighter effects" hint="Turns off blur and drifting backgrounds. Uses much less of the graphics chip and battery" on={settings.lightEffects} onChange={(v) => update({ lightEffects: v })} />
-      <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
+      <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : currentSeason() === 'christmas' ? 'It\'s the holiday season: a seasonal look, holiday movie rows and TV Guide channels. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
+      {settings.seasonal && (
+        <>
+          <div className="px-4 pt-2 text-sm font-semibold text-white/60">December look</div>
+          <div className="flex flex-wrap gap-2 px-4 py-2">
+            <Pill active={settings.holidayStyle === 'frost'} onEnter={() => update({ holidayStyle: 'frost' })}>Icy · snowflakes and frost</Pill>
+            <Pill active={settings.holidayStyle === 'festive'} onEnter={() => update({ holidayStyle: 'festive' })}>Festive · red and green</Pill>
+          </div>
+        </>
+      )}
       <Heading>Accent colour</Heading>
-      {settings.seasonal && currentSeason() === 'halloween' && (
-        <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-xl bg-accent/12 px-3.5 py-2.5 text-sm text-white/80"><Pumpkin size={22} />Spooky season is using pumpkin orange. Turn off Seasonal themes above to use your own colour.</div>
+      {settings.seasonal && currentSeason() && (
+        <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-xl bg-accent/12 px-3.5 py-2.5 text-sm text-white/80"><SeasonIcon size={22} />{currentSeason() === 'halloween' ? 'Spooky season is using pumpkin orange.' : settings.holidayStyle === 'frost' ? 'The holiday season is using icy blue.' : 'The holiday season is using festive red.'} Turn off Seasonal themes above to use your own colour.</div>
       )}
       <div className="flex flex-wrap gap-3 px-4 py-3">
         {ACCENTS.map((a) => (
@@ -145,6 +154,12 @@ function Playback() {
       </>}
       <Heading>Episodes</Heading>
       <Toggle label="Autoplay next episode" hint="Continue to the next episode after a short countdown" on={settings.autoplayNext} onChange={(v) => update({ autoplayNext: v })} />
+      {settings.autoplayNext && (
+        <>
+          <div className="px-4 pt-2 text-sm font-semibold text-white/60">Next episode countdown</div>
+          <div className="flex flex-wrap gap-2 px-4 py-2">{[10, 5, 3, 0].map((n) => <Pill key={n} active={settings.nextCountdown === n} onEnter={() => update({ nextCountdown: n })}>{n === 0 ? 'Instant' : `${n} sec`}</Pill>)}</div>
+        </>
+      )}
       <Toggle label="Suggest what to watch after a movie" hint="When a movie ends (or you skip its credits), show sequels and similar movies to start next" on={settings.movieSuggestions} onChange={(v) => update({ movieSuggestions: v })} />
       <Toggle label="Skip intros automatically" hint="Jump past the intro whenever Plex has marked one" on={settings.autoSkipIntro} onChange={(v) => update({ autoSkipIntro: v })} />
       <SubtitleStyle />

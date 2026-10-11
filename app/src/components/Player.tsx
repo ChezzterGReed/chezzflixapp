@@ -403,10 +403,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   // Up Next countdown (only if autoplay is on)
   useEffect(() => {
     if (!showNext || !settings.autoplayNext) return setCountdown(null)
-    setCountdown((c) => c ?? 10)
+    setCountdown((c) => c ?? settings.nextCountdown)
     const t = setInterval(() => setCountdown((c) => (c === null ? null : c - 1)), 1000)
     return () => clearInterval(t)
-  }, [showNext, settings.autoplayNext])
+  }, [showNext, settings.autoplayNext, settings.nextCountdown])
   useEffect(() => { if (countdown !== null && countdown <= 0) goNext() }, [countdown, goNext])
 
   // Skip credits (when there's no next episode to hand over to: movies and series finales)

@@ -5,7 +5,7 @@ import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-naviga
 import { Focusable } from './Focusable'
 import { useFocusedKey, useInputMode, useTyping } from '../lib/input'
 import { useSeason } from '../lib/settings'
-import { Pumpkin } from './Pumpkin'
+import { SeasonIcon } from './SeasonIcon'
 import { Layer } from './Layer'
 import { Logo } from './Logo'
 import { Avatar } from './Avatar'
@@ -80,7 +80,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           <span className="grid w-[52px] shrink-0 place-items-center">
             <span className="relative">
               {avatarLogo ? <Avatar name={profileName} thumb={profileThumb} size={34} /> : <Logo size={52} />}
-              {season === 'halloween' && avatarLogo && <Pumpkin size={21} className="absolute right-0.5 top-0 drop-shadow" />}
+              {season && avatarLogo && <SeasonIcon size={21} className="absolute right-0.5 top-0 drop-shadow" />}
             </span>
           </span>
           <span className={`whitespace-nowrap font-display text-[1.4rem] leading-none tracking-[0.14em] transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>{brand}</span>

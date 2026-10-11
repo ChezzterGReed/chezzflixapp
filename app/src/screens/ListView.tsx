@@ -7,14 +7,21 @@ import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
 import { BackButton } from '../components/BackButton'
 import type { PlexMedia, PlexServer, SortKey } from '../lib/plex'
+import { RequestCard } from '../components/RequestCard'
+import { RequestDetail } from '../components/RequestDetail'
+import { normalizeBase, type RequestItem } from '../lib/overseerr'
+import { useSettings } from '../lib/settings'
 
 const titleOf = (m: PlexMedia) => (m as { titleSort?: string }).titleSort || m.title
 const released = (m: PlexMedia) => m.originallyAvailableAt ?? `${m.year ?? 0}`
 
-interface Props { server: PlexServer; title: string; subtitle?: string; load: () => Promise<PlexMedia[]>; onOpen: (m: PlexMedia) => void; onBack: () => void }
+interface Props { server: PlexServer; token: string; title: string; subtitle?: string; load: () => Promise<PlexMedia[]>; /** Titles on the list that the server doesn't have, to offer as requests (only when requests are set up). */ missing?: () => Promise<RequestItem[]>; onOpen: (m: PlexMedia) => void; onBack: () => void }
 
 /** A grid of titles loaded all at once (a genre or a collection), sorted and filtered in the browser. */
-export function ListView({ server, title, subtitle, load, onOpen, onBack }: Props) {
+export function ListView({ server, token, title, subtitle, load, missing, onOpen, onBack }: Props) {
+  const { settings } = useSettings()
+  const [wanted, setWanted] = useState<RequestItem[]>([])
+  const [requesting, setRequesting] = useState<RequestItem>()
   const [items, setItems] = useState<PlexMedia[]>()
   const [sort, setSort] = useState<SortKey>('added')
   const [year, setYear] = useState<number>()
@@ -22,6 +29,8 @@ export function ListView({ server, title, subtitle, load, onOpen, onBack }: Prop
   useGridNav(page)
 
   useEffect(() => { let alive = true; load().then((r) => alive && setItems(r)).catch(() => alive && setItems([])); return () => { alive = false } }, [load])
+
+  useEffect(() => { let alive = true; setWanted([]); missing?.().then((r) => alive && setWanted(r)).catch(() => {}); return () => { alive = false } }, [missing])
 
   const years = useMemo(() => [...new Set((items ?? []).map((m) => m.year).filter((y): y is number => !!y))].sort((a, b) => b - a), [items])
   const shown = useMemo(() => {
@@ -67,6 +76,16 @@ export function ListView({ server, title, subtitle, load, onOpen, onBack }: Prop
           ))}
       </div>
       {items && shown.length === 0 && <p className="py-16 text-white/55">Nothing matches. Try another year.</p>}
+      {items && wanted.filter((r) => !year || r.year === year).length > 0 && (
+        <section className="mt-16">
+          <h2 className="text-[1.3rem] font-bold tracking-tight">Request what's missing</h2>
+          <p className="mb-5 mt-1 text-sm text-white/50">On this list but not in your library yet. Request one and it will be added.</p>
+          <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
+            {wanted.filter((r) => !year || r.year === year).map((r) => <div key={`${r.type}:${r.tmdbId}`} data-grid-cell className="[--card-w:100%]"><RequestCard item={r} onEnter={() => setRequesting(r)} onFocus={(el) => reveal(el)} /></div>)}
+          </div>
+        </section>
+      )}
+      {requesting && <RequestDetail item={requesting} base={normalizeBase(settings.overseerrUrl)} plexToken={token} tmdbKey={settings.tmdbKey} onClose={() => setRequesting(undefined)} />}
     </div>
   )
 }

@@ -7,6 +7,15 @@ import { shuffled } from '../lib/session'
 const PLAIN_MESSAGES = ['Connecting to your server…', 'Gathering your libraries…', 'Dimming the lights…', 'Cueing up something good…']
 
 // October: spookier status lines (in a different order each launch).
+// December: festive ones.
+const HOLIDAY_MESSAGES = [
+  'Waking up your server…', 'Hanging the stockings…', 'Checking the list twice…', 'Wrapping the presents…', 'Warming up the hot cocoa…', 'Untangling the string lights…',
+  'Leaving cookies out for Santa…', 'Decking the halls…', 'Stringing the popcorn…', 'Brushing the snow off your libraries…', 'Waiting for the sleigh bells…', 'Tuning the carols…',
+  'Feeding the reindeer…', 'Hunting for the good scissors…', 'Building a snowman in the cloud…', 'Fluffing up the tree…', 'Keeping the fireplace crackling…', 'Sorting naughty from nice…',
+  'Finding the missing wrapping paper…', 'Putting the star on top…', 'Peeking at the gifts…', 'Jingling all the way…', 'Warming up the elves…', 'Cueing up a holiday classic…',
+]
+
+// October: spookier status lines (in a different order each launch).
 const SPOOKY_MESSAGES = [
   'Waking up your server…', 'Carving the pumpkins…', 'Checking under the bed…', 'Stirring the cauldron…', 'Dusting off the cobwebs…', 'Counting the candy…',
   'Leaving the porch light on…', 'Rattling some chains…', 'Summoning the popcorn…', 'Haunting your libraries…', 'Waiting for the full moon…', 'Don’t look behind you…',
@@ -18,8 +27,8 @@ const SPOOKY_MESSAGES = [
 export function LoadingScreen({ visible }: { visible: boolean }) {
   const [mounted, setMounted] = useState(visible)
   const [i, setI] = useState(0)
-  const spooky = useSeason() === 'halloween'
-  const MESSAGES = spooky ? ['Connecting to your server…', ...shuffled(SPOOKY_MESSAGES, 12)] : PLAIN_MESSAGES
+  const season = useSeason()
+  const MESSAGES = season === 'halloween' ? ['Connecting to your server…', ...shuffled(SPOOKY_MESSAGES, 12)] : season === 'christmas' ? ['Connecting to your server…', ...shuffled(HOLIDAY_MESSAGES, 12)] : PLAIN_MESSAGES
   useEffect(() => {
     if (visible) { setMounted(true); return }
     const t = setTimeout(() => setMounted(false), 800)

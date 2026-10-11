@@ -1,0 +1,206 @@
+<!doctype html><meta charset="utf-8"><title>Chezzflix icons</title>
+<style>body{margin:0;background:#222;color:#ccc;font:14px system-ui}canvas{display:block;margin:8px;background:repeating-conic-gradient(#333 0 25%,#2a2a2a 0 50%) 0 0/20px 20px}</style>
+<body><div id="out"></div>
+<script>
+const FACE = new Image()
+const loaded = new Promise((r) => { FACE.onload = r; FACE.src = 'face.png' })
+const W = 'Avenir Next, Helvetica Neue, Arial, sans-serif'
+
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c }
+function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r) }
+
+// Purple-to-black backdrop with soft coloured glows.
+function backdrop(ctx, w, h, glowX = 0.5, glowY = 0.55) {
+  let g = ctx.createLinearGradient(0, 0, w, h)
+  g.addColorStop(0, '#2a0f5e'); g.addColorStop(0.5, '#14082e'); g.addColorStop(1, '#07030f')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
+  const R = Math.max(w, h)
+  g = ctx.createRadialGradient(w * glowX, h * glowY, 0, w * glowX, h * glowY, R * 0.62)
+  g.addColorStop(0, 'rgba(168,85,247,.75)'); g.addColorStop(0.45, 'rgba(124,58,237,.30)'); g.addColorStop(1, 'rgba(124,58,237,0)')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
+  g = ctx.createRadialGradient(w * 0.08, h * 0.05, 0, w * 0.08, h * 0.05, R * 0.55)
+  g.addColorStop(0, 'rgba(236,72,153,.38)'); g.addColorStop(1, 'rgba(236,72,153,0)')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
+  g = ctx.createRadialGradient(w * 0.5, h * 0.5, R * 0.35, w * 0.5, h * 0.5, R * 0.85)   // vignette
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
+}
+
+// Where the visible face sits inside the picture (it has empty margins), so it can be centred by what you see.
+let BOX = null
+function faceBox() {
+  if (BOX) return BOX
+  const c = mk(FACE.width, FACE.height), x = c.getContext('2d'); x.drawImage(FACE, 0, 0)
+  const d = x.getImageData(0, 0, c.width, c.height).data
+  let x0 = c.width, x1 = 0, y0 = c.height, y1 = 0
+  for (let y = 0; y < c.height; y += 2) for (let xx = 0; xx < c.width; xx += 2) if (d[(y * c.width + xx) * 4 + 3] > 40) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y }
+  return (BOX = { cx: (x0 + x1) / 2 / c.width, cy: (y0 + y1) / 2 / c.height, w: (x1 - x0) / c.width, h: (y1 - y0) / c.height })
+}
+/** Draws the face so that the middle of the visible face lands on (cx, cy); `width` is the visible face's width. */
+function face(ctx, cx, cy, width, glow = false) {
+  const b = faceBox(), full = width / b.w, h = full * (FACE.height / FACE.width)
+  const x = cx - full * b.cx, y = cy - h * b.cy
+  ctx.save()
+  if (glow) { ctx.shadowColor = 'rgba(192,132,252,.85)'; ctx.shadowBlur = width * 0.08 }
+  ctx.drawImage(FACE, x, y, full, h)
+  ctx.restore()
+  ctx.drawImage(FACE, x, y, full, h)
+}
+
+// "CF" monogram behind the face.
+function monogram(ctx, cx, cy, size, alpha = 1) {
+  ctx.save()
+  ctx.font = `900 ${size}px ${W}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  const t = ctx.measureText('CF'), hgt = size * 0.72
+  const g = ctx.createLinearGradient(cx - t.width / 2, cy - hgt / 2, cx + t.width / 2, cy + hgt / 2)
+  g.addColorStop(0, `rgba(244,114,182,${0.95 * alpha})`); g.addColorStop(0.5, `rgba(192,132,252,${0.9 * alpha})`); g.addColorStop(1, `rgba(99,102,241,${0.85 * alpha})`)
+  ctx.fillStyle = g
+  ctx.shadowColor = 'rgba(168,85,247,.6)'; ctx.shadowBlur = size * 0.1
+  ctx.fillText('CF', cx, cy)
+  ctx.restore()
+}
+
+function letters(ctx, txt, cx, cy, size, alpha = 1, outline = 0) {
+  ctx.save(); ctx.font = `900 ${size}px ${W}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  const w = ctx.measureText(txt).width
+  const g = ctx.createLinearGradient(cx - w / 2, cy - size * 0.36, cx + w / 2, cy + size * 0.36)
+  g.addColorStop(0, `rgba(244,114,182,${alpha})`); g.addColorStop(0.5, `rgba(192,132,252,${alpha})`); g.addColorStop(1, `rgba(129,140,248,${alpha})`)
+  if (outline) { ctx.lineJoin = 'round'; ctx.lineWidth = outline; ctx.strokeStyle = 'rgba(12,5,28,.95)'; ctx.strokeText(txt, cx, cy) }
+  ctx.fillStyle = g; ctx.shadowColor = 'rgba(168,85,247,.55)'; ctx.shadowBlur = size * 0.12; ctx.fillText(txt, cx, cy); ctx.restore()
+}
+/** Layout options for the small icon: 'a' face only, 'b' CF on top / face below, 'c' ring + CF band, 'd' C and F in opposite corners. */
+function iconVariant(size, v) {
+  const c = mk(size, size), ctx = c.getContext('2d'), s = size
+  rr(ctx, 0, 0, s, s, s * 0.225); ctx.clip()
+  backdrop(ctx, s, s, 0.5, 0.55)
+  if (v === 'a') { face(ctx, s * 0.5, s * 0.52, s * 0.8) }
+  if (v === 'b') { letters(ctx, 'CF', s * 0.5, s * 0.24, s * 0.42); face(ctx, s * 0.5, s * 0.62, s * 0.62) }
+  if (v === 'c') {
+    ctx.save(); ctx.beginPath(); ctx.arc(s * 0.5, s * 0.46, s * 0.33, 0, Math.PI * 2)
+    const g = ctx.createLinearGradient(0, s * 0.1, s, s * 0.8); g.addColorStop(0, '#f472b6'); g.addColorStop(1, '#818cf8')
+    ctx.lineWidth = s * 0.03; ctx.strokeStyle = g; ctx.fillStyle = 'rgba(10,4,24,.55)'; ctx.fill(); ctx.stroke(); ctx.restore()
+    face(ctx, s * 0.5, s * 0.44, s * 0.6)
+    letters(ctx, 'CF', s * 0.5, s * 0.87, s * 0.2)
+  }
+  if (v === 'd') { letters(ctx, 'C', s * 0.25, s * 0.27, s * 0.4); letters(ctx, 'F', s * 0.75, s * 0.73, s * 0.4); face(ctx, s * 0.5, s * 0.5, s * 0.58) }
+  return c
+}
+
+// Solid deep-purple letters (no outline) with a faint light halo so they stay readable on the dark background.
+function deepLetters(ctx, txt, cx, cy, size) {
+  ctx.save(); ctx.font = `900 ${size}px ${W}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  // Lighter on top, deeper underneath, so the letters have some body; a small dark drop shadow lifts them off the background.
+  const g = ctx.createLinearGradient(0, cy - size * 0.38, 0, cy + size * 0.38)
+  g.addColorStop(0, '#b98cff'); g.addColorStop(0.5, '#8a3df0'); g.addColorStop(1, '#4f1fb8')
+  ctx.shadowColor = 'rgba(8,2,20,.55)'; ctx.shadowBlur = size * 0.08; ctx.shadowOffsetY = size * 0.05
+  ctx.fillStyle = g; ctx.fillText(txt, cx, cy); ctx.restore()
+}
+/** The icon artwork (no background): your face inside a ring, with CF laid over the bottom of the ring. Drawn in a square of side s. */
+function art(ctx, s) {
+  const cx = s * 0.5, cy = s * 0.5, r = s * 0.36
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2)
+  const fillg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); fillg.addColorStop(0, 'rgba(124,58,237,.55)'); fillg.addColorStop(1, 'rgba(14,6,32,.85)')
+  ctx.fillStyle = fillg; ctx.fill(); ctx.restore()
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r - s * 0.012, 0, Math.PI * 2); ctx.clip()   // the face stays inside the circle
+  face(ctx, cx, cy - s * 0.01, s * 0.53)
+  ctx.restore()
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2)
+  ctx.lineWidth = s * 0.03; ctx.strokeStyle = '#ffffff'; ctx.stroke(); ctx.restore()
+  deepLetters(ctx, 'CF', cx, cy + r - s * 0.005, s * 0.3)
+}
+
+/** The square app icon. `shape`: 'round' (rounded square, edge to edge), 'mac' (padded squircle with shadow), 'square' (full bleed, no rounding). */
+function appIcon(size, shape = 'round') {
+  const c = mk(size, size), ctx = c.getContext('2d')
+  let box = size, off = 0
+  if (shape === 'mac') { box = size * 0.805; off = (size - box) / 2 }
+  ctx.save()
+  if (shape === 'mac') { ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = size * 0.025; ctx.shadowOffsetY = size * 0.012; ctx.fillStyle = '#000'; rr(ctx, off, off, box, box, box * 0.225); ctx.fill(); ctx.shadowColor = 'transparent' }
+  if (shape !== 'square') { rr(ctx, off, off, box, box, box * 0.225); ctx.clip() }
+  ctx.translate(off, off)
+  const s = box
+  backdrop(ctx, s, s, 0.5, 0.5)
+  art(ctx, s)
+  ctx.restore()
+  return c
+}
+
+/** Adaptive-icon pieces for Android: foreground (transparent, art inside the central safe zone) and a plain background. */
+function adaptive(size) {
+  const fg = mk(size, size), f = fg.getContext('2d')
+  // Safe zone is the middle 66%; keep the art inside ~62% of the canvas.
+  const s = size * 0.66, o = (size - s) / 2
+  f.save(); f.translate(o, o)
+  art(f, s)
+  f.restore()
+  const bg = mk(size, size); backdrop(bg.getContext('2d'), size, size, 0.5, 0.5)
+  return { fg, bg }
+}
+
+/** Wide banner (16:9 and friends): wordmark left, face right. */
+function banner(w, h, opts = {}) {
+  const c = mk(w, h), ctx = c.getContext('2d')
+  backdrop(ctx, w, h, 0.76, 0.55)
+  // soft light streaks
+  ctx.save(); ctx.globalCompositeOperation = 'screen'
+  for (const [x, a] of [[0.38, 0.05], [0.5, 0.035], [0.62, 0.05]]) { const g = ctx.createLinearGradient(w * x, 0, w * (x - 0.22), h); g.addColorStop(0, `rgba(216,180,254,${a})`); g.addColorStop(1, 'rgba(216,180,254,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(w * (x - 0.02), 0); ctx.lineTo(w * (x + 0.05), 0); ctx.lineTo(w * (x - 0.3), h); ctx.lineTo(w * (x - 0.4), h); ctx.fill() }
+  ctx.restore()
+  const fw = h * (opts.faceW ?? 0.78)   // visible face width
+  if (opts.cf) monogram(ctx, w * (opts.cfX ?? 0.77), h * 0.45, h * (opts.cfSize ?? 0.75), 0.55)
+  face(ctx, w * (opts.faceX ?? 0.77), h * (opts.faceY ?? 0.5), fw)
+  // wordmark
+  const fs = (opts.wordSize ?? 0.14) * h, x = w * (opts.textX ?? 0.06), y = h * (opts.textY ?? 0.5)
+  ctx.save()
+  ctx.font = `900 ${fs}px ${W}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${fs * 0.06}px`
+  const tw = ctx.measureText('CHEZZFLIX').width
+  const g = ctx.createLinearGradient(x, y - fs / 2, x + tw, y + fs / 2)
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.55, '#e9d5ff'); g.addColorStop(1, '#c084fc')
+  ctx.shadowColor = 'rgba(168,85,247,.9)'; ctx.shadowBlur = fs * 0.35
+  ctx.fillStyle = g; ctx.fillText('CHEZZFLIX', x, y)
+  ctx.shadowBlur = 0; ctx.fillText('CHEZZFLIX', x, y)
+  if (opts.tag) { ctx.font = `600 ${fs * 0.3}px ${W}`; ctx.fillStyle = 'rgba(233,213,255,.75)'; if ('letterSpacing' in ctx) ctx.letterSpacing = `${fs * 0.12}px`; ctx.fillText(opts.tag, x + fs * 0.04, y + fs * 0.85) }
+  ctx.restore()
+  return c
+}
+
+const resize = (src, w, h = w) => { const c = mk(w, h), ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(src, 0, 0, w, h); return c }
+const save = (canvas, name) => new Promise((res) => canvas.toBlob((b) => fetch('/save?name=' + encodeURIComponent(name), { method: 'POST', body: b }).then(() => res()), 'image/png'))
+const show = (canvas, label) => { const d = document.createElement('div'); d.textContent = label; document.getElementById('out').append(d, canvas); canvas.style.maxWidth = '560px' }
+
+async function preview() {
+  await loaded
+  show(appIcon(1024, 'round'), 'round'); show(banner(1280, 720), 'banner')
+}
+window.preview = preview
+
+async function exportAll() {
+  await loaded
+  const jobs = []
+  const add = (c, name) => jobs.push(save(c, name))
+  const round = appIcon(1024, 'round'), mac = appIcon(1024, 'mac'), sq = appIcon(1024, 'square')
+  add(round, 'app-icon-1024.png'); add(mac, 'app-icon-mac-1024.png'); add(sq, 'app-icon-square-1024.png')
+  add(resize(appIcon(1024, 'square'), 512), 'play-store-512.png')
+  add(resize(appIcon(1024, 'round'), 114), 'firetv-small-114.png')
+  // web
+  add(resize(appIcon(1024, 'round'), 32), 'web/favicon-32.png'); add(resize(sq, 180), 'web/apple-touch-icon-180.png')
+  add(resize(appIcon(1024, 'round'), 192), 'web/icon-192.png'); add(resize(appIcon(1024, 'round'), 512), 'web/icon-512.png')
+  // android legacy launcher icons + adaptive pieces
+  const circle = (src, n) => { const c = mk(n, n), x = c.getContext('2d'); x.beginPath(); x.arc(n / 2, n / 2, n / 2, 0, Math.PI * 2); x.clip(); x.drawImage(sq, 0, 0, n, n); return c }
+  for (const [d, px, ad] of [['mdpi', 48, 108], ['hdpi', 72, 162], ['xhdpi', 96, 216], ['xxhdpi', 144, 324], ['xxxhdpi', 192, 432]]) {
+    add(resize(round, px), `android/mipmap-${d}/ic_launcher.png`)
+    add(circle(sq, px), `android/mipmap-${d}/ic_launcher_round.png`)
+    add(adaptive(ad).fg, `android/mipmap-${d}/ic_launcher_foreground.png`)
+  }
+  add(adaptive(432).bg, 'android/drawable-nodpi/ic_launcher_bg.png')
+  // TV / store banners
+  add(banner(640, 360), 'android/drawable-xhdpi/banner.png')            // Android TV / Fire TV launcher banner (320x180 dp @2x)
+  add(banner(1280, 720), 'firetv-large-icon-1280x720.png')              // Fire TV store "large icon"
+  add(banner(1920, 1080), 'firetv-background-1920x1080.png')            // Fire TV store background
+  add(banner(1024, 500, { faceW: 0.82, wordSize: 0.17, textX: 0.06 }), 'play-feature-graphic-1024x500.png')
+  add(banner(1200, 630, { faceW: 0.78, wordSize: 0.15 }), 'web/og-image-1200x630.png')
+  await Promise.all(jobs)
+  return jobs.length
+}
+window.exportAll = exportAll
+</script>

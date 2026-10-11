@@ -7,7 +7,7 @@ import {
 import { loadAnime, tabOk } from './lib/homeData'
 import { setBooted, useBooted } from './lib/boot'
 import { useBack } from './lib/back'
-import { matchList, seasonalList } from './lib/seasonal'
+import { matchList, missingFromList, seasonalList } from './lib/seasonal'
 import { justMoved, moveCount, settleMs } from './lib/input'
 import { ensureFocus, rescueSoon } from './lib/focusRescue'
 import { isAndroid } from './lib/native'
@@ -135,6 +135,13 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     }
   }, [view, server, sections])
 
+  // A list the app built from a pre-made list of titles: anything on it that the server lacks can be offered as a request.
+  const missingLoader = useMemo(() => {
+    if (view.type !== 'list' || view.source.kind !== 'seasonal' || !settings.requests || !settings.tmdbKey || !settings.overseerrUrl) return undefined
+    const l = seasonalList(view.source.id)
+    return l ? () => missingFromList(server, allSections, l, settings.tmdbKey) : undefined
+  }, [view, server, allSections, settings.requests, settings.tmdbKey, settings.overseerrUrl])
+
   const openCollection = async (title: string, sectionId?: string | number) => {
     const secs = sectionId != null ? sections.filter((x) => x.key === String(sectionId)) : sections
     const found: PlexCollectionRef | undefined = (await Promise.all((secs.length ? secs : sections).map((x) => getCollections(server, x.key)))).flat().find((c) => c.title === title)
@@ -214,7 +221,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
-          {view.type === 'list' && listLoader && <ListView server={server} title={view.title} subtitle={view.subtitle} load={listLoader} onOpen={open} onBack={back} />}
+          {view.type === 'list' && listLoader && <ListView server={server} token={token} title={view.title} subtitle={view.subtitle} load={listLoader} missing={missingLoader} onOpen={open} onBack={back} />}
           {view.type === 'library' && <Library server={server} token={token} section={view.section} onOpen={open}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
