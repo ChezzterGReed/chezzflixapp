@@ -1,13 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Aurora } from './Aurora'
 import { Logo } from './Logo'
+import { useSeason } from '../lib/settings'
+import { shuffled } from '../lib/session'
 
-const MESSAGES = ['Connecting to your server…', 'Gathering your libraries…', 'Dimming the lights…', 'Cueing up something good…']
+const PLAIN_MESSAGES = ['Connecting to your server…', 'Gathering your libraries…', 'Dimming the lights…', 'Cueing up something good…']
+
+// October: spookier status lines (in a different order each launch).
+const SPOOKY_MESSAGES = [
+  'Waking up your server…', 'Carving the pumpkins…', 'Checking under the bed…', 'Stirring the cauldron…', 'Dusting off the cobwebs…', 'Counting the candy…',
+  'Leaving the porch light on…', 'Rattling some chains…', 'Summoning the popcorn…', 'Haunting your libraries…', 'Waiting for the full moon…', 'Don’t look behind you…',
+  'Sharpening the pitchforks…', 'Befriending the neighbourhood bats…', 'Whispering to the ghosts in the machine…', 'Trick or treating on your server…',
+  'Warning: may contain jump scares…', 'Looking for the Great Pumpkin…', 'Locating the nearest graveyard…', 'Brewing a fresh batch of fog…', 'Guarding the candy bowl…', 'Gathering the coven…',
+]
 
 /** Full-screen loading scene: the aurora backdrop, a ringed logo, the service name easing in, and rotating status lines. */
 export function LoadingScreen({ visible }: { visible: boolean }) {
   const [mounted, setMounted] = useState(visible)
   const [i, setI] = useState(0)
+  const spooky = useSeason() === 'halloween'
+  const MESSAGES = spooky ? ['Connecting to your server…', ...shuffled(SPOOKY_MESSAGES, 12)] : PLAIN_MESSAGES
   useEffect(() => {
     if (visible) { setMounted(true); return }
     const t = setTimeout(() => setMounted(false), 800)

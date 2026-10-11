@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { navBlip } from './sfx'
 
 // One source of truth for "what is highlighted": the input mode (remote/keyboard vs mouse) and the single focused element.
 // Highlights come from here rather than each button's own flag, so two buttons can never both look selected.
@@ -29,6 +30,7 @@ export function setFocusedKey(key: string | null) {
   const now = performance.now()
   if (now - arrowAt < 900) latency = Math.max(40, Math.min(700, latency * 0.5 + (now - arrowAt) * 0.5))
   focusAt = now
+  if (key && now - arrowAt < 300) navBlip()   // a step made with the arrow keys / remote (not programmatic focus)
   notify()
 }
 /** How long to wait after an arrow press before deciding focus really had nowhere to go (adapts to how slow this device is). */

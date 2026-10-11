@@ -8,7 +8,7 @@ import { useBack } from '../lib/back'
 const stack: object[] = []
 
 /** An overlay that traps D-pad focus inside it, closes on Back/Escape, and restores focus when dismissed. */
-export function Layer({ onClose, children, className = '', scrim = 'bg-black/60 backdrop-blur-sm', focusKey: fk, player }: { onClose: () => void; children: ReactNode; className?: string; scrim?: string; focusKey?: string; player?: boolean }) {
+export function Layer({ onClose, children, className = '', scrim = 'bg-black/60 backdrop-blur-sm', focusKey: fk, player, z = 'z-50' }: { onClose: () => void; children: ReactNode; className?: string; scrim?: string; focusKey?: string; player?: boolean; /** Stacking class, for the rare popup that must sit above the video player. */ z?: string }) {
   const { ref, focusKey } = useFocusable({ focusKey: fk, isFocusBoundary: true, focusBoundaryDirections: ['up', 'down', 'left', 'right'] })
   useBack(onClose)
   const me = useRef({}).current
@@ -39,7 +39,7 @@ export function Layer({ onClose, children, className = '', scrim = 'bg-black/60 
   // Rendered at the top of <body>: an ancestor with a transform/animation would otherwise trap this popup beneath its siblings.
   return createPortal(
     <FocusContext.Provider value={focusKey}>
-      <div ref={ref} data-layer {...(player ? { 'data-player': '' } : {})} className={`fixed inset-0 z-50 ${scrim} fade-in`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={ref} data-layer {...(player ? { 'data-player': '' } : {})} className={`fixed inset-0 ${z} ${scrim} fade-in`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className={className}>{children}</div>
       </div>
     </FocusContext.Provider>,

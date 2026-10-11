@@ -109,7 +109,9 @@ export function cloneChannel(c: Channel, existing: Channel[]): Channel {
   return newChannel({ ...draft, name: c.name }, existing)
 }
 /** What the schedule depends on: when this changes, the channel's schedule is rebuilt. */
-const signature = (c: Channel) => JSON.stringify([c.kind, c.shows?.map((s) => s.key), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings])
+/** Bump when how schedules are built changes, so every device rebuilds its guide once instead of keeping an out-of-date one. */
+export const GUIDE_VERSION = 3
+const signature = (c: Channel) => JSON.stringify([GUIDE_VERSION, c.kind, c.shows?.map((s) => s.key), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings])
 
 // ---------- Schedule ----------
 export interface Slot {
@@ -120,6 +122,7 @@ export interface Slot {
   sub?: string         // "S02E04 · Episode title" or the movie's year
   th?: string          // poster path
   ar?: string          // backdrop path
+  show?: string        // ratingKey of the show, for episodes (to open its page)
 }
 interface ShowState { start: number; seed: number; pos: number }
 interface ChanState { rot: number; inBlock: number; shows: Record<string, ShowState>; movie?: ShowState }
@@ -230,7 +233,7 @@ function fill(ch: Channel, src: Source, stored: Stored, now: number, until: numb
       const ss = (st.shows[show.key] ??= freshState(eps.length))
       const ep = eps[pick(eps.length, ss, ch.episodeOrder === 'random')]
       ss.pos++
-      add({ key: ep.key, title: show.title, sub: `${ep.label} · ${ep.title}`, th: show.thumb, ar: show.art }, ep.dur)
+      add({ key: ep.key, show: show.key, title: show.title, sub: `${ep.label} · ${ep.title}`, th: show.thumb, ar: show.art }, ep.dur)
       if (++st.inBlock >= block) { st.inBlock = 0; st.rot++ }
     }
   } else {
@@ -304,6 +307,13 @@ export function ensureGuide(server: PlexServer, sections: PlexSection[], scope: 
   })().finally(() => { if (runKey === key) running = null })
   running = job
   return job
+}
+
+/** Forgets every saved schedule (on this device) and the one in memory; the next time the guide opens it builds a fresh one. */
+export function resetGuide() {
+  try { Object.keys(localStorage).filter((k) => k.startsWith('chezzflix_guide_')).forEach((k) => localStorage.removeItem(k)) } catch { /* ignore */ }
+  jobId++; running = null; runKey = ''
+  set({ slots: {}, ready: false, building: false, done: 0, total: 0 })
 }
 
 /** Keeps the schedule from running dry while the guide or a channel is on screen: tops up any channel with under six hours left. */

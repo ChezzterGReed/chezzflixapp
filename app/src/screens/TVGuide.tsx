@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Copy, Languages, ListChecks, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Info as InfoIcon, Languages, ListChecks, Play as PlayIcon, RefreshCw, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { AddChannel, Btn, CheckRow, NameField, Pill } from '../components/AddChannel'
 import { ChannelEditor } from '../components/ChannelEditor'
@@ -12,7 +12,7 @@ import { noteMove } from '../lib/input'
 import { useSettings, useSeason } from '../lib/settings'
 import { seasonalChannels } from '../lib/seasonal'
 import { Pumpkin } from '../components/Pumpkin'
-import { cloneChannel, ensureGuide, HOUR, LANGS, newChannel, slotAt, suggestChannels, topUp, uniqueName, useGuide, type Channel, type ChannelDraft, type Slot, type Suggestion } from '../lib/tvguide'
+import { cloneChannel, ensureGuide, HOUR, LANGS, resetGuide, newChannel, slotAt, suggestChannels, topUp, uniqueName, useGuide, type Channel, type ChannelDraft, type Slot, type Suggestion } from '../lib/tvguide'
 
 const MIN = 60_000
 const PPM = 10       // pixels per minute (so 30 minutes = 300px)
@@ -23,10 +23,10 @@ const SLOW_MS = 8000 // after this long, offer to leave while the guide keeps bu
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 const until = (ms: number) => { const m = Math.max(0, Math.round(ms / MIN)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min` }
 
-interface Props { server: PlexServer; sections: PlexSection[]; scope: string; onLeave: () => void }
+interface Props { server: PlexServer; sections: PlexSection[]; scope: string; onLeave: () => void; /** Open a scheduled program's page (a movie, or the show at that episode). */ onOpenInfo: (slot: Slot) => void }
 
 /** The TV Guide: channels built from your library, an endless schedule, and a classic grid to browse it. */
-export function TVGuide({ server, sections, scope, onLeave }: Props) {
+export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props) {
   const { settings, update } = useSettings()
   const guide = useGuide()
   const season = useSeason()
@@ -50,6 +50,8 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
   const [adding, setAdding] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
   const [menu, setMenu] = useState<Channel>()
+  const [info, setInfo] = useState<{ slot: Slot; row: number }>()   // long-press on a block
+  const [refreshTick, setRefreshTick] = useState(0)
   const [renaming, setRenaming] = useState<Channel>()
   const [prefsFor, setPrefsFor] = useState<Channel>()
   const [editing, setEditing] = useState<string>()   // id of the channel whose content is being edited
@@ -63,7 +65,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
   useEffect(() => {
     if (!channels.length || !seasonalReady) return
     ensureGuide(server, sections, scope, channels, hours).catch(() => {})
-  }, [server, sections, scope, channels, hours, seasonalReady])
+  }, [server, sections, scope, channels, hours, seasonalReady, refreshTick])
   useEffect(() => {
     const t = setInterval(() => { setNow(Date.now()); topUp(server, sections, scope, channels, hours) }, 60_000)
     return () => clearInterval(t)
@@ -124,6 +126,8 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
     for (const d of drafts) { if (list.length >= 40) break; list = [...list, newChannel(d, list)] }
     update({ channels: list, guideOffered: true })
   }
+  // Throw the saved schedule away and build a new one.
+  const refreshGuide = () => { resetGuide(); setSel({ row: 0, t: Date.now() }); setRefreshTick((n) => n + 1) }
   const patchChannel = (id: string, patch: Partial<Channel>) => update({ channels: settings.channels.map((x) => (x.id === id ? { ...x, ...patch } : x)) })
   const clone = (c: Channel) => { if (settings.channels.length < 40) update({ channels: [...settings.channels, cloneChannel(c, settings.channels)] }) }
   const setPrefs = (c: Channel, prefs: Channel['prefs']) => (c.seasonal ? update({ seasonalPrefs: { ...settings.seasonalPrefs, [c.id]: prefs ?? {} } }) : update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, prefs } : x)) }))
@@ -135,22 +139,25 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
 
   // ----- render -----
   const header = (
-    <div className="mb-3 flex shrink-0 items-center gap-3">
-      <div className="flex items-center gap-3 text-[1.8rem] font-extrabold tracking-[-0.03em]"><Radio size={26} className="text-accent" />TV Guide</div>
+    <div className="mb-3 flex shrink-0 items-center gap-2">
+      <div className="flex items-center gap-2.5 whitespace-nowrap text-[1.6rem] font-extrabold tracking-[-0.03em]"><Radio size={26} className="text-accent" />TV Guide</div>
       <div className="flex-1" />
       <Focusable focusKey="guide-add" onEnter={() => setAdding(true)} title="Add channel" leftToRail onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
-        <div className="flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[0.95rem] font-bold text-black transition-transform group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Plus size={18} />Add channel</div>
+        <div className="flex h-11 items-center gap-2 rounded-full bg-white px-3.5 text-[0.86rem] whitespace-nowrap font-bold text-black transition-transform group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Plus size={18} />Add channel</div>
       </Focusable>
       {channels.length > 0 && (
         <Focusable focusKey="guide-options" onEnter={() => { const c = channels[selRef.current.row]; if (c) setMenu(c) }} title="Edit the highlighted channel" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
-          <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ListChecks size={17} />Edit channel</div>
+          <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-3.5 text-[0.86rem] whitespace-nowrap font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ListChecks size={17} />Edit</div>
         </Focusable>
       )}
+      <Focusable focusKey="guide-refresh" onEnter={refreshGuide} title="Refresh guide" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
+        <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-3.5 text-[0.86rem] whitespace-nowrap font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><RefreshCw size={17} />Refresh</div>
+      </Focusable>
       <Focusable focusKey="guide-settings" onEnter={() => setGuideSettings(true)} title="Guide settings" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
-        <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><SlidersHorizontal size={17} />Settings</div>
+        <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-3.5 text-[0.86rem] whitespace-nowrap font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><SlidersHorizontal size={17} />Settings</div>
       </Focusable>
       <Focusable focusKey="guide-suggest" onEnter={() => setSuggesting(true)} title="Suggested channels" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
-        <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Sparkles size={17} />Suggested</div>
+        <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-3.5 text-[0.86rem] whitespace-nowrap font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Sparkles size={17} />Suggested</div>
       </Focusable>
     </div>
   )
@@ -203,7 +210,7 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
 
         {/* The grid */}
         <Focusable focusKey="guide-grid" title="Guide" className="min-h-0 flex-1" leftToRail onArrow={move} onEnter={() => { if (selRef.current.row < channels.length) setWatching(selRef.current.row) }}
-          onLongPress={() => { const c = channels[selRef.current.row]; if (c) setMenu(c) }}>
+          onLongPress={() => { const { row, t } = selRef.current; const s = slotAt(rowSlots(row), t) ?? rowSlots(row).find((x) => x.end > t); if (s) setInfo({ slot: s, row }); else if (channels[row]) setMenu(channels[row]) }}>
           <div className="h-full overflow-hidden rounded-2xl bg-[#101016] ring-1 ring-white/10">
             <div ref={track} className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="relative" style={{ width: CH_W + span }}>
@@ -232,11 +239,14 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
                           const on = sel.row === row && cur?.start === s.start
                           return (
                             <div key={s.start} id={`cell-${row}-${s.start}`} onClick={() => { selRef.current = { row, t: s.start + 1 }; setSel(selRef.current) }}
-                              className={`absolute inset-y-[3px] overflow-hidden rounded-lg px-3 py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : ch.accent ? 'ring-[#ff7a1a]/40' : 'bg-white/[0.07] ring-white/10'}`}
+                              className={`absolute inset-y-[3px] rounded-lg py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : ch.accent ? 'ring-[#ff7a1a]/40' : 'bg-white/[0.07] ring-white/10'}`}
                               style={{ left: left + 2, width: Math.max(8, right - left - 4), background: !on && ch.accent ? 'rgba(255,122,26,.16)' : undefined }}>
-                              <div className="flex items-center gap-1.5 truncate text-[0.98rem] font-bold">{s.start < origin && <span className="opacity-60">◂</span>}<span className="truncate">{s.title}</span></div>
-                              <div className={`truncate text-xs ${on ? 'text-black/60' : 'text-white/50'}`}>{s.sub}</div>
-                              {s.start <= now && now < s.end && <div className={`absolute inset-x-0 bottom-0 h-[3px] ${on ? 'bg-black/20' : 'bg-white/10'}`}><div className="h-full bg-accent" style={{ width: `${((now - s.start) / (s.end - s.start)) * 100}%` }} /></div>}
+                              {/* The text stays pinned to the left edge of the visible guide while the block scrolls past, until the block is gone */}
+                              <div className="sticky px-3" style={{ left: CH_W + 2, maxWidth: Math.max(8, right - left - 4) }}>
+                                <div className="flex items-center gap-1.5 truncate text-[0.98rem] font-bold">{s.start < origin && <span className="opacity-60">◂</span>}<span className="truncate">{s.title}</span></div>
+                                <div className={`truncate text-xs ${on ? 'text-black/60' : 'text-white/50'}`}>{s.sub}</div>
+                              </div>
+                              {s.start <= now && now < s.end && <div className={`absolute inset-x-0 bottom-0 h-[3px] overflow-hidden rounded-b-lg ${on ? 'bg-black/20' : 'bg-white/10'}`}><div className="h-full bg-accent" style={{ width: `${((now - s.start) / (s.end - s.start)) * 100}%` }} /></div>}
                             </div>
                           )
                         })}
@@ -260,6 +270,8 @@ export function TVGuide({ server, sections, scope, onLeave }: Props) {
       {header}
       {body}
 
+      {info && <ProgramInfo server={server} slot={info.slot} channel={channels[info.row]} now={now} onClose={() => setInfo(undefined)}
+        onOpen={() => { const s = info.slot; setInfo(undefined); onOpenInfo(s) }} onTune={() => { const r = info.row; setInfo(undefined); setWatching(r) }} onOptions={() => { const c = channels[info.row]; setInfo(undefined); if (c) setMenu(c) }} />}
       {adding && <AddChannel server={server} sections={sections} existing={settings.channels} onClose={() => setAdding(false)} onCreate={draftsDone} />}
       {suggesting && <Suggestions server={server} sections={sections} existing={settings.channels} genres={settings.genres} onClose={() => { setSuggesting(false); if (!settings.guideOffered) update({ guideOffered: true }) }} onAdd={(d) => { create(d); setSuggesting(false) }} />}
       {watching !== undefined && <ChannelPlayer server={server} channels={channels} start={watching} onClose={() => { setWatching(undefined); setTimeout(() => setFocus('guide-grid'), 150) }} />}
@@ -384,6 +396,35 @@ function Prefs({ channel, onChange, onClose }: { channel: Channel; onChange: (p:
           {p.subs === 'on' && <div><div className="mb-2 font-bold">Subtitle language</div>{langPills(p.subLang, (v) => set({ subLang: v }), 'Default')}</div>}
         </div>
         <div className="mt-6"><Btn primary focusKey="pf-done" onEnter={onClose}>Done</Btn></div>
+      </div>
+    </Layer>
+  )
+}
+
+/** What a long-press on a block shows: the program, and where to go from it. */
+function ProgramInfo({ server, slot, channel, now, onClose, onOpen, onTune, onOptions }: { server: PlexServer; slot: Slot; channel?: Channel; now: number; onClose: () => void; onOpen: () => void; onTune: () => void; onOptions: () => void }) {
+  const [summary, setSummary] = useState('')
+  useEffect(() => { let alive = true; getMetadata(server, slot.key).then((m) => alive && setSummary(m.summary ?? '')).catch(() => {}); return () => { alive = false } }, [server, slot.key])
+  const airing = slot.start <= now && now < slot.end
+  return (
+    <Layer onClose={onClose} scrim="bg-black/65 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(640px,94vw)] -translate-x-1/2 -translate-y-1/2">
+      <div className="pop max-h-[88vh] overflow-y-auto rounded-3xl bg-[#17171c]/95 p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+        <div className="flex gap-5">
+          {slot.th && <img src={imageUrl(server, slot.th, 240, 360)} alt="" draggable={false} className="h-40 w-[6.6rem] shrink-0 rounded-xl bg-surface object-cover" />}
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/45">{channel ? `${channel.seasonal ? '' : `${channel.number} · `}${channel.name}` : ''}</div>
+            <div className="mt-1 text-2xl font-extrabold leading-tight">{slot.title}</div>
+            {slot.sub && <div className="mt-0.5 text-white/70">{slot.sub}</div>}
+            <div className="mt-2 text-sm font-semibold text-white/55">{clock(slot.start)} – {clock(slot.end)} · {airing ? <span className="text-accent">On now · {until(slot.end - now)} left</span> : slot.start > now ? `Starts in ${until(slot.start - now)}` : 'Aired'}</div>
+            <p className="clamp-3 mt-3 text-[0.95rem] leading-relaxed text-white/65">{summary}</p>
+          </div>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2.5">
+          <Btn primary focusKey="pi-open" onEnter={onOpen}><InfoIcon size={16} />{slot.show ? 'Go to the show' : 'Go to the movie'}</Btn>
+          {airing && <Btn onEnter={onTune}><PlayIcon size={16} />Tune in</Btn>}
+          <Btn onEnter={onOptions}><ListChecks size={16} />Channel options</Btn>
+          <Btn onEnter={onClose}>Close</Btn>
+        </div>
       </div>
     </Layer>
   )

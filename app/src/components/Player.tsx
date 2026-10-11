@@ -5,6 +5,7 @@ import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/track
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
+import { NextMovies } from './NextMovies'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
 import { clampBoost, dbLabel, useLevelEngine } from '../lib/leveling'
@@ -58,6 +59,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const [fullscreen, setFullscreen] = useState(false)
   const [next, setNext] = useState<PlexMedia | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [suggest, setSuggest] = useState(false)   // the "what to watch next" screen after a movie
+  const suggestRef = useRef(false); suggestRef.current = suggest
   const [stayed, setStayed] = useState(false)   // "Stay" was chosen on the Up Next card: hide it and don't move on by itself
   useEffect(() => { setStayed(false) }, [media.ratingKey])
   const idle = useRef<number>(0)
@@ -297,6 +300,13 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     }
   }, [mode, finishClose])
 
+  // A movie ending (or its credits skipped): offer what to watch next, if that's switched on; otherwise just leave.
+  const finish = useCallback(() => {
+    if (media.type === 'movie' && settings.movieSuggestions && !closingRef.current) {
+      if (mode === 'native') mpvSet('pause', 'yes').catch(() => {}); else video.current?.pause()
+      setSuggest(true)
+    } else close()
+  }, [media.type, settings.movieSuggestions, mode, close])
   useEffect(() => () => { hls.current?.destroy(); if (video.current) { video.current.removeAttribute('src'); video.current.load() } }, [])
 
   // ----- progress reporting -----
@@ -350,7 +360,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const showNext = !!next && !stayed && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
   const goPrev = useCallback(() => { if (prev) fadeOut(() => { continuing = true; onPlayNext(prev) }) }, [prev, onPlayNext, fadeOut])
-  endedRef.current = () => (next && settings.autoplayNext && !stayed ? goNext() : close())
+  endedRef.current = () => (next && settings.autoplayNext && !stayed ? goNext() : finish())
 
   // Up Next countdown (only if autoplay is on)
   useEffect(() => {
@@ -366,8 +376,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   const skipCredits = useCallback(() => {
     if (!credits) return
     const end = credits.endTimeOffset / 1000
-    if (!duration || end >= duration - 5) close(); else seek(end)
-  }, [credits, duration, close, seek])
+    if (!duration || end >= duration - 5) finish(); else seek(end)
+  }, [credits, duration, finish, seek])
   const showSkipCredits = inCredits && !next
   // Skip intro
   const inIntro = !!intro && time >= intro.startTimeOffset / 1000 && time < intro.endTimeOffset / 1000
@@ -435,7 +445,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
   // ----- keyboard / remote -----
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return
+      if (e.target instanceof HTMLInputElement || suggestRef.current) return   // (the "what next" screen has its own navigation)
       if (panel || levelPanel !== null || stylePanel !== null) setPanelTick((n) => n + 1)
       if (stylePanel !== null) {
         if (e.key === 'ArrowDown') setStylePanel(Math.min(styleRows.length - 1, stylePanel + 1))
@@ -521,7 +531,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
         onTimeUpdate={(e) => { const v = e.currentTarget; timeRef.current = v.currentTime; setTime(v.currentTime); if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1)) }}
         onDurationChange={(e) => isFinite(e.currentTarget.duration) && setDuration(e.currentTarget.duration)}
         onVolumeChange={(e) => { setVolume(e.currentTarget.volume); setMuted(e.currentTarget.muted) }}
-        onEnded={() => (next && settings.autoplayNext ? goNext() : close())}
+        onEnded={() => endedRef.current()}
         onError={() => fail('This file could not be played.')} />}
       {mode !== 'native' && <VolumeSync video={video} volume={volume} muted={muted} />}
 
@@ -661,6 +671,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
           <Loader2 className={`animate-spin text-white/40 transition-opacity duration-700 ${black && !ready && !closing ? 'opacity-100 delay-[1200ms]' : 'opacity-0'}`} size={40} />
         </div>
       ) : null}
+
+      {/* After a movie: what to watch next */}
+      {suggest && <NextMovies server={server} media={media} onClose={close} onPlay={(m) => fadeOut(() => { continuing = true; onPlayNext(m) })} />}
     </div>
   )
 }

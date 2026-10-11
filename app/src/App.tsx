@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FocusContext, GetBoundingClientRectAdapter, doesFocusableExist, getCurrentFocusKey, init, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import {
-  directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getProfiles, getSections, getServers, invalidateCache,
-  isWatched, removeFromContinueWatching, resolvePlayable, setWatched, switchProfile, type PlexCollectionRef, type PlexMedia, type PlexProfile, type PlexSection, type PlexServer,
+  directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getMetadata, getProfiles, getSections, getServers, invalidateCache,
+  isScanning, isWatched, removeFromContinueWatching, resolvePlayable, scanSection, setWatched, switchProfile, type PlexCollectionRef, type PlexMedia, type PlexProfile, type PlexSection, type PlexServer,
 } from './lib/plex'
 import { loadAnime, tabOk } from './lib/homeData'
 import { setBooted, useBooted } from './lib/boot'
@@ -164,6 +164,20 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     setDetails((d) => d[d.length - 1] === key ? d : [...d, key])
   }
 
+  // ----- scan a library for new content (the Plex "Scan Library Files"), then refresh what's on screen -----
+  const scanLibrary = async (s: PlexSection) => {
+    say(`Scanning ${s.title}…`)
+    const r = await scanSection(server, s.key)
+    if (r === 'denied') return say('Your account can’t scan libraries. Ask the server owner.')
+    if (r === 'failed') return say('Couldn’t start the scan. Is the server reachable?')
+    // Wait for the server to finish (it lists running scans), then reload so new titles show up.
+    const t0 = Date.now()
+    await new Promise((res) => setTimeout(res, 1500))
+    while (Date.now() - t0 < 5 * 60_000 && (await isScanning(server))) await new Promise((res) => setTimeout(res, 3000))
+    invalidateCache(); setRefreshKey((k) => k + 1)
+    say(`Finished scanning ${s.title}`)
+  }
+
   // ----- per-title menu (right-click / long-press) -----
   const notInterested = (m: PlexMedia) => {
     update({ notInterested: { ...settings.notInterested, [m.ratingKey]: Math.floor(Date.now() / 1000) } })
@@ -192,7 +206,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs, onSelect: opts?.onSelect })}>
       <SeasonalAmbient />
       <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
-        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} />
+        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} onScan={scanLibrary} />
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
@@ -205,7 +219,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
-          {view.type === 'guide' && settings.tvGuide && <TVGuide server={server} sections={sections} scope={me.key} onLeave={() => navigate({ type: 'home' })} />}
+          {view.type === 'guide' && settings.tvGuide && <TVGuide server={server} sections={sections} scope={me.key} onLeave={() => navigate({ type: 'home' })} onOpenInfo={async (slot) => { if (slot.show) { setEpFocus({ show: slot.show, ep: slot.key }); setDetails((d) => (d[d.length - 1] === slot.show ? d : [...d, slot.show!])) } else { try { const m = await getMetadata(server, slot.key); if (m.type === 'episode') { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) } else open(m) } catch { setDetails((d) => (d[d.length - 1] === slot.key ? d : [...d, slot.key])) } } }} />}
           {view.type === 'watchlist' && <Watchlist server={server} token={token} sections={allSections} onOpen={open} />}
           {view.type === 'search' && <Search server={server} token={token} sections={allSections} onOpen={open} />}
         </main>

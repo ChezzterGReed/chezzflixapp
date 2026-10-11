@@ -1,4 +1,5 @@
 import { LOW_POWER } from './perf'
+import { setNavSounds } from './sfx'
 import type { Channel, ChannelPrefs } from './tvguide'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -83,6 +84,10 @@ export interface Settings {
   continueStyle: 'episode' | 'poster'
   /** Clicking an episode in Continue Watching: play it, or open the show's page at that episode. */
   continueOpen: 'play' | 'episode'
+  /** After a movie ends (or you skip its credits): a screen of what to watch next. */
+  movieSuggestions: boolean
+  /** A small sound as you move around. */
+  navSounds: boolean
   /** Info screen for a title: the cinematic page, or a plainer poster-and-details page. */
   infoStyle: 'full' | 'minimal'
   /** Per library: show only titles you haven't watched. */
@@ -99,7 +104,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: true, seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: true, seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, dialogueBoost: false, autoplayNext: true, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
 }
 
 export const PUMPKIN = '#ff7a1a'
@@ -156,6 +161,7 @@ export function SettingsProvider({ profileKey, shared: sharedValues, children }:
     document.documentElement.style.setProperty('--accent', season === 'halloween' ? PUMPKIN : settings.accent)
     document.documentElement.dataset.season = season ?? ''
     document.documentElement.dataset.perf = LOW_POWER || settings.lightEffects ? 'low' : 'high'
+    setNavSounds(settings.navSounds)
     document.title = brandName(settings)
     try {
       localStorage.setItem('chezzflix_last_brand', brandName(settings))

@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.8',
+    'X-Plex-Version': '0.3.9',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -231,6 +231,27 @@ async function get<T>(server: PlexServer, path: string, ttl = 60_000): Promise<T
 }
 
 export function invalidateCache() { cache.clear() }
+
+/** Asks the server to scan a library for new, changed or removed files (what "Scan Library Files" does in Plex). Needs a server admin account. */
+export async function scanSection(server: PlexServer, sectionKey: string): Promise<'started' | 'denied' | 'failed'> {
+  if (server.uri === DEMO_URI) return 'started'
+  try {
+    const r = await fetch(`${server.uri}/library/sections/${encodeURIComponent(sectionKey)}/refresh`, { headers: baseHeaders(server.accessToken) })
+    if (r.status === 401 || r.status === 403) return 'denied'
+    return r.ok ? 'started' : 'failed'
+  } catch { return 'failed' }
+}
+
+/** Is any library scan still running? (The server lists running work as "activities".) */
+export async function isScanning(server: PlexServer): Promise<boolean> {
+  if (server.uri === DEMO_URI) return false
+  try {
+    const r = await fetch(`${server.uri}/activities`, { headers: baseHeaders(server.accessToken) })
+    if (!r.ok) return false
+    const c = (await r.json()).MediaContainer as { Activity?: { type?: string }[] }
+    return (c.Activity ?? []).some((a) => /library\.(update|refresh)/.test(a.type ?? ''))
+  } catch { return false }
+}
 
 /** Best-effort: ask the server to drop an item from Continue Watching. (Hiding is also done locally, per profile.) */
 export async function removeFromContinueWatching(server: PlexServer, ratingKey: string) {

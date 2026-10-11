@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Radio, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
+import { resetGuide } from '../lib/tvguide'
 import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
 import { ACCENTS, brandName, cleanBrand, currentSeason, useSettings, type HomeRowCfg, type HomeTab } from '../lib/settings'
@@ -88,6 +89,7 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
       <p className="px-4 pb-3 text-sm text-white/55">{settings.infoStyle === 'minimal' ? 'The poster, with the play button, description and details beside it. No big background picture.' : 'A cinematic page with a large background picture and the title logo.'} Applies to movies and shows.</p>
       <Toggle label="Use my profile picture as the logo" hint="Shown at the top of the menu instead of the letter tile" on={settings.avatarLogo} onChange={(v) => update({ avatarLogo: v })} />
       <div className="flex items-center gap-3 px-4 pb-2 text-sm text-white/55"><Avatar name={profileName} thumb={profileThumb} size={28} />Preview of the logo style on the menu</div>
+      <Toggle label="Navigation sounds" hint="A small blip as you move around the screen" on={settings.navSounds} onChange={(v) => update({ navSounds: v })} />
       <Toggle label="Lighter effects" hint="Turns off blur and drifting backgrounds. Uses much less of the graphics chip and battery" on={settings.lightEffects} onChange={(v) => update({ lightEffects: v })} />
       <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
       <Heading>Accent colour</Heading>
@@ -143,6 +145,7 @@ function Playback() {
       </>}
       <Heading>Episodes</Heading>
       <Toggle label="Autoplay next episode" hint="Continue to the next episode after a short countdown" on={settings.autoplayNext} onChange={(v) => update({ autoplayNext: v })} />
+      <Toggle label="Suggest what to watch after a movie" hint="When a movie ends (or you skip its credits), show sequels and similar movies to start next" on={settings.movieSuggestions} onChange={(v) => update({ movieSuggestions: v })} />
       <Toggle label="Skip intros automatically" hint="Jump past the intro whenever Plex has marked one" on={settings.autoSkipIntro} onChange={(v) => update({ autoSkipIntro: v })} />
       <SubtitleStyle />
     </>
@@ -178,6 +181,7 @@ function SubtitleStyle() {
 
 function GuideSettings() {
   const { settings, update } = useSettings()
+  const [done, setDone] = useState(false)
   return (
     <>
       <Toggle label="TV Guide" hint="Channels built from your library that are always on, like live TV. Switch off to hide it everywhere" on={settings.tvGuide} onChange={(v) => update({ tvGuide: v })} />
@@ -188,8 +192,8 @@ function GuideSettings() {
       <p className="px-4 pb-3 text-sm text-white/55">How far ahead the guide is built. It is created when you open the TV Guide and topped up as you watch, never in the background.</p>
       <Heading>Channels</Heading>
       <p className="px-4 pb-2 text-sm text-white/55">{settings.channels.length ? `${settings.channels.length} channel${settings.channels.length === 1 ? '' : 's'} on this device. Add, rename or delete them from the TV Guide.` : 'No channels yet. Open the TV Guide to add some.'}</p>
-      <Row label="Reset the guide" hint="Forget the current schedule; the next time you open the guide it starts fresh" onEnter={() => { try { Object.keys(localStorage).filter((k) => k.startsWith('chezzflix_guide_')).forEach((k) => localStorage.removeItem(k)) } catch { /* ignore */ } }}>
-        <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">Reset</span>
+      <Row label="Reset the guide" hint="Forget the current schedule; the next time you open the guide it builds a fresh one" onEnter={() => { resetGuide(); setDone(true); setTimeout(() => setDone(false), 3000) }}>
+        <span className={`rounded-full px-5 py-2.5 text-sm font-semibold ${done ? 'bg-accent text-black' : 'bg-white/12'}`}>{done ? 'Done ✓' : 'Reset'}</span>
       </Row>
     </>
   )

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { reveal } from '../lib/scroll'
-import { Bookmark, Film, Radio, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
+import { Bookmark, Film, Radio, RefreshCw, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useFocusedKey, useInputMode, useTyping } from '../lib/input'
@@ -18,9 +18,9 @@ export type View =
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
   | { type: 'list'; title: string; subtitle?: string; source: ListSource }
 
-function NavItem({ icon, label, active, onEnter, focusKey }: { icon: ReactNode; label: string; active?: boolean; onEnter: () => void; focusKey?: string }) {
+function NavItem({ icon, label, active, onEnter, onLongPress, focusKey }: { icon: ReactNode; label: string; active?: boolean; onEnter: () => void; onLongPress?: () => void; focusKey?: string }) {
   return (
-    <Focusable focusKey={focusKey} onEnter={onEnter} title={label} rightToContent onFocus={(el) => reveal(el, { block: 'nearest' })}>
+    <Focusable focusKey={focusKey} onEnter={onEnter} onLongPress={onLongPress} title={label} rightToContent onFocus={(el) => reveal(el, { block: 'nearest' })}>
       <div className={`relative flex h-12 items-center overflow-hidden rounded-xl transition-colors duration-200 group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${active ? 'text-white' : 'text-white/60'}`}>
         {active && <i className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r bg-accent group-data-[hl=true]/f:bg-black" />}
         <span className="grid w-[52px] shrink-0 place-items-center">{icon}</span>
@@ -45,9 +45,11 @@ interface Props {
   showDashboard?: boolean
   /** The TV Guide is switched on in Settings. */
   tvGuide?: boolean
+  /** Ask the server to scan a library for new content. */
+  onScan?: (s: PlexSection) => void
 }
 
-export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, tvGuide }: Props) {
+export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, tvGuide, onScan }: Props) {
   const mode = useInputMode()
   const typing = useTyping()
   const season = useSeason()
@@ -64,6 +66,8 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
   // Only the first few libraries are listed; "View all" opens a scrollable picker with every one.
   const LIMIT = 5
   const [picker, setPicker] = useState(false)
+  const [scanMenu, setScanMenu] = useState<PlexSection>()   // long-press / right-click on a library
+
   const listed = sections.slice(0, LIMIT)
 
   return (
@@ -94,11 +98,24 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           <div className={`mb-2 h-4 shrink-0 overflow-hidden whitespace-nowrap px-[18px] font-display text-[0.95rem] uppercase leading-4 tracking-[0.2em] text-white/85 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>Libraries</div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-1">
             {listed.map((s) => (
-              <NavItem key={s.key} focusKey={`nav-lib-${s.key}`} icon={s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />} label={s.title} active={isLib(s.key)} onEnter={() => onNavigate({ type: 'library', section: s })} />
+              <NavItem key={s.key} focusKey={`nav-lib-${s.key}`} icon={s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />} label={s.title} active={isLib(s.key)} onEnter={() => onNavigate({ type: 'library', section: s })} onLongPress={() => setScanMenu(s)} />
             ))}
           </div>
         </div>
 
+        {scanMenu && (
+          <Layer onClose={() => setScanMenu(undefined)} scrim="bg-black/55 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(360px,92vw)] -translate-x-1/2 -translate-y-1/2">
+            <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+              <div className="px-3.5 pb-2 pt-3"><div className="truncate text-[1.02rem] font-bold">{scanMenu.title}</div><div className="text-sm text-white/55">Library</div></div>
+              <Focusable onEnter={() => { const s = scanMenu; setScanMenu(undefined); onScan?.(s) }} title="Scan library">
+                <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><RefreshCw size={20} /><span><span className="block">Scan library</span><span className="block text-xs font-normal opacity-60">Look for new, changed or removed files</span></span></div>
+              </Focusable>
+              <Focusable onEnter={() => { const s = scanMenu; setScanMenu(undefined); onNavigate({ type: 'library', section: s }) }} title="Open library">
+                <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">{scanMenu.type === 'movie' ? <Film size={20} /> : <Tv size={20} />}Open</div>
+              </Focusable>
+            </div>
+          </Layer>
+        )}
         {picker && <LibraryPicker sections={everySection} shown={sections} activeKey={view.type === 'library' ? view.section.key : undefined} onClose={() => setPicker(false)} onPick={(x) => { setPicker(false); onNavigate({ type: 'library', section: x }) }} />}
 
         <div className="mt-3 shrink-0">
