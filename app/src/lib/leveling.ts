@@ -16,10 +16,10 @@ export const clampBoost = (n: number) => Math.max(-MAX_BOOST, Math.min(MAX_BOOST
 export const dbLabel = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)} dB`
 
 export const TARGET_LUFS = -22
-const MIN_GAIN = -6, MAX_GAIN = 15
+const MIN_GAIN = 0, MAX_GAIN = 15   // auto leveling only ever boosts: it never turns a title down
 const FIRST_AT = 20, REFINE_AT = [60, 180], STOP_AT = 300   // seconds of playback
 const FAST_FIRST_AT = 6, FAST_REFINE_AT = [20, 60], FAST_STOP_AT = 120   // the TV Guide: you're surfing, so settle quickly
-export const GUIDE_MAX_GAIN = 5   // ...and never change anything by more than this many dB, up or down
+export const GUIDE_MAX_GAIN = 5   // ...and never boost by more than this many dB
 const LIMITER = 'alimiter=limit=0.97:attack=5:release=60:level=disabled'
 export const QUIET_NEEDS_DB = 6   // a title that would need at least this much boost counts as quiet
 const DIALOGUE = 1.8   // center channel x1.8 (about +5 dB)
@@ -49,7 +49,7 @@ const gainFilter = (g: number) => `@g:lavfi=[volume=${g.toFixed(2)}dB:eval=frame
 /** For short clips (Preview/Recap): the steady gain this title would get, without measuring. */
 export function clipAf(media: PlexMedia, autoLevel: boolean): string {
   const m = readMem(memKey(media))
-  const g = typeof m.boost === 'number' ? m.boost : autoLevel ? m.gain ?? 0 : 0
+  const g = typeof m.boost === 'number' ? m.boost : autoLevel ? Math.max(0, m.gain ?? 0) : 0
   return Math.abs(g) < 0.1 ? '' : `lavfi=[volume=${g.toFixed(2)}dB,${LIMITER}]`
 }
 
@@ -60,13 +60,17 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   const firstAt = fast ? FAST_FIRST_AT : FIRST_AT, refineAt = fast ? FAST_REFINE_AT : REFINE_AT, stopAt = fast ? FAST_STOP_AT : STOP_AT
   // The guide keeps its own remembered levels (capped), separate from the player's, so neither affects the other.
   const key = (fast ? 'guide:' : '') + memKey(media)
-  const lo = fast ? -GUIDE_MAX_GAIN : MIN_GAIN, hi = fast ? GUIDE_MAX_GAIN : MAX_GAIN
-  const limit = useCallback((v: number) => Math.max(lo, Math.min(hi, v)), [lo, hi])
+  const hi = fast ? GUIDE_MAX_GAIN : MAX_GAIN
+  const limit = useCallback((v: number) => Math.max(MIN_GAIN, Math.min(hi, v)), [hi])
+  // A boost you set by hand may go either way (-10 to +10); only the automatic one is boost-only.
+  const manual = (v: number) => Math.max(-MAX_BOOST, Math.min(MAX_BOOST, v))
   const [boost, setBoostState] = useState<Boost>(() => readMem(key).boost ?? 'auto')
   const [gain, setGain] = useState(0)
   /** For a title that hasn't been measured yet: 'measuring' while it listens, then 'applied' (briefly) with the boost it chose. */
   const [note, setNote] = useState<null | { kind: 'measuring' } | { kind: 'applied'; gain: number }>(null)
   const noteTimer = useRef(0)
+  const [rerunTick, setRerunTick] = useState(0)
+  const rerun = useRef(false)
   /** Set (once per title) when auto leveling is off but the title is quiet: the boost it would take. */
   const [quiet, setQuiet] = useState<number | null>(null)
   const quietDone = useRef('')
@@ -93,12 +97,13 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
     const s = g.current
     let dead = false
     clearInterval(s.timer); clearInterval(s.ramp)
+    const fresh = rerun.current; rerun.current = false   // "Re-run" was pressed: measure again even though this title has a remembered boost
     ;(async () => {
       const mem = readMem(key)
       const measuring = boost === 'auto' && autoLevel
       const scanOnly = !measuring && !!scanQuiet && boost === 'auto' && !fast && !autoLevel && !mem.gain && quietDone.current !== key
       const holds = typeof boost === 'number' || autoLevel
-      const want = limit(typeof boost === 'number' ? boost : autoLevel ? mem.gain ?? 0 : 0)
+      const want = typeof boost === 'number' ? manual(boost) : limit(autoLevel ? mem.gain ?? 0 : 0)
       const layout = dialogueBoost ? await mpvGet('audio-params/hr-channels').catch(() => null) : null
       const pan = layout ? dialoguePan(layout) : null
       const parts = [pan, measuring || scanOnly ? '@m:lavfi=[ebur128=metadata=1]' : null, holds ? 'GAIN' : null].filter(Boolean) as string[]
@@ -133,7 +138,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
       }
       if (!measuring || dead) return
       clearTimeout(noteTimer.current)
-      setNote(!fast && !mem.gain ? { kind: 'measuring' } : null)   // only a title that has to be measured now gets the heads-up
+      setNote(!fast && (!mem.gain || fresh) ? { kind: 'measuring' } : null)   // only a title that has to be measured now gets the heads-up
 
       // Measure while it plays; hold one gain.
       s.ticks = 0; s.lastPos = -1
@@ -142,7 +147,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
         if (!isFinite(pos) || pos === s.lastPos) return   // paused or seeking
         s.lastPos = pos; s.ticks++
         if (s.ticks > stopAt) { clearInterval(s.timer); setNote((n) => (n?.kind === 'measuring' ? null : n)); return }
-        const first = !mem.gain && s.ticks === firstAt
+        const first = (!mem.gain || fresh) && s.ticks === firstAt
         if (!first && !refineAt.includes(s.ticks)) return
         const lufs = Number(await mpvGet('af-metadata/m/lavfi.r128.I').catch(() => null))
         if (!isFinite(lufs) || lufs < -60) return   // nothing but silence so far
@@ -153,10 +158,12 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
       }, 1000)
     })()
     return () => { dead = true; clearInterval(s.timer); clearTimeout(noteTimer.current); setNote(null) }
-  }, [active, loaded, key, boost, autoLevel, scanQuiet, dialogueBoost, rampTo, fast, firstAt, refineAt, stopAt, limit])
+  }, [active, loaded, key, boost, autoLevel, scanQuiet, rerunTick, dialogueBoost, rampTo, fast, firstAt, refineAt, stopAt, limit])
 
   useEffect(() => () => { clearInterval(g.current.timer); clearInterval(g.current.ramp); g.current.sig = '' }, [])
   /** "Try it" was chosen for a quiet title: remember the boost so turning auto leveling on applies it straight away. */
   const acceptQuiet = useCallback((g: number) => { writeMem(key, { gain: g }) }, [key])
-  return { boost, setBoost, gain, note, quiet, acceptQuiet, clearQuiet: () => setQuiet(null) }
+  /** Listen to this title again and pick a fresh boost (the current one stays until the new one is ready). */
+  const remeasure = useCallback(() => { rerun.current = true; setRerunTick((n) => n + 1) }, [])
+  return { boost, setBoost, gain, note, quiet, acceptQuiet, remeasure, clearQuiet: () => setQuiet(null) }
 }

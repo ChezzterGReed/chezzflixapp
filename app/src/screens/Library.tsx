@@ -51,12 +51,14 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
   const sentinel = useRef<HTMLDivElement>(null)
   const page = useRef<HTMLDivElement>(null)
   useGridNav(page)
-  // Jump-to-letter strip: only when the list is in plain A-Z order (no filters), and long enough to need it.
-  const [letters, setLetters] = useState<string[]>([])
+  // Jump-to-letter strip: whenever the list is in A-Z (or Z-A) order and long enough to need it, with any filter on (it then lists the letters that are left).
+  const [serverLetters, setServerLetters] = useState<string[]>([])
   const [jumping, setJumping] = useState(false)
   const jumpTo = useRef<string | null>(null)
-  useEffect(() => { let alive = true; getFirstCharacters(server, section.key).then((l) => alive && setLetters(l)); return () => { alive = false } }, [server, section.key])
-  const railOn = (sort === 'titleAsc' || sort === 'titleDesc') && !collapse && !unwatched && !year && total > 60
+  useEffect(() => { if (collapse) return; let alive = true; getFirstCharacters(server, section.key, year, unwatched).then((l) => alive && setServerLetters(l)).catch(() => {}); return () => { alive = false } }, [server, section.key, year, unwatched, collapse])
+  // Grouped collections: everything is already loaded, so the letters come straight from the tiles on screen.
+  const letters = useMemo(() => (collapse ? [...new Set(items.map((m) => alphaOf((m as { titleSort?: string }).titleSort || m.title)))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b))) : serverLetters), [collapse, items, serverLetters])
+  const railOn = (sort === 'titleAsc' || sort === 'titleDesc') && total > 60
   const sortedLetters = sort === 'titleDesc' ? [...letters].reverse() : letters
   const focusLetter = (l: string) => {
     const hit = items.find((m) => alphaOf((m as { titleSort?: string }).titleSort || m.title) === l)
@@ -67,7 +69,7 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
   const pickLetter = async (l: string) => {
     if (items.length < total) {   // not every title is loaded yet: load the lot (once), then jump
       setJumping(true)
-      const all = await getAllSectionItems(server, section.key, sort, undefined, 8000, false).catch(() => items)
+      const all = await getAllSectionItems(server, section.key, sort, year, 8000, unwatched).catch(() => items)
       setItems(all); setTotal(all.length); setJumping(false)
       jumpTo.current = l
     } else focusLetter(l)

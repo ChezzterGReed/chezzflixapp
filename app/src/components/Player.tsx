@@ -388,9 +388,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const allLevelRows = [
     { label: 'Auto leveling', value: settings.autoLevel ? 'On' : 'Off', hint: 'Measures the title, holds one steady boost', act: () => update({ autoLevel: !settings.autoLevel }) },
     { label: 'Dialogue boost', value: settings.dialogueBoost ? 'On' : 'Off', hint: 'Lifts voices in surround audio', act: () => update({ dialogueBoost: !settings.dialogueBoost }) },
+    { label: 'Re-run auto adjust', value: 'Run', hint: 'Listen to this title again and pick a new boost', act: () => { if (level.boost !== 'auto') level.setBoost('auto'); if (!settings.autoLevel) update({ autoLevel: true }); level.remeasure(); setLevelPanel(null) } },
     { label: 'Boost', value: level.boost === 'auto' ? (settings.autoLevel && level.gain ? `Auto · ${dbLabel(Math.round(level.gain))}` : 'Auto') : dbLabel(level.boost), hint: level.boost === 'auto' ? 'Use − and + to set it yourself' : 'Set by you · press OK for Auto', act: () => level.setBoost('auto') },
   ]
-  const levelRows = isAndroid ? [allLevelRows[0], allLevelRows[2]] : allLevelRows   // (no dialogue boost on Android); the boost row is always the last one
+  const levelRows = isAndroid ? [allLevelRows[0], allLevelRows[2], allLevelRows[3]] : allLevelRows   // (no dialogue boost on Android); the boost row is always the last one
   const boostRow = levelRows.length - 1
   const noteShown = useRef(level.note); if (level.note) noteShown.current = level.note   // keeps the last text while it fades out
   const levelActive = (settings.autoLevel || (!isAndroid && settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
