@@ -27,12 +27,21 @@ export function sameLang(a?: string, b?: string): boolean {
   return !!ix && ix === iy
 }
 
-interface Track { id: number; type: string; lang?: string; title?: string; forced?: boolean }
+interface Track { id: number; type: string; lang?: string; title?: string; forced?: boolean; codec?: string; selected?: boolean }
+
+/** Plain .srt files are the most dependable subtitles: given a choice of the same language, take one of those. */
+export const isSrt = (codec?: string) => !!codec && /^(subrip|srt)$/i.test(codec)
+const srtFirst = <T extends { codec?: string }>(l: T[]) => [...l.filter((t) => isSrt(t.codec)), ...l.filter((t) => !isSrt(t.codec))]
 
 /** Which tracks to switch to for this episode (undefined = leave it alone). */
 export function pickTracks(tracks: Track[], pref: TrackPref | undefined): { aid?: number; sid?: number | 'no' } {
-  if (!pref) return {}
   const out: { aid?: number; sid?: number | 'no' } = {}
+  if (!pref) {
+    // Nothing remembered: if a subtitle is already on and an .srt of the same language (and kind) exists, use that one instead.
+    const on = tracks.find((t) => t.type === 'sub' && t.selected)
+    if (on && !isSrt(on.codec)) { const alt = tracks.find((t) => t.type === 'sub' && isSrt(t.codec) && sameLang(t.lang, on.lang) && !!t.forced === !!on.forced); if (alt) out.sid = alt.id }
+    return out
+  }
   if (pref.audio?.lang) {
     const c = tracks.filter((t) => t.type === 'audio' && sameLang(t.lang, pref.audio!.lang))
     out.aid = (c.find((t) => pref.audio!.title && t.title === pref.audio!.title) ?? c[0])?.id
@@ -40,7 +49,7 @@ export function pickTracks(tracks: Track[], pref: TrackPref | undefined): { aid?
   const sp = pref.sub
   if (sp === 'off') out.sid = 'no'
   else if (sp?.lang) {
-    const c = tracks.filter((t) => t.type === 'sub' && sameLang(t.lang, sp.lang))
+    const c = srtFirst(tracks.filter((t) => t.type === 'sub' && sameLang(t.lang, sp.lang)))
     const want = sp.forced ?? false
     out.sid = (c.find((t) => !!t.forced === want && (!sp.title || t.title === sp.title)) ?? c.find((t) => !!t.forced === want) ?? c[0])?.id
   }
@@ -48,13 +57,17 @@ export function pickTracks(tracks: Track[], pref: TrackPref | undefined): { aid?
 }
 
 /** Web player: the same idea, matched against Plex's stream list. */
+const lang = (s: PlexStream) => s.languageCode ?? s.language
 export function webChoice(m: PlexMedia, audio: PlexStream[], subs: PlexStream[]): { audioId?: number; subtitleId?: number | null } {
   const pref = getTrackPref(m)
-  if (!pref) return {}
+  if (!pref) {
+    const on = subs.find((s) => s.selected)
+    const alt = on && !isSrt(on.codec) ? subs.find((s) => isSrt(s.codec) && sameLang(lang(s), lang(on)) && !!s.forced === !!on.forced) : undefined
+    return alt ? { subtitleId: alt.id } : {}
+  }
   const ch: { audioId?: number; subtitleId?: number | null } = {}
-  const lang = (s: PlexStream) => s.languageCode ?? s.language
   if (pref.audio?.lang) ch.audioId = audio.find((s) => sameLang(lang(s), pref.audio!.lang))?.id
   if (pref.sub === 'off') ch.subtitleId = null
-  else if (pref.sub?.lang) { const want = pref.sub.forced ?? false; ch.subtitleId = (subs.find((s) => sameLang(lang(s), (pref.sub as TrackRef).lang) && !!s.forced === want) ?? subs.find((s) => sameLang(lang(s), (pref.sub as TrackRef).lang)))?.id }
+  else if (pref.sub?.lang) { const want = pref.sub.forced ?? false; const same = srtFirst(subs.filter((s) => sameLang(lang(s), (pref.sub as TrackRef).lang))); ch.subtitleId = (same.find((s) => !!s.forced === want) ?? same[0])?.id }
   return ch
 }

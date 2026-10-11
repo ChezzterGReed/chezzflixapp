@@ -173,7 +173,6 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
     // Audio / subtitle choices remembered for this show (applied twice: embedded tracks right away, sidecar subtitles a moment later).
     const applyPrefs = async (tries = 0): Promise<void> => {
       const pref = getTrackPref(media)
-      if (!pref) return
       try {
         const tracks = await mpvTracks()
         if (!tracks.length && tries < 3) { await new Promise((r) => setTimeout(r, 500)); return applyPrefs(tries + 1) }
@@ -651,10 +650,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext }: Prop
           <div data-nopause data-menu onMouseEnter={() => clearTimeout(menuLeave.current)} onMouseLeave={() => { menuLeave.current = window.setTimeout(() => { setPanel(null); setLevelPanel(null) }, 1000) }} className="pop absolute bottom-32 right-8 flex w-[520px] max-w-[92vw] gap-1 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
             {[{ t: 'Audio', rows: audio },
               { t: 'Subtitles', rows: [{ id: -1, label: 'Off', on: activeSub === null }, ...subs, { id: -2, label: 'Subtitle style…', on: false }] }].map((c, col) => (
-              <div key={c.t} className="min-w-0 flex-1">
+              <div key={c.t} className="min-w-0 flex-1 max-h-[min(60vh,28rem)] overflow-y-auto overscroll-contain [scrollbar-width:thin]">
                 <div className="px-3 pb-1 pt-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">{c.t}</div>
                 {c.rows.map((r, idx) => (
-                  <button key={r.id} onClick={() => choose(col as 0 | 1, idx)}
+                  <button key={r.id} ref={panel.col === col && panel.idx === idx ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined} onClick={() => choose(col as 0 | 1, idx)}
                     className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors hover:bg-white/10 ${panel.col === col && panel.idx === idx ? 'bg-white text-black hover:bg-white' : ''}`}>
                     <span className="flex-1 truncate">{r.label}</span>{r.on && <Check size={16} className={panel.col === col && panel.idx === idx ? '' : 'text-accent'} />}
                   </button>

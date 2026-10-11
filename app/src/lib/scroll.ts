@@ -96,3 +96,9 @@ export function edgeSnap(el: HTMLElement) {
   if (absBot <= box.h - M) scrollTo(s, 'y', 0)
   else if (absTop - max >= M) scrollTo(s, 'y', max)
 }
+
+// Taking over with the wheel, trackpad or a touch/click ends any glide still running, so it can't pull the view back to where the keyboard was.
+if (typeof window !== 'undefined') {
+  const stop = () => { for (const e of anims.values()) { for (const a of [e.x, e.y]) if (a) cancelAnimationFrame(a.raf); e.x = e.y = undefined } }
+  for (const ev of ['wheel', 'touchstart', 'pointerdown']) window.addEventListener(ev, stop, { capture: true, passive: true })
+}

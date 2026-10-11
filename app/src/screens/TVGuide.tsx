@@ -47,6 +47,9 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   const [now, setNow] = useState(Date.now())
   const [sel, setSel] = useState(() => ({ row: 0, t: Date.now() }))
   const selRef = useRef(sel); selRef.current = sel
+  const [chan, setChanState] = useState(false)   // the cursor is on a channel's name cell (Left from its first block) rather than a program
+  const chanRef = useRef(false)
+  const setChan = (v: boolean) => { chanRef.current = v; setChanState(v) }
   const [adding, setAdding] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
   const [menu, setMenu] = useState<Channel>()
@@ -92,10 +95,18 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
     const { row, t } = selRef.current
     const slots = rowSlots(row).filter(aired)
     const c = slotAt(slots, t) ?? slots.find((s) => s.end > t)
+    if (chanRef.current) {
+      if (dir === 'left') return   // channel cell is the far left: Left opens the side menu
+      noteMove()
+      if (dir === 'right') { setChan(false); return false }
+      if (dir === 'up') { if (row === 0) { setFocus('guide-add'); return false } setSel({ row: row - 1, t }); return false }
+      if (row < channels.length - 1) setSel({ row: row + 1, t })
+      return false
+    }
     if (!c) return false
     const anchor = Math.max(c.start, origin) + 1
     if (dir === 'right') { const n = slots[slots.indexOf(c) + 1]; if (n) { noteMove(); setSel({ row, t: n.start + 1 }) } return false }
-    if (dir === 'left') { const p = slots[slots.indexOf(c) - 1]; if (p) { noteMove(); setSel({ row, t: Math.max(p.start, origin) + 1 }); return false } return }   // at the first one: let Left open the side menu
+    if (dir === 'left') { const p = slots[slots.indexOf(c) - 1]; if (p) { noteMove(); setSel({ row, t: Math.max(p.start, origin) + 1 }); return false } noteMove(); setChan(true); return false }   // at the first one: Left selects the channel itself
     if (dir === 'up') { if (row === 0) { setFocus('guide-add'); return false } noteMove(); setSel({ row: row - 1, t: anchor }); return false }
     if (row < channels.length - 1) { noteMove(); setSel({ row: row + 1, t: anchor }) }
     return false
@@ -209,8 +220,8 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
         </div>
 
         {/* The grid */}
-        <Focusable focusKey="guide-grid" title="Guide" className="min-h-0 flex-1" leftToRail onArrow={move} onEnter={() => { if (selRef.current.row < channels.length) setWatching(selRef.current.row) }}
-          onLongPress={() => { const { row, t } = selRef.current; const s = slotAt(rowSlots(row), t) ?? rowSlots(row).find((x) => x.end > t); if (s) setInfo({ slot: s, row }); else if (channels[row]) setMenu(channels[row]) }}>
+        <Focusable focusKey="guide-grid" title="Guide" className="min-h-0 flex-1" leftToRail onArrow={move} onEnter={() => { const r = selRef.current.row; if (r >= channels.length) return; if (chanRef.current) setMenu(channels[r]); else setWatching(r) }}
+          onLongPress={() => { const { row, t } = selRef.current; if (chanRef.current) { if (channels[row]) setMenu(channels[row]); return } const s = slotAt(rowSlots(row), t) ?? rowSlots(row).find((x) => x.end > t); if (s) setInfo({ slot: s, row }); else if (channels[row]) setMenu(channels[row]) }}>
           <div className="h-full overflow-hidden rounded-2xl bg-[#101016] ring-1 ring-white/10">
             <div ref={track} className="h-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="relative" style={{ width: CH_W + span }}>
@@ -227,18 +238,19 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
                   const slots = (guide.slots[ch.id] ?? []).filter(aired)
                   return (
                     <div key={ch.id} className="relative flex border-b border-white/[0.07]" style={{ height: ROW_H, width: CH_W + span }}>
-                      <div className={`sticky left-0 z-[6] flex shrink-0 items-center gap-3 px-4 transition-colors ${sel.row === row ? 'bg-[#26262f]' : 'bg-[#16161d]'}`} style={{ width: CH_W, boxShadow: ch.accent ? `inset 3px 0 0 ${ch.accent}` : undefined }}>
-                        {ch.seasonal ? <Pumpkin size={26} /> : <span className="text-xl font-extrabold tabular-nums text-white/90">{ch.number}</span>}
-                        <span className="min-w-0 flex-1 text-sm font-semibold leading-tight" style={{ color: ch.accent }}><span className={ch.accent ? '' : 'text-white/65'}>{ch.name}</span></span>
+                      <div onPointerDown={() => { selRef.current = { row, t: selRef.current.t }; setSel(selRef.current); setChan(true) }} onContextMenu={() => { selRef.current = { row, t: selRef.current.t }; setChan(true) }}
+                        className={`sticky left-0 z-[6] flex shrink-0 items-center gap-3 px-4 transition-colors ${sel.row === row && chan ? 'bg-white text-black group-data-[hl=true]/f:shadow-[inset_0_0_0_3px_var(--accent)]' : sel.row === row ? 'bg-[#26262f]' : 'bg-[#16161d]'}`} style={{ width: CH_W, boxShadow: ch.accent ? `inset 3px 0 0 ${ch.accent}` : undefined }}>
+                        {ch.seasonal ? <Pumpkin size={26} /> : <span className={`text-xl font-extrabold tabular-nums ${sel.row === row && chan ? 'text-black' : 'text-white/90'}`}>{ch.number}</span>}
+                        <span className="min-w-0 flex-1 text-sm font-semibold leading-tight" style={{ color: ch.accent }}><span className={ch.accent ? '' : sel.row === row && chan ? 'text-black' : 'text-white/65'}>{ch.name}</span></span>
                       </div>
                       <div className="relative" style={{ width: span }}>
                         {slots.length === 0 && <div className="absolute inset-y-0 left-4 flex items-center text-sm text-white/40">Nothing to schedule: this channel has no playable content.</div>}
                         {slots.map((s) => {
                           const left = Math.max(0, ((s.start - origin) / MIN) * PPM)
                           const right = Math.min(span, ((s.end - origin) / MIN) * PPM)
-                          const on = sel.row === row && cur?.start === s.start
+                          const on = !chan && sel.row === row && cur?.start === s.start
                           return (
-                            <div key={s.start} id={`cell-${row}-${s.start}`} onClick={() => { selRef.current = { row, t: s.start + 1 }; setSel(selRef.current) }}
+                            <div key={s.start} id={`cell-${row}-${s.start}`} onPointerDown={() => { selRef.current = { row, t: s.start + 1 }; setSel(selRef.current); setChan(false) }} onContextMenu={() => { selRef.current = { row, t: s.start + 1 }; setSel(selRef.current); setChan(false) }}
                               className={`absolute inset-y-[3px] rounded-lg py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : ch.accent ? 'ring-[#ff7a1a]/40' : 'bg-white/[0.07] ring-white/10'}`}
                               style={{ left: left + 2, width: Math.max(8, right - left - 4), background: !on && ch.accent ? 'rgba(255,122,26,.16)' : undefined }}>
                               {/* The text stays pinned to the left edge of the visible guide while the block scrolls past, until the block is gone */}

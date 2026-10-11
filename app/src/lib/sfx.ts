@@ -1,12 +1,57 @@
-// A soft mechanical-keyboard "thock" as you move around, made with the browser's own audio (no sound files): a short low knock with a
-// pitch that drops away, a touch of muffled click on top, and a tiny random variation so it never sounds mechanical in the bad sense.
-// Quiet, short, and switchable in Settings.
+// A soft, creamy "thock" as you move around, like a lubed linear keyboard switch (think KTT Kang White): a short, muted, mid-low knock with
+// almost no high end and no deep boom. Made with the browser's own audio (no sound files). Quiet, short, and switchable in Settings.
+//
+// The sound is a tiny burst of noise that excites two resonances (the "case" ringing at a few hundred Hz), a soft fixed-pitch body tone
+// underneath, and a low-pass over everything so nothing sharp gets through. No pitch sweep and no sub-bass, so it never reads as a drum.
+import navUrl from '../assets/nav.mp3?url'
+
 let ctx: AudioContext | null = null
-let noise: AudioBuffer | null = null
+let navBuf: AudioBuffer | null = null
+let navLoading = false
 let enabled = true
 let last = 0
 
 export const setNavSounds = (on: boolean) => { enabled = on }
+
+export interface Thock { f1: number; q1: number; g1: number; f2: number; q2: number; g2: number; body: number; bodyGain: number; lowpass: number; decay: number; level: number }
+// Weighted so most of the energy sits around 120-600 Hz (deep and smooth) with very little above 1.2 kHz.
+export const THOCK: Thock = { f1: 280, q1: 3, g1: 14, f2: 480, q2: 3, g2: 9, body: 180, bodyGain: 0.025, lowpass: 1300, decay: 0.065, level: 0.17 }
+/** Two other flavours to try: a little lighter and rounder (marble-like), and a little deeper and softer. */
+export const THOCK_LIGHT: Thock = { f1: 400, q1: 3, g1: 11, f2: 700, q2: 3, g2: 7, body: 230, bodyGain: 0.02, lowpass: 1700, decay: 0.055, level: 0.15 }
+export const THOCK_DEEP: Thock = { f1: 240, q1: 3, g1: 15, f2: 400, q2: 3, g2: 9, body: 160, bodyGain: 0.025, lowpass: 1100, decay: 0.07, level: 0.17 }
+
+let noiseBuf: AudioBuffer | null = null
+function noiseFor(c: BaseAudioContext): AudioBuffer {
+  if (noiseBuf && noiseBuf.sampleRate === c.sampleRate) return noiseBuf
+  const n = Math.floor(c.sampleRate * 0.03)
+  const b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0)
+  for (let i = 0; i < n; i++) { const e = 1 - i / n; d[i] = (Math.random() * 2 - 1) * e * e }   // a burst that dies away
+  return (noiseBuf = b)
+}
+
+/** Schedules one thock on any audio context (live or offline) at time `t`. `v` is a small pitch variation around 1. */
+export function synthThock(c: BaseAudioContext, dest: AudioNode, t: number, p: Thock = THOCK, v = 1) {
+  const master = c.createGain(); master.gain.value = p.level
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lowpass; lp.Q.value = 0.5
+  master.connect(lp).connect(dest)
+
+  // The case ringing: noise through two resonances, each dying away quickly.
+  const src = c.createBufferSource(); src.buffer = noiseFor(c)
+  for (const [f, q, g, dec] of [[p.f1, p.q1, p.g1, p.decay], [p.f2, p.q2, p.g2, p.decay * 0.75]] as const) {
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * v; bp.Q.value = q
+    const eg = c.createGain()
+    eg.gain.setValueAtTime(0.0001, t); eg.gain.exponentialRampToValueAtTime(g, t + 0.002); eg.gain.exponentialRampToValueAtTime(0.0001, t + dec)
+    src.connect(bp).connect(eg).connect(master)
+  }
+  src.start(t); src.stop(t + 0.04)
+
+  // A soft body tone, fixed pitch (no sweep), for warmth.
+  const body = c.createOscillator(), bg = c.createGain()
+  body.type = 'sine'; body.frequency.value = p.body * v
+  bg.gain.setValueAtTime(0.0001, t); bg.gain.exponentialRampToValueAtTime(p.bodyGain, t + 0.004); bg.gain.exponentialRampToValueAtTime(0.0001, t + p.decay * 0.9)
+  body.connect(bg).connect(master)
+  body.start(t); body.stop(t + p.decay + 0.02)
+}
 
 export function navBlip() {
   if (!enabled) return
@@ -18,45 +63,13 @@ export function navBlip() {
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     ctx ??= new AC()
     if (ctx.state === 'suspended') void ctx.resume()
-    const t = ctx.currentTime
-    const v = 0.94 + Math.random() * 0.12   // each press a little different
-
-    const out = ctx.createGain()
-    out.gain.value = 0.9
-    out.connect(ctx.destination)
-
-    // The thock: a low body whose pitch falls quickly, like a keycap bottoming out on a padded plate.
-    const body = ctx.createOscillator(), bg = ctx.createGain(), lp = ctx.createBiquadFilter()
-    body.type = 'sine'
-    body.frequency.setValueAtTime(205 * v, t)
-    body.frequency.exponentialRampToValueAtTime(92 * v, t + 0.07)
-    lp.type = 'lowpass'; lp.frequency.value = 900
-    bg.gain.setValueAtTime(0.0001, t)
-    bg.gain.exponentialRampToValueAtTime(0.34, t + 0.004)
-    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.11)
-    body.connect(lp).connect(bg).connect(out)
-    body.start(t); body.stop(t + 0.12)
-
-    // Under it, a short triangle knock for weight.
-    const knock = ctx.createOscillator(), kg = ctx.createGain()
-    knock.type = 'triangle'
-    knock.frequency.setValueAtTime(130 * v, t)
-    knock.frequency.exponentialRampToValueAtTime(70 * v, t + 0.05)
-    kg.gain.setValueAtTime(0.0001, t)
-    kg.gain.exponentialRampToValueAtTime(0.16, t + 0.003)
-    kg.gain.exponentialRampToValueAtTime(0.0001, t + 0.07)
-    knock.connect(kg).connect(out)
-    knock.start(t); knock.stop(t + 0.08)
-
-    // On top, a muffled tick (filtered noise) so it reads as a key, not a drum.
-    if (!noise) { noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.05), ctx.sampleRate); const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1 }
-    const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), ng = ctx.createGain()
-    src.buffer = noise
-    bp.type = 'bandpass'; bp.frequency.value = 1500 * v; bp.Q.value = 0.8
-    ng.gain.setValueAtTime(0.0001, t)
-    ng.gain.exponentialRampToValueAtTime(0.07, t + 0.002)
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.03)
-    src.connect(bp).connect(ng).connect(out)
-    src.start(t); src.stop(t + 0.04)
+    if (navBuf) {
+      const src = ctx.createBufferSource(), g = ctx.createGain()
+      src.buffer = navBuf; src.playbackRate.value = 0.97 + Math.random() * 0.06; g.gain.value = 0.8   // each press a hair different
+      src.connect(g).connect(ctx.destination); src.start()
+    } else {
+      if (!navLoading) { navLoading = true; const c = ctx; fetch(navUrl).then((r) => r.arrayBuffer()).then((b) => c.decodeAudioData(b)).then((d) => { navBuf = d }).catch(() => { navLoading = false }) }
+      synthThock(ctx, ctx.destination, ctx.currentTime, THOCK, 0.96 + Math.random() * 0.08)   // until the sound file has loaded
+    }
   } catch { /* no audio available: stay silent */ }
 }
