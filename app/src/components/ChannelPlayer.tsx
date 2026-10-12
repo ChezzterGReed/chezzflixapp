@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, TriangleAlert } from 'lucide-react'
+import { Captions, Check, Loader2, TriangleAlert } from 'lucide-react'
+import { useInputMode } from '../lib/input'
 import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
 import { Layer } from './Layer'
@@ -7,10 +8,11 @@ import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
 import { DEMO_URI, directPlayUrl, getMetadata, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
-import { applySubStyle, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive } from '../lib/native'
+import { applySubStyle, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
 import { hexA } from '../lib/seasonal'
 import { useLevelEngine } from '../lib/leveling'
+import { VolumePill } from './VolumePill'
 import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
 
 interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void; /** Nobody answered "Are you still watching?" */ onIdle?: () => void }
@@ -23,7 +25,7 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric
  * Back returns to the guide. No pausing or seeking, and nothing is reported to Plex: no watch history, no Continue Watching.
  */
 export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Props) {
-  const { settings } = useSettings()
+  const { settings, update } = useSettings()
   const guide = useGuide()
   const [mode, setMode] = useState<'pending' | 'native' | 'web'>('pending')
   const [idx, setIdx] = useState(start)
@@ -61,7 +63,23 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   useEffect(() => { keepAwake(true); return () => { keepAwake(false) } }, [])
   useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, status, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
 
-  const flash = useCallback(() => { setBanner(true); clearTimeout(bannerTimer.current); bannerTimer.current = window.setTimeout(() => setBanner(false), 5000) }, [])
+  const [tracksOpen, setTracksOpen] = useState(false)
+  const [tracks, setTracks] = useState<MpvTrack[]>([])
+  const tracksOpenRef = useRef(false); tracksOpenRef.current = tracksOpen
+  const inputMode = useInputMode()
+  // The info banner (channel, title, episode, and the audio & subtitles button): it stays up while the track menu is open.
+  const flash = useCallback(() => { setBanner(true); clearTimeout(bannerTimer.current); bannerTimer.current = window.setTimeout(() => { if (!tracksOpenRef.current) setBanner(false) }, 5000) }, [])
+  const lastMove = useRef(0)
+  const openTracks = useCallback(() => {
+    flash()
+    mpvTracks().then((t) => { setTracks(t.filter((x) => x.type === 'audio' || x.type === 'sub')); setTracksOpen(true) }).catch(() => {})
+  }, [flash])
+  const pickTrack = (t: MpvTrack | 'off') => {
+    if (t === 'off') mpvSet('sid', 'no').catch(() => {})
+    else mpvSet(t.type === 'audio' ? 'aid' : 'sid', t.id).catch(() => {})
+    setTracksOpen(false); flash()
+  }
+  const trackLabel = (t: MpvTrack) => [t.title || t.lang?.toUpperCase(), t.codec?.toUpperCase(), t.channels ? `${t.channels}ch` : '', t.external ? 'external' : ''].filter(Boolean).join(' · ') || 'Track'
 
   // Tune: find what's on now, jump into it part-way through, and line up the next switch for when it ends.
   const tune = useCallback(async (i: number) => {
@@ -120,7 +138,15 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   }, [mode, settings.guideLeveling])
 
   // Even out loudness between channels and programs (measures a few seconds, then holds one steady gain; remembered per show / movie).
-  useLevelEngine({ active: mode === 'native' && settings.guideLeveling && !!media, loaded: loadedTick, media: media ?? ({ ratingKey: 'none', type: 'movie', title: '' } as PlexMedia), autoLevel: true, dialogueBoost: false, fast: true })
+  const level = useLevelEngine({ active: mode === 'native' && settings.guideLeveling && !!media, loaded: loadedTick, media: media ?? ({ ratingKey: 'none', type: 'movie', title: '' } as PlexMedia), autoLevel: true, dialogueBoost: false, fast: true, ask: true })
+  const noteShown = useRef(level.note); if (level.note) noteShown.current = level.note   // keeps the last text while it fades out
+  const pillIds = level.note?.kind === 'offer' ? ['yes', 'no'] : level.note?.kind === 'applied' ? ['dismiss', 'disable'] : []
+  const pillAct = (id: string) => {
+    if (id === 'yes') level.acceptOffer()
+    else if (id === 'no') level.declineOffer()
+    else if (id === 'disable') { update({ guideLeveling: false }); level.closeNote() }
+    else level.closeNote()
+  }
 
   // Native engine events (loaded / ended / failed).
   useEffect(() => {
@@ -157,12 +183,15 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const ch = channels[idx]
   const now = Date.now()
   return (
-    <Layer player onClose={() => close()} scrim="bg-transparent">
-      <div className="absolute inset-0">
+    <Layer player onClose={() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else close() }} scrim="bg-transparent">
+      <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
         {askingStill && !leaving && <StillWatching onStay={stillHere} onTimeout={() => close(true)} />}
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => setStatus('error')} />}
         {/* Receives the remote: Up / Down flip channels, OK shows the banner */}
-        <Focusable focusKey="channel-surface" title="Channel" onEnter={flash} onArrow={(d) => { if (d === 'up') { flip(-1); return false } if (d === 'down') { flip(1); return false } return false }} className="absolute inset-0">
+        <Focusable focusKey="channel-surface" title="Channel"
+          onEnter={() => { if (level.note?.kind === 'offer') { level.acceptOffer(); return } if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}   // OK shows the info; OK again, with it showing, opens audio & subtitles
+          onArrow={(d) => { if (d === 'up') { flip(-1); return false } if (d === 'down') { flip(1); return false } flash(); return false }}   // Left / Right also bring the info up
+          className="absolute inset-0">
           <div className="size-full" />
         </Focusable>
 
@@ -175,9 +204,41 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
               <div className="truncate text-3xl font-extrabold tracking-tight">{slot?.title ?? '—'}</div>
               {slot?.sub && <div className="truncate text-lg text-white/70">{slot.sub}</div>}
             </div>
+            {mode === 'native' && status === 'playing' && (
+              <button onClick={openTracks} className={`${banner ? 'pointer-events-auto' : 'pointer-events-none'} flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition ${inputMode === 'key' ? 'bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}><Captions size={18} />Audio & subtitles{inputMode === 'key' && <span className="rounded bg-black/10 px-1.5 text-xs font-bold">OK</span>}</button>
+            )}
             {slot && <div className="shrink-0 text-right text-sm text-white/60">{clock(slot.start)} – {clock(slot.end)}<div className="text-xs">{Math.max(0, Math.round((slot.end - now) / 60000))} min left</div></div>}
           </div>
         </div>
+
+        {/* Volume: the offer to adjust a loud or quiet program, the adjustment easing in, and "complete" */}
+        <div aria-live="polite" className={`absolute bottom-52 left-1/2 z-40 -translate-x-1/2 transition-all duration-700 ${level.note ? 'pointer-events-auto opacity-100' : 'pointer-events-none translate-y-2 opacity-0'}`}>
+          {noteShown.current && <VolumePill note={noteShown.current} gain={level.gain} ids={pillIds} active={-1} hint="You can turn this off in Guide settings." onAct={(id) => pillAct(id)} />}
+        </div>
+        {tracksOpen && (
+          <Layer player z="z-[85]" onClose={() => setTracksOpen(false)} scrim="bg-transparent" className="absolute bottom-40 left-1/2 w-[min(640px,94vw)] -translate-x-1/2">
+            <div data-nopause className="pop flex gap-2 rounded-2xl bg-[#17171c]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+              {([['Audio', tracks.filter((t) => t.type === 'audio')], ['Subtitles', tracks.filter((t) => t.type === 'sub')]] as const).map(([name, list]) => (
+                <div key={name} className="min-w-0 flex-1">
+                  <div className="px-3 pb-1 pt-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">{name}</div>
+                  <div className="max-h-[40vh] overflow-y-auto overscroll-contain">
+                    {name === 'Subtitles' && (
+                      <Focusable onEnter={() => pickTrack('off')} title="Subtitles off">
+                        <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><span className="flex-1">Off</span>{!list.some((t) => t.selected) && <Check size={16} />}</div>
+                      </Focusable>
+                    )}
+                    {list.length === 0 && name === 'Audio' && <div className="px-3 py-2.5 text-sm text-white/45">Nothing to choose</div>}
+                    {list.map((t) => (
+                      <Focusable key={`${t.type}-${t.id}`} onEnter={() => pickTrack(t)} title={trackLabel(t)}>
+                        <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><span className="flex-1 truncate">{trackLabel(t)}</span>{t.selected && <Check size={16} />}</div>
+                      </Focusable>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Layer>
+        )}
 
         {/* Tuning / error cover */}
         <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity duration-300 ${status === 'playing' && !leaving ? 'opacity-0' : 'opacity-100'}`}>

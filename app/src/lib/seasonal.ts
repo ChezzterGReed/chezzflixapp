@@ -24,22 +24,21 @@ export interface SeasonalList {
 }
 
 // ---- who a movie is for ----
-/** Ratings for the after-dark channel (PG-13 and up); everything else (G, PG, kids' TV ratings, unrated kids' titles) is the family one. */
-const ADULT = /^(pg-13|r|nc-17|tv-14|tv-ma|unrated|x)$/i
+// "Family" is only what is actually rated G or PG (or the TV kids' equivalents). Everything else is the grown-up side, and that includes
+// PG-13 and up, and also anything unrated or "Not Rated" or with no rating at all: unrated horror shouldn't turn up in a family list.
+const FAMILY = /^(g|pg|tv-y|tv-y7|tv-y7-fv|tv-g|tv-pg)$/i
 const rating = (m: PlexMedia) => (m.contentRating ?? '').replace(/^[a-z]{2}\//i, '').trim()
-const adult = (m: PlexMedia) => ADULT.test(rating(m))
-// Christmas: G / PG (and the TV equivalents) are for everyone; unrated old classics too. PG-13, R and TV-14/MA are the "Violent Night" side.
-const MATURE = /^(pg-13|r|nc-17|tv-14|tv-ma|x)$/i
-const matureRated = (m: PlexMedia) => MATURE.test(rating(m))
+const family = (m: PlexMedia) => FAMILY.test(rating(m))
+const adult = (m: PlexMedia) => !family(m)
+// Christmas: the "Violent Night" list is the grown-up side that is also horror, thriller, crime, action or mystery.
 const DARK = /horror|thriller|crime|action|mystery|suspense/i
 const hasDarkGenre = (m: PlexMedia) => !m.Genre?.length || m.Genre.some((g) => DARK.test(g.tag))
-const familyXmas = (m: PlexMedia) => !matureRated(m)
-const violentXmas = (m: PlexMedia) => matureRated(m) && hasDarkGenre(m)
+const violentXmas = (m: PlexMedia) => adult(m) && hasDarkGenre(m)
 
 export const SEASONAL_LISTS: SeasonalList[] = [
   { id: 'spooky', season: 'halloween', title: 'Spooky Season', subtitle: 'Halloween favourites and spooky-season vibes', entries: SPOOKY,
-    channels: [{ id: 'family', number: -2, name: 'Spooky Season', keep: (m) => !adult(m) }, { id: 'afterdark', number: -1, name: 'Spooky Season After Dark', keep: adult }] },
-  { id: 'xmas', season: 'christmas', title: 'Holiday Movies', subtitle: 'Christmas favourites for the whole family', entries: CHRISTMAS, keep: familyXmas, min: 8,
+    channels: [{ id: 'family', number: -2, name: 'Spooky Season', keep: family }, { id: 'afterdark', number: -1, name: 'Spooky Season After Dark', keep: adult }] },
+  { id: 'xmas', season: 'christmas', title: 'Holiday Movies', subtitle: 'Christmas favourites for the whole family', entries: CHRISTMAS, keep: family, min: 8,
     channels: [{ id: 'a', number: -2, name: 'Holiday Movies' }, { id: 'b', number: -1, name: 'Holiday Movies 2' }] },
   { id: 'xmas-violent', season: 'christmas', title: 'Violent Night', subtitle: 'Christmas with a bite: slashers, thrillers and action', entries: CHRISTMAS, keep: violentXmas, min: 8 },
 ]

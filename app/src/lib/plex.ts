@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.18',
+    'X-Plex-Version': '0.3.19',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -595,7 +595,7 @@ export interface PlexSession {
   detail: string               // e.g. "1080p · 8.2 Mbps"
   progress: number             // 0..1
 }
-export interface PlexHistoryEntry { key: string; title: string; subtitle: string; type: string; viewedAt: number; user: string; userThumb?: string; thumb?: string }
+export interface PlexHistoryEntry { key: string; ratingKey?: string; title: string; subtitle: string; type: string; viewedAt: number; user: string; userThumb?: string; thumb?: string }
 export interface ServerInfo { version?: string; platform?: string; name?: string; cpu?: number; memory?: number }
 
 export async function getSessions(server: PlexServer): Promise<PlexSession[]> {
@@ -630,7 +630,7 @@ export async function getHistory(server: PlexServer, size = 30): Promise<PlexHis
   return (h.Metadata ?? []).map((m) => {
     const ep = m.type === 'episode'
     const acct = who.get(m.accountID)
-    return { key: `${m.historyKey ?? m.ratingKey}-${m.viewedAt}`, title: ep ? m.grandparentTitle ?? m.title : m.title, subtitle: ep ? `S${m.parentIndex} · E${m.index} · ${m.title}` : String(m.year ?? ''), type: m.type, viewedAt: m.viewedAt, user: acct?.name || 'Someone', userThumb: acct?.thumb, thumb: ep ? m.grandparentThumb ?? m.thumb : m.thumb }
+    return { key: `${m.historyKey ?? m.ratingKey}-${m.viewedAt}`, ratingKey: m.ratingKey != null ? String(ep ? m.grandparentRatingKey ?? m.ratingKey : m.ratingKey) : undefined, title: ep ? m.grandparentTitle ?? m.title : m.title, subtitle: ep ? `S${m.parentIndex} · E${m.index} · ${m.title}` : String(m.year ?? ''), type: m.type, viewedAt: m.viewedAt, user: acct?.name || 'Someone', userThumb: acct?.thumb, thumb: ep ? m.grandparentThumb ?? m.thumb : m.thumb }
   })
 }
 

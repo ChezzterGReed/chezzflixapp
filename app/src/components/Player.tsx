@@ -3,7 +3,7 @@ import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2,
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { findVersions, lighterThan, type Version } from '../lib/versions'
 import { StallOffer } from './StallOffer'
-import { QuietOffer } from './QuietOffer'
+import { VolumePill } from './VolumePill'
 import { saveResume } from '../lib/resume'
 import { activeProfile } from '../lib/profile'
 import { useStillWatching } from '../lib/stillWatching'
@@ -369,14 +369,13 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     }, 1000)
     return () => clearInterval(t)
   }, [lighter])
-  const quietOpen = level.quiet !== null && !offer
-  const modalOpen = (askingStill || offer || quietOpen) && !closing
+  const modalOpen = (askingStill || offer) && !closing
   const modalRef = useRef(false); modalRef.current = modalOpen
   useEffect(() => { if (modalOpen) { resumeNav(); return () => pauseNav() } }, [modalOpen])
 
   // ----- keep spatial-nav out of the way; the player owns the keys -----
   useEffect(() => { pauseNav(); return () => resumeNav() }, [])
-  useBack(() => { if (level.note?.kind === 'applied') level.closeNote(); else if (stylePanel !== null) setStylePanel(null); else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
+  useBack(() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (stylePanel !== null) setStylePanel(null); else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
   useEffect(() => { poke(); return () => clearTimeout(idle.current) }, [poke])
 
   const seek = useCallback((t: number) => {
@@ -401,7 +400,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // Subtitle look (plain-text subtitles; styled .ass ones keep their own).
   useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, loadedTick, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
-  // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +20).
+  // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +15).
   const nudgeBoost = (d: 1 | -1) => level.setBoost(clampBoost((level.boost === 'auto' ? Math.round(level.gain) : level.boost) + d))
   const allLevelRows = [
     { label: 'Auto leveling', value: settings.autoLevel ? 'On' : 'Off', hint: 'Measures the title, holds one steady boost', act: () => update({ autoLevel: !settings.autoLevel }) },
@@ -412,9 +411,20 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const levelRows = isAndroid ? [allLevelRows[0], allLevelRows[2], allLevelRows[3]] : allLevelRows   // (no dialogue boost on Android); the boost row is always the last one
   const boostRow = levelRows.length - 1
   const noteShown = useRef(level.note); if (level.note) noteShown.current = level.note   // keeps the last text while it fades out
-  const [pill, setPill] = useState(-1)   // remote/keyboard: which pill button is highlighted (-1: none yet, press OK to start), 0 Revert, 1 −, 2 +
-  const pillOpen = level.note?.kind === 'applied'
-  useEffect(() => { if (!pillOpen) setPill(-1) }, [pillOpen])
+  const [pill, setPill] = useState(-1)   // remote/keyboard: which pill button is highlighted (-1: none yet, press OK to start)
+  const noteKind = level.note?.kind
+  const pillOpen = noteKind === 'applied'   // (the "Boost applied" pill is the one the remote can step into; "Auto-adjusting" is mouse / touch only, and Back closes it)
+  const pillIds = noteKind === 'applied' ? ['revert', 'minus', 'plus', 'dismiss', 'disable'] : noteKind === 'offer' ? ['yes', 'no'] : noteKind === 'measuring' ? ['dismiss', 'disable'] : []
+  const pillAct = (id: string) => {
+    if (id === 'revert') level.revertNote()
+    else if (id === 'minus') level.adjustNote(-1)
+    else if (id === 'plus') level.adjustNote(1)
+    else if (id === 'yes') { level.acceptOffer(); if (!settings.autoLevel) update({ autoLevel: true }) }   // (accepting turns Auto volume leveling on)
+    else if (id === 'no') level.declineOffer()
+    else if (id === 'dismiss') level.closeNote()
+    else { update({ autoLevel: false }); level.closeNote() }   // Disable: auto leveling off everywhere; whatever boost is playing glides back to normal
+  }
+  useEffect(() => { setPill(-1) }, [noteKind])
   const levelActive = (settings.autoLevel || (!isAndroid && settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
 
   const showNext = !!next && !stayed && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 + 3 : duration - 30)
@@ -507,12 +517,14 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     const h = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || suggestRef.current || modalRef.current) return   // (the "what next" screen has its own navigation)
       // The "Boost applied" pill: OK starts adjusting it, then Left/Right pick Revert / − / +, OK presses, Back closes (see useBack).
+      if (noteKind === 'offer' && e.key === 'Enter') { pillAct('yes'); e.preventDefault(); e.stopPropagation(); return }   // the offer: OK = Yes (Back = No)
       if (pillOpen) {
         if (pill < 0) { if (e.key === 'Enter') { setPill(1); level.holdNote(); e.preventDefault(); e.stopPropagation(); return } }
         else if (['ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
-          if (e.key === 'ArrowLeft') setPill(Math.max(0, pill - 1)); else if (e.key === 'ArrowRight') setPill(Math.min(2, pill + 1))
-          else if (pill === 0) level.revertNote(); else level.adjustNote(pill === 1 ? -1 : 1)
-          if (e.key !== 'Enter' || pill !== 0) level.holdNote()
+          const id = pillIds[pill]
+          if (e.key === 'ArrowLeft') setPill(Math.max(0, pill - 1)); else if (e.key === 'ArrowRight') setPill(Math.min(pillIds.length - 1, pill + 1))
+          else pillAct(id)
+          if (e.key !== 'Enter' || id === 'minus' || id === 'plus') level.holdNote()
           e.preventDefault(); e.stopPropagation(); return
         }
       }
@@ -745,29 +757,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       {/* After a movie: what to watch next */}
       {offer && lighter && !closing && !askingStill && <StallOffer lighter={lighter} onDismiss={() => setOffer(false)} onSwitch={() => { setOffer(false); fadeOut(() => { continuing = true; onSwitch({ ...lighter.media, viewOffset: Math.round(timeRef.current * 1000) }) }) }} />}
       {/* Auto leveling heads-up: the volume is about to shift by itself, so say so (then say what it did) */}
-      <div aria-live="polite" data-nopause className={`absolute left-1/2 z-40 -translate-x-1/2 transition-all duration-700 ${controls ? 'bottom-36' : 'bottom-10'} ${level.note ? 'opacity-100' : 'translate-y-2 opacity-0'} ${level.note?.kind === 'applied' ? 'pointer-events-auto' : 'pointer-events-none'}`}
+      <div aria-live="polite" data-nopause className={`absolute left-1/2 z-40 -translate-x-1/2 transition-all duration-700 ${controls ? 'bottom-36' : 'bottom-10'} ${level.note ? 'opacity-100' : 'translate-y-2 opacity-0'} ${level.note ? 'pointer-events-auto' : 'pointer-events-none'}`}
         onMouseEnter={() => { if (pillOpen) level.holdNote() }} onMouseMove={() => { if (pillOpen) level.holdNote() }}>
-        {noteShown.current && (
-          <div className="flex items-center gap-3 rounded-full bg-black/70 px-5 py-2.5 text-sm font-semibold text-white shadow-xl ring-1 ring-white/10 backdrop-blur-md">
-            <span>
-              {noteShown.current.kind === 'measuring' ? 'Auto-adjusting the volume. Please don’t change your device’s volume for a moment.'
-                : Math.abs(noteShown.current.gain) < 0.5 ? 'Volume checked: no change needed'
-                : noteShown.current.gain > 0 ? `Boost applied ${dbLabel(Math.round(noteShown.current.gain))}` : `Volume lowered ${dbLabel(Math.round(noteShown.current.gain))}`}
-            </span>
-            {noteShown.current.kind === 'applied' && (
-              <span className="flex items-center gap-1.5">
-                {[{ id: 0, label: 'Revert', aria: 'Revert: switch the boost off for this title', act: () => level.revertNote() },
-                  { id: 1, label: '−', aria: 'Quieter by 1 dB', act: () => level.adjustNote(-1) },
-                  { id: 2, label: '+', aria: 'Louder by 1 dB', act: () => level.adjustNote(1) }].map((b) => (
-                  <button key={b.id} aria-label={b.aria} onClick={() => { setPill(b.id); b.act() }}
-                    className={`rounded-full px-3 py-1 text-xs font-bold transition active:scale-90 ${b.id === 0 ? '' : 'min-w-8 text-sm'} ${pill === b.id ? 'bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}>{b.label}</button>
-                ))}
-              </span>
-            )}
-          </div>
-        )}
+        {noteShown.current && <VolumePill note={noteShown.current} gain={level.gain} ids={pillIds} active={pill} hint="You can turn this off any time in the player controls." onAct={(id, i) => { setPill(i); pillAct(id) }} />}
       </div>
-      {quietOpen && !askingStill && !closing && <QuietOffer gain={level.quiet!} onClose={level.clearQuiet} onNever={() => { update({ quietHintOff: true }); level.clearQuiet() }} onApply={() => { level.acceptQuiet(level.quiet!); update({ autoLevel: true }) }} />}
       {askingStill && !closing && <StillWatching onStay={stillHere} onTimeout={() => { homeRef.current = true; close() }} />}
       {suggest && <NextMovies server={server} media={media} onClose={close} onPlay={(m) => fadeOut(() => { continuing = true; onPlayNext(m) })} />}
     </div>

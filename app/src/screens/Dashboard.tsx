@@ -4,6 +4,7 @@ import { Avatar } from '../components/Avatar'
 import { Focusable } from '../components/Focusable'
 import { getHistory, getServerInfo, getSessions, imageUrl, type PlexHistoryEntry, type PlexMedia, type PlexServer, type PlexSession, type ServerInfo, type StreamKind } from '../lib/plex'
 import { inTauri } from '../lib/player'
+import { reveal } from '../lib/scroll'
 
 const KIND: Record<StreamKind, { label: string; cls: string }> = {
   direct: { label: 'Direct Play', cls: 'bg-emerald-400/15 text-emerald-300 ring-emerald-300/30' },
@@ -20,13 +21,16 @@ const ago = (t: number) => {
   return d === 1 ? 'yesterday' : `${d} days ago`
 }
 
+// Everything on this page can take the cursor (even what only shows information), so the remote can step down the page and it scrolls along.
 function Stat({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-2xl bg-white/6 p-5 ring-1 ring-white/10">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white/55"><span className="text-accent">{icon}</span>{label}</div>
-      <div className="text-[2rem] font-extrabold leading-none tracking-tight">{value}</div>
-      {hint && <div className="mt-2 text-sm text-white/45">{hint}</div>}
-    </div>
+    <Focusable onEnter={() => {}} onFocus={(el) => reveal(el)} title={`${label}: ${value}`} className="h-full">
+      <div className="h-full rounded-2xl bg-white/6 p-5 ring-1 ring-white/10 transition-all group-data-[hl=true]/f:scale-[1.03] group-data-[hl=true]/f:bg-white/12 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white/55"><span className="text-accent">{icon}</span>{label}</div>
+        <div className="text-[2rem] font-extrabold leading-none tracking-tight">{value}</div>
+        {hint && <div className="mt-2 text-sm text-white/45">{hint}</div>}
+      </div>
+    </Focusable>
   )
 }
 
@@ -86,7 +90,7 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
       {list.length > 0 && (
         <div className="mb-12 grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,430px),1fr))]">
           {list.map((s) => (
-            <Focusable key={s.id} onEnter={() => onOpen({ ratingKey: s.ratingKey, type: s.type, title: s.title })} title={`${s.user.name} — ${s.title}`}>
+            <Focusable key={s.id} onEnter={() => onOpen({ ratingKey: s.ratingKey, type: s.type, title: s.title })} onFocus={(el) => reveal(el)} title={`${s.user.name} — ${s.title}`}>
               <div className="flex gap-4 rounded-2xl bg-white/6 p-4 ring-1 ring-white/10 transition-all group-hover/f:bg-white/10 group-data-[hl=true]/f:scale-[1.02] group-data-[hl=true]/f:bg-white/12 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-accent">
                 <img src={imageUrl(server, s.thumb, 200, 300)} alt="" draggable={false} className="h-36 w-24 shrink-0 rounded-lg bg-surface object-cover" />
                 <div className="flex min-w-0 flex-1 flex-col">
@@ -116,11 +120,13 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
       {history && history.length > 0 && (
         <div className="divide-y divide-white/8 overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/10">
           {history.map((h) => (
-            <div key={h.key} className="flex items-center gap-4 px-5 py-3.5">
-              <Avatar name={h.user} thumb={h.userThumb} size={34} />
-              <div className="min-w-0 flex-1"><div className="truncate font-semibold">{h.title}</div><div className="truncate text-sm text-white/50">{h.subtitle}</div></div>
-              <div className="shrink-0 text-right"><div className="text-sm font-semibold text-white/75">{h.user}</div><div className="text-xs text-white/45">{ago(h.viewedAt)}</div></div>
-            </div>
+            <Focusable key={h.key} onEnter={() => { if (h.ratingKey) onOpen({ ratingKey: h.ratingKey, type: h.type === 'episode' ? 'show' : h.type, title: h.title }) }} onFocus={(el) => reveal(el)} title={`${h.user} — ${h.title}`}>
+              <div className="flex items-center gap-4 px-5 py-3.5 transition-colors group-hover/f:bg-white/6 group-data-[hl=true]/f:bg-white/15 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-inset group-data-[hl=true]/f:ring-white">
+                <Avatar name={h.user} thumb={h.userThumb} size={34} />
+                <div className="min-w-0 flex-1"><div className="truncate font-semibold">{h.title}</div><div className="truncate text-sm text-white/50">{h.subtitle}</div></div>
+                <div className="shrink-0 text-right"><div className="text-sm font-semibold text-white/75">{h.user}</div><div className="text-xs text-white/45">{ago(h.viewedAt)}</div></div>
+              </div>
+            </Focusable>
           ))}
         </div>
       )}

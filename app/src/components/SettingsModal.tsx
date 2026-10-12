@@ -150,6 +150,7 @@ function Playback() {
       {inTauri && <>
         <Heading>Volume</Heading>
         <Toggle label="Auto volume leveling" hint="Measures how loud each title is and applies one steady boost to all of it, so quiet movies don't need the TV turned way up. Remembered per movie and show." on={settings.autoLevel} onChange={(v) => update({ autoLevel: v })} />
+        <Toggle label="Offer to fix loud or quiet titles" hint="With auto leveling off, it still listens in the background; if a title needs more than 5 dB of change, a small prompt asks if you'd like it adjusted" on={!settings.quietHintOff} onChange={(v) => update({ quietHintOff: !v })} />
         {!isAndroid && <Toggle label="Dialogue boost for surround" hint="On 5.1 and 7.1 audio, lifts the center channel where dialogue lives, so voices stand out from effects." on={settings.dialogueBoost} onChange={(v) => update({ dialogueBoost: v })} />}
         <p className="px-4 pb-2 text-sm text-white/55">{isAndroid ? 'Auto leveling can be switched on or off while watching, and you can set the boost amount yourself, from the player\'s volume button. Dolby and DTS sent straight to a receiver can\'t be adjusted.' : 'Both can be switched on or off while watching, and you can set the boost amount yourself, from the player\'s volume button.'}</p>
       </>}
