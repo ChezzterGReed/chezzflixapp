@@ -8,11 +8,14 @@ import type { RequestItem } from './overseerr'
 import type { Season } from './settings'
 import { SPOOKY } from './lists/spooky'
 import { CHRISTMAS } from './lists/christmas'
+import { ensureRemoteLists, entriesFor } from './lists/remote'
 
 /** A channel made from a list: `keep` narrows which of the list's movies it plays (default: all of them). */
 export interface SeasonalChannel { id: string; number: number; name: string; keep?: (m: PlexMedia) => boolean }
 export interface SeasonalList {
-  id: string; season: Exclude<Season, null>; title: string; subtitle: string; entries: [string, number][]
+  id: string; season: Exclude<Season, null>; title: string; subtitle: string
+  /** The built-in copy of the list; the live one (from the hosted file, when reachable) is `listEntries(list)`. */
+  entries: [string, number][]
   /** Only these of the list's movies belong (e.g. by rating). */
   keep?: (m: PlexMedia) => boolean
   /** The list (and its channels) only appear when at least this many of its movies are on the server. Default 3. */
@@ -41,6 +44,9 @@ export const SEASONAL_LISTS: SeasonalList[] = [
   { id: 'xmas-violent', season: 'christmas', title: 'Violent Night', subtitle: 'Christmas with a bite: slashers, thrillers and action', entries: CHRISTMAS, keep: violentXmas, min: 8 },
 ]
 
+/** The list's movies as currently published (hosted file) or, failing that, as built into this version. */
+export const listEntries = (l: SeasonalList): [string, number][] => entriesFor(l.season, l.entries)
+
 export const listsFor = (season: Season): SeasonalList[] => (season ? SEASONAL_LISTS.filter((l) => l.season === season) : [])
 export const seasonalList = (id: string) => SEASONAL_LISTS.find((l) => l.id === id)
 
@@ -67,9 +73,10 @@ function findEntry(idx: LibIndex, title: string, year: number): PlexMedia | unde
 
 /** The list's movies that are on this server (matched by title and year, a year either side allowed), in the list's order. */
 export async function matchList(server: PlexServer, sections: PlexSection[], list: SeasonalList): Promise<PlexMedia[]> {
+  await ensureRemoteLists()
   const idx = await libraryIndex(server, sections)
   const out: PlexMedia[] = [], seen = new Set<string>()
-  for (const [title, year] of list.entries) {
+  for (const [title, year] of listEntries(list)) {
     const hit = findEntry(idx, title, year)
     if (hit && !seen.has(hit.ratingKey)) { seen.add(hit.ratingKey); out.push(hit) }
   }
@@ -82,8 +89,9 @@ export async function matchList(server: PlexServer, sections: PlexSection[], lis
  * rating and genres, so a family list doesn't offer an R-rated slasher), skipping anything the library already owns under another name.
  */
 export async function missingFromList(server: PlexServer, sections: PlexSection[], list: SeasonalList, tmdbKey: string): Promise<RequestItem[]> {
+  await ensureRemoteLists()
   const [idx, owned] = await Promise.all([libraryIndex(server, sections), guidIndex(server, sections)])
-  const todo = list.entries.filter(([title, year]) => !findEntry(idx, title, year))
+  const todo = listEntries(list).filter(([title, year]) => !findEntry(idx, title, year))
   const metas: (MovieMeta | null)[] = new Array(todo.length).fill(null)
   let next = 0
   await Promise.all(Array.from({ length: 6 }, async () => { while (next < todo.length) { const i = next++; metas[i] = await tmdbMovieMeta(tmdbKey, todo[i][0], todo[i][1]) } }))

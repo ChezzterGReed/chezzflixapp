@@ -1,16 +1,19 @@
 // Remembers the audio and subtitle choices you make while watching a TV show, so the rest of its episodes follow the same rules
 // (e.g. an anime: Japanese audio with English subtitles). Saved per show on this device; movies aren't remembered.
 import { LANGS } from './tvguide'
+import { activeProfile } from './profile'
 import type { PlexMedia, PlexStream } from './plex'
 
 interface TrackRef { lang?: string; title?: string; forced?: boolean }
 export interface TrackPref { audio?: TrackRef; sub?: 'off' | TrackRef }
 const KEY = 'chezzflix_track_prefs'
 
-const keyOf = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : null)
+// Kept per profile (what one person picks for a show doesn't change what another sees). Choices saved before profiles were separated are still read as a fallback.
+const baseKey = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : null)
+const keyOf = (m: PlexMedia) => { const b = baseKey(m); return b && activeProfile() ? `${activeProfile()}|${b}` : b }
 const readAll = (): Record<string, TrackPref> => { try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') } catch { return {} } }
 
-export const getTrackPref = (m: PlexMedia): TrackPref | undefined => { const k = keyOf(m); return k ? readAll()[k] : undefined }
+export const getTrackPref = (m: PlexMedia): TrackPref | undefined => { const k = keyOf(m); if (!k) return undefined; const all = readAll(); return all[k] ?? all[baseKey(m)!] }
 export function saveTrackPref(m: PlexMedia, patch: TrackPref) {
   const k = keyOf(m)
   if (!k) return

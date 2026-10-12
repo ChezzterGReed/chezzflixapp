@@ -21,6 +21,8 @@ const TAB_KEY = 'chezzflix_home_tab'
 interface Cached { rows: HomeRow[]; notices: HomeNotice[]; rowsAnime?: AnimeInfo; anime?: AnimeInfo; hero?: PlexMedia[]; recRows: (HomeRow & { subtitle?: string })[]; heroSig: string; at: number; refreshKey: number; watchKey: number }
 const homeCache = new Map<string, Cached>()
 const FRESH_MS = 10 * 60_000
+/** Forget what Home last showed (switching profile or signing out: the next Home is read fresh, never the previous person's). */
+export const clearHomeCache = () => homeCache.clear()
 
 export function Home({ server, sections, refreshKey, watchKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
   const { settings } = useSettings()

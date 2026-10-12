@@ -4,6 +4,7 @@ package app.chezzflix.client
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.content.Context
 import android.graphics.Typeface
 import android.os.Handler
@@ -84,6 +85,10 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
       setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
       setBackgroundColor(Color.BLACK)
+      // Never take part in D-pad focus: a focused view gets the system's thin white focus outline, which showed as bars down the sides.
+      isFocusable = false
+      descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+      if (android.os.Build.VERSION.SDK_INT >= 26) defaultFocusHighlightEnabled = false
       visibility = View.GONE
       player = p
     }
@@ -186,6 +191,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       loadedFired = false; nudges = 0
       gain.resetMeasure()
       view?.visibility = View.VISIBLE
+      activity.window.setBackgroundDrawable(ColorDrawable(Color.BLACK))   // anything the picture doesn't cover shows black while a video plays
       val item = MediaItem.Builder().setUri(a.url).apply {
         val subs = a.subs?.map { s ->
           MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url)).setMimeType(guessSubMime(s.url)).setLanguage(s.lang).setLabel(s.name).build()
@@ -219,6 +225,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     onUi(invoke) {
       player?.stop(); player?.clearMediaItems()
       view?.visibility = View.GONE
+      activity.window.setBackgroundDrawable(ColorDrawable(0xFF0A0A0D.toInt()))   // back to the app's dark background
       loadedFired = false
     }
   }

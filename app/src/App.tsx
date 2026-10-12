@@ -18,7 +18,8 @@ import { unseal, type Sealed } from './lib/sealed'
 import sealedKeys from './lib/sealed-keys.json'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
-import { Home } from './screens/Home'
+import { Home, clearHomeCache } from './screens/Home'
+import { clearRecsCache } from './lib/recsData'
 import { Library } from './screens/Library'
 import { Search } from './screens/Search'
 import { Watchlist } from './screens/Watchlist'
@@ -314,14 +315,14 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
 
   const pick = async (p: PlexProfile, pin?: string) => {
     const t = token === 'demo' ? 'demo' : await switchProfile(token, p.uuid, pin) // a wrong PIN throws here, before anything is remembered
-    markChosen(); invalidateCache(); demoPick.current = p
+    markChosen(); invalidateCache(); clearHomeCache(); clearRecsCache(); demoPick.current = p
     setNeedsPick(false)
     if (t !== token) onToken(t); else connect()
   }
 
   const switchTo = async (p: PlexProfile, pin?: string) => {
     const t = token === 'demo' ? 'demo' : await switchProfile(token, p.uuid, pin)
-    invalidateCache()
+    invalidateCache(); clearHomeCache(); clearRecsCache()   // the new profile gets a fresh Home: its own Continue Watching, hero and recommendations
     setMe({ name: p.title, thumb: p.thumb, key: p.uuid })
     if (t !== token) onToken(t)
   }
@@ -346,7 +347,7 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
 export default function App() {
   const [token, setToken] = useState(() => (DEMO ? 'demo' : localStorage.getItem('plex_token')))
   const onToken = useCallback((t: string) => { if (!DEMO) localStorage.setItem('plex_token', t); setToken(t) }, [])
-  const signOut = () => { localStorage.removeItem('plex_token'); store.removeItem(CHOSEN_KEY); invalidateCache(); setToken(null) }
+  const signOut = () => { localStorage.removeItem('plex_token'); store.removeItem(CHOSEN_KEY); invalidateCache(); clearHomeCache(); clearRecsCache(); setToken(null) }
   const booted = useBooted()
   return (
     <>

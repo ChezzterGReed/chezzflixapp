@@ -1,5 +1,6 @@
 import { LOW_POWER } from './perf'
 import { setNavSounds } from './sfx'
+import { setActiveProfile } from './profile'
 import type { Channel, ChannelPrefs } from './tvguide'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -140,7 +141,11 @@ export const cleanBrand = (v: string) => v.replace(/flix$/i, '').replace(/[^a-z0
 const keyFor = (profileKey: string) => `chezzflix_settings_${profileKey}`
 function load(profileKey: string): Settings {
   try {
-    const raw = localStorage.getItem(keyFor(profileKey)) ?? localStorage.getItem('chezzflix_settings')
+    // (A pre-profiles global copy, if one is still around, goes to the first profile that opens and is then removed, so no later profile inherits it.)
+    const own = localStorage.getItem(keyFor(profileKey))
+    const legacy = own == null ? localStorage.getItem('chezzflix_settings') : null
+    if (legacy != null) { try { localStorage.removeItem('chezzflix_settings') } catch { /* ignore */ } }
+    const raw = own ?? legacy
     const parsed = raw ? JSON.parse(raw) : {}
     // Older versions stored one global row list; per-tab layouts replaced it.
     if (!parsed.homeRows || Array.isArray(parsed.homeRows)) parsed.homeRows = {}
@@ -173,11 +178,13 @@ export function useTheme(): { season: Season; style: HolidayStyle; key: string; 
 
 /** Settings are stored per Plex profile, so each person gets their own accent, name, rows and libraries. */
 export function SettingsProvider({ profileKey, shared: sharedValues, children }: { profileKey: string; shared?: { tmdbKey?: string; overseerrUrl?: string }; children: ReactNode }) {
+  setActiveProfile(profileKey)   // (for the few per-profile things kept outside these settings, like each show's audio / subtitle choice)
   const [settings, setSettings] = useState<Settings>(() => load(profileKey))
   const loadedFor = useRef(profileKey)
+  const skipSave = useRef(false)   // the render right after switching profile still holds the previous person's settings: never save those under the new profile
 
   useEffect(() => {
-    if (loadedFor.current !== profileKey) { loadedFor.current = profileKey; setSettings(load(profileKey)) }
+    if (loadedFor.current !== profileKey) { loadedFor.current = profileKey; skipSave.current = true; setSettings(load(profileKey)) }
   }, [profileKey])
 
   useEffect(() => {
@@ -196,6 +203,7 @@ export function SettingsProvider({ profileKey, shared: sharedValues, children }:
       localStorage.setItem('chezzflix_last_season', season ? '1' : '0')
       localStorage.setItem('chezzflix_last_theme', themeKey(season, style))
     } catch { /* ignore */ }
+    if (skipSave.current) { skipSave.current = false; return }
     if (loadedFor.current === profileKey) { try { localStorage.setItem(keyFor(profileKey), JSON.stringify(settings)) } catch { /* private mode */ } }
   }, [settings, profileKey])
 

@@ -88,7 +88,7 @@ export function navBlip() {
     if (c.state === 'suspended') void c.resume()
     if (navBuf) {
       const src = c.createBufferSource(), g = c.createGain()
-      src.buffer = navBuf; src.playbackRate.value = 0.97 + Math.random() * 0.06; g.gain.value = 0.28   // each press a hair different
+      src.buffer = navBuf; src.playbackRate.value = 0.97 + Math.random() * 0.06; g.gain.value = 0.35   // each press a hair different
       src.connect(g).connect(c.destination); src.onended = () => { src.disconnect(); g.disconnect() }; src.start()
     } else {
       if (!navLoading) { navLoading = true; fetch(navUrl).then((r) => r.arrayBuffer()).then((b) => c.decodeAudioData(b)).then((d) => { navBuf = d }).catch(() => { navLoading = false }) }

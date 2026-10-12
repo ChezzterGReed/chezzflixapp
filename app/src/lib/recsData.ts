@@ -5,6 +5,8 @@ import { tabOk, type AnimeInfo, type Tab } from './homeData'
 
 interface Raw { history: PlexMedia[]; candidates: PlexMedia[] }
 const cache = new Map<string, Promise<Raw>>()
+/** Forget the watch history read for recommendations (switching profile or signing out). */
+export const clearRecsCache = () => cache.clear()
 
 function raw(server: PlexServer, sections: PlexSection[], bust: number): Promise<Raw> {
   // The access token identifies the profile, so each profile gets its own history.

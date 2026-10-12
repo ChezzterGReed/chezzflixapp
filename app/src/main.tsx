@@ -1,8 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './lib/perf'
+import { ensureRemoteLists } from './lib/lists/remote'
 import { ACCENTS, FESTIVE_RED, PUMPKIN, currentSeason } from './lib/settings'
 import './index.css'
+
+void ensureRemoteLists()   // fetch the hosted seasonal lists in the background, so they're ready by the time Home asks for them
 import App from './App.tsx'
 
 // Colours before the first paint, so the app never starts in default colours and then switches: the last accent in use (pumpkin orange
