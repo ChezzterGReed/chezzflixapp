@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.17',
+    'X-Plex-Version': '0.3.18',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -100,6 +100,8 @@ export interface PlexMedia {
   Media?: PlexMediaInfo[]
   /** Client-side: which of the file versions was picked (that one has been moved to Media[0]); used when asking Plex to transcode it. */
   versionIndex?: number
+  /** Client-side: opened again after the app was closed behind your back; it was paused when you left. */
+  resumePaused?: boolean
   grandparentGuid?: string
 }
 
@@ -212,7 +214,8 @@ const cache = new Map<string, { at: number; data: unknown }>()
 const inflight = new Map<string, Promise<unknown>>()
 
 async function get<T>(server: PlexServer, path: string, ttl = 60_000): Promise<T> {
-  const key = server.uri + path
+  // (The token is part of the key: two profiles must never share cached answers, whatever the order they were asked in.)
+  const key = `${server.uri}|${server.accessToken.slice(-8)}|${path}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < ttl) return hit.data as T
   if (inflight.has(key)) return inflight.get(key) as Promise<T>

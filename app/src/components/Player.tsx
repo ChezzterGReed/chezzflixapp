@@ -4,6 +4,8 @@ import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-sp
 import { findVersions, lighterThan, type Version } from '../lib/versions'
 import { StallOffer } from './StallOffer'
 import { QuietOffer } from './QuietOffer'
+import { saveResume } from '../lib/resume'
+import { activeProfile } from '../lib/profile'
 import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
@@ -13,7 +15,7 @@ import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeS
 import { NextMovies } from './NextMovies'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
-import { clampBoost, dbLabel, useLevelEngine } from '../lib/leveling'
+import { clampBoost, dbLabel, MAX_BOOST, MIN_BOOST, useLevelEngine } from '../lib/leveling'
 
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0
@@ -266,7 +268,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     if (!black || lifted || closing || mode === 'pending' || (!ready && !error)) return
     const wait = Math.max(0, BEAT_MS - (Date.now() - blackAt.current))
     const t = setTimeout(() => {
-      if (!error) { if (mode === 'native') mpvSet('pause', 'no').catch(() => {}); else video.current?.play().catch(() => setPaused(true)) }
+      // (Opened again after the app was closed while paused: stay paused.)
+      if (!error && !media.resumePaused) { if (mode === 'native') mpvSet('pause', 'no').catch(() => {}); else video.current?.play().catch(() => setPaused(true)) }
       liftedRef.current = true
       setCoverOn(false)
       setTimeout(() => { setLifted(true); poke() }, FADE_MS + 150)
@@ -333,6 +336,21 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
   const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost && !isAndroid, scanQuiet: !settings.quietHintOff })
+  // If the app is closed behind your back (a TV drops it from memory after a while), remember what was playing and where, so it can be picked up again.
+  useEffect(() => {
+    if (server.uri === DEMO_URI) return
+    const save = () => {
+      if (closingRef.current || !liftedRef.current) return
+      const t = timeRef.current
+      if (t < 10 || (duration && t > duration - 60)) return   // barely started, or nearly over: nothing worth coming back to
+      saveResume({ ratingKey: media.ratingKey, versionIndex: media.versionIndex, offsetMs: Math.round(t * 1000), paused: pausedRef.current, at: Date.now(), profile: activeProfile() })
+    }
+    const iv = setInterval(save, 5000)
+    const hide = () => { if (document.hidden) save() }
+    document.addEventListener('visibilitychange', hide); window.addEventListener('pagehide', save)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', save) }
+  }, [media.ratingKey, media.versionIndex, duration, server.uri])
+
   // Other versions of this title (other qualities, other libraries): used to suggest a lighter one if playback keeps stalling.
   useEffect(() => { findVersions(server, media).then(setVersions).catch(() => {}) }, [server, media])
   const lighter = useMemo(() => lighterThan(versions, media), [versions, media])
@@ -383,7 +401,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // Subtitle look (plain-text subtitles; styled .ass ones keep their own).
   useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, loadedTick, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
-  // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +10).
+  // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +20).
   const nudgeBoost = (d: 1 | -1) => level.setBoost(clampBoost((level.boost === 'auto' ? Math.round(level.gain) : level.boost) + d))
   const allLevelRows = [
     { label: 'Auto leveling', value: settings.autoLevel ? 'On' : 'Off', hint: 'Measures the title, holds one steady boost', act: () => update({ autoLevel: !settings.autoLevel }) },
@@ -672,9 +690,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
                 <button onClick={() => { setLevelPanel(i); r.act() }} className="min-w-0 flex-1 text-left"><span className="block text-sm font-bold">{r.label}</span><span className={`block truncate text-xs ${levelPanel === i ? 'text-black/55' : 'text-white/45'}`}>{r.hint}</span></button>
                 {i === boostRow ? (
                   <span className="flex shrink-0 items-center gap-1.5">
-                    <button aria-label="Quieter by 1 dB" disabled={typeof level.boost === 'number' && level.boost <= -10} onClick={() => nudgeBoost(-1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 disabled:opacity-30 ${levelPanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>−</button>
+                    <button aria-label="Quieter by 1 dB" disabled={typeof level.boost === 'number' && level.boost <= MIN_BOOST} onClick={() => nudgeBoost(-1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 disabled:opacity-30 ${levelPanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>−</button>
                     <span className="min-w-[4.6rem] text-center text-xs font-bold tabular-nums">{r.value}</span>
-                    <button aria-label="Louder by 1 dB" disabled={typeof level.boost === 'number' && level.boost >= 10} onClick={() => nudgeBoost(1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 disabled:opacity-30 ${levelPanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>+</button>
+                    <button aria-label="Louder by 1 dB" disabled={typeof level.boost === 'number' && level.boost >= MAX_BOOST} onClick={() => nudgeBoost(1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 disabled:opacity-30 ${levelPanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>+</button>
                   </span>
                 ) : (
                   <button onClick={() => { setLevelPanel(i); r.act() }} className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${levelPanel === i ? 'bg-black/10' : 'bg-white/10'} ${r.value === 'On' ? 'text-accent' : ''}`}>{r.value}</button>

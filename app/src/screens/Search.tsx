@@ -56,7 +56,12 @@ export function Search({ server, token, sections, onOpen }: { server: PlexServer
   const term = q.trim()
   // Two lists: what you can watch right now, then what you could request. Each is ordered by how close the title is to what was typed.
   const rank = <T,>(list: T[], title: (x: T) => string) => list.map((x, i) => ({ x, i, c: closeness(title(x), term) })).sort((p, r) => r.c - p.c || p.i - r.i).map((e) => e.x)
-  const available = rank(local ?? [], (m) => m.title)
+  // The same title in several libraries (a 1080p copy and a 4K one, say) is listed once: opening it offers every copy when you press Play.
+  const once = (list: PlexMedia[]) => {
+    const seen = new Set<string>()
+    return list.filter((m) => { const k = `${m.type}|${m.guid ?? `${norm(m.title)}|${m.year ?? ''}`}`; if (seen.has(k)) return false; seen.add(k); return true })
+  }
+  const available = rank(once(local ?? []), (m) => m.title)
   const requestable = rank(remote, (r) => r.title)
   const scroll = (el: HTMLElement) => { input.current?.blur(); reveal(el) }   // moving onto a result releases the text field, so OK opens the title (not the keyboard)
   const grid = 'fade-in grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]'

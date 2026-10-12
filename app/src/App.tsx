@@ -20,6 +20,7 @@ import { UpdatePrompt } from './components/UpdatePrompt'
 import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home, clearHomeCache } from './screens/Home'
 import { clearRecsCache } from './lib/recsData'
+import { clearBoot, clearResume, loadBoot, loadResume, saveBoot } from './lib/resume'
 import { Library } from './screens/Library'
 import { Search } from './screens/Search'
 import { Watchlist } from './screens/Watchlist'
@@ -165,7 +166,22 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     } catch (e) { say('Could not start playback: ' + (e as Error).message) }
   }
 
-  const closePlayer = (home?: boolean) => { setPlaying(undefined); invalidateWatchState(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
+  // Opened again after the app was closed while something was playing: put that back up, at the same spot (if it was within half an hour).
+  const resumed = useRef(false)
+  useEffect(() => {
+    if (resumed.current || token === 'demo') return
+    resumed.current = true
+    const r = loadResume(me.key)
+    if (!r) return
+    getMetadata(server, r.ratingKey).then((full) => {
+      const media = full.Media ?? []
+      const m = r.versionIndex !== undefined && media[r.versionIndex] ? { ...full, Media: [media[r.versionIndex], ...media.filter((_, i) => i !== r.versionIndex)], versionIndex: r.versionIndex } : full
+      setBooted(true)
+      setPlaying({ ...m, viewOffset: r.offsetMs, resumePaused: r.paused })
+    }).catch(() => clearResume())
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const closePlayer = (home?: boolean) => { clearResume(); setPlaying(undefined); invalidateWatchState(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
   const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying(full) }
 
   const open = (m: PlexMedia) => {
@@ -263,10 +279,14 @@ function Gate(props: Parameters<typeof Main>[0]) {
 }
 
 function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: string) => void; onSignOut: () => void }) {
-  const [server, setServer] = useState<PlexServer>()
-  const [sections, setSections] = useState<PlexSection[]>([])
-  const [profiles, setProfiles] = useState<PlexProfile[]>([])
-  const [me, setMe] = useState<Me>()
+  // Reopened soon after it was last used (a TV may have dropped the app from memory): open straight away on the last connection, and check it quietly.
+  const [snap] = useState(() => (token === 'demo' ? undefined : loadBoot(token)))
+  const warm = useRef(!!snap)
+  const [server, setServer] = useState<PlexServer | undefined>(snap?.server)
+  const [sections, setSections] = useState<PlexSection[]>(snap?.sections ?? [])
+  const [profiles, setProfiles] = useState<PlexProfile[]>(snap?.profiles ?? [])
+  const [me, setMe] = useState<Me | undefined>(snap?.me)
+  useEffect(() => { if (snap) setBooted(true) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [error, setError] = useState<string>()
   const [needsPick, setNeedsPick] = useState(false)
   const [shared, setShared] = useState<{ tmdbKey?: string; overseerrUrl?: string }>({})
@@ -284,8 +304,10 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
     return () => { alive = false }
   }, [serverId])
 
-  const connect = useCallback(async () => {
-    setError(undefined); setServer(undefined); setBooted(false)
+  const connect = useCallback(async (): Promise<void> => {
+    const quiet = warm.current; warm.current = false   // the first connect after a quick reopen runs behind the screen that's already up
+    // A new connection (switching profile, or a token that changed): forget everything read with the previous one.
+    if (!quiet) { invalidateCache(); clearHomeCache(); clearRecsCache(); setError(undefined); setServer(undefined); setBooted(false) }
     try {
       // First sign-in on this device with more than one profile: ask who's watching before anything else.
       const ps = await getProfiles(token)
@@ -293,9 +315,18 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
       setNeedsPick(false)
       const [servers, user] = await Promise.all([getServers(token), token === 'demo' && demoPick.current ? Promise.resolve({ title: demoPick.current.title, thumb: demoPick.current.thumb, uuid: demoPick.current.uuid }) : getCurrentUser(token)])
       if (!servers[0]) return setError('No Plex servers found on this account.')
-      setSections(await getSections(servers[0]))
-      setServer(servers[0]); setProfiles(ps); setMe({ name: user.title, thumb: user.thumb, key: user.uuid ?? user.title })
-    } catch (e) { setError(String(e)); setBooted(true) }
+      const secs = await getSections(servers[0])
+      const next = servers[0], who = { name: user.title, thumb: user.thumb, key: user.uuid ?? user.title }
+      // Only swap things that actually changed, so a quiet check never reloads a screen that's fine.
+      setServer((cur) => (cur && cur.uri === next.uri && cur.accessToken === next.accessToken ? cur : next))
+      setSections((cur) => (cur.length === secs.length && cur.every((x, i) => x.key === secs[i].key && x.title === secs[i].title) ? cur : secs))
+      setProfiles(ps)
+      setMe((cur) => (cur && cur.key === who.key && cur.name === who.name && cur.thumb === who.thumb ? cur : who))
+      if (token !== 'demo') saveBoot({ token, server: next, sections: secs, profiles: ps, me: who, at: Date.now() })
+    } catch (e) {
+      if (quiet) { clearBoot(); await connect(); return }   // the quick start didn't hold up (offline? token expired?): do it the normal way, with the proper error screen
+      setError(String(e)); setBooted(true)
+    }
   }, [token])
   useEffect(() => { connect() }, [connect])
 
@@ -315,16 +346,16 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
 
   const pick = async (p: PlexProfile, pin?: string) => {
     const t = token === 'demo' ? 'demo' : await switchProfile(token, p.uuid, pin) // a wrong PIN throws here, before anything is remembered
-    markChosen(); invalidateCache(); clearHomeCache(); clearRecsCache(); demoPick.current = p
+    markChosen(); demoPick.current = p
     setNeedsPick(false)
     if (t !== token) onToken(t); else connect()
   }
 
   const switchTo = async (p: PlexProfile, pin?: string) => {
     const t = token === 'demo' ? 'demo' : await switchProfile(token, p.uuid, pin)
-    invalidateCache(); clearHomeCache(); clearRecsCache()   // the new profile gets a fresh Home: its own Continue Watching, hero and recommendations
-    setMe({ name: p.title, thumb: p.thumb, key: p.uuid })
-    if (t !== token) onToken(t)
+    // The new profile gets a completely fresh start: the loading screen, then its own Continue Watching, hero and recommendations. (connect() clears everything read for the last profile.)
+    demoPick.current = p; clearResume()
+    if (t !== token) onToken(t); else connect()
   }
 
   if (error) return (
@@ -347,7 +378,7 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
 export default function App() {
   const [token, setToken] = useState(() => (DEMO ? 'demo' : localStorage.getItem('plex_token')))
   const onToken = useCallback((t: string) => { if (!DEMO) localStorage.setItem('plex_token', t); setToken(t) }, [])
-  const signOut = () => { localStorage.removeItem('plex_token'); store.removeItem(CHOSEN_KEY); invalidateCache(); clearHomeCache(); clearRecsCache(); setToken(null) }
+  const signOut = () => { localStorage.removeItem('plex_token'); store.removeItem(CHOSEN_KEY); invalidateCache(); clearHomeCache(); clearRecsCache(); clearBoot(); clearResume(); setToken(null) }
   const booted = useBooted()
   return (
     <>

@@ -4,21 +4,22 @@
 //  Auto leveling   measures the title's loudness while it plays, picks one gain to reach TARGET_LUFS, ramps to it gently, refines it
 //                  twice early on, and remembers it for the title (the whole show, for episodes) so next time it's right from the start.
 //  Dialogue boost  for 5.1/7.1 audio, lifts only the center channel (where dialogue lives) before the TV mixes down to stereo.
-//  Boost amount    manual override per title: Auto (follow auto leveling) or a fixed amount nudged in 1 dB steps, -10 to +10; remembered too.
+//  Boost amount    manual override per title: Auto (follow auto leveling) or a fixed amount nudged in 1 dB steps, -10 to +20; remembered too.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mpvCmd, mpvGet, mpvSet } from './native'
 import type { PlexMedia } from './plex'
 
 /** 'auto' follows auto leveling; a number is a fixed boost in dB (0 = none). */
 export type Boost = 'auto' | number
-export const MAX_BOOST = 10
-export const clampBoost = (n: number) => Math.max(-MAX_BOOST, Math.min(MAX_BOOST, Math.round(n)))
+export const MAX_BOOST = 20
+export const MIN_BOOST = -10
+export const clampBoost = (n: number) => Math.max(MIN_BOOST, Math.min(MAX_BOOST, Math.round(n)))
 export const dbLabel = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)} dB`
 
 export const NOTE_MS = 3500        // the "Boost applied" pill stays this long if left alone...
 const NOTE_TOUCHED_MS = 4000  // ...or this long after the last time it was touched
 export const TARGET_LUFS = -22
-const MIN_GAIN = -5, MAX_GAIN = 15   // automatic leveling lifts a quiet title by up to 15 dB and can lower a loud one by up to 5
+const MIN_GAIN = -5, MAX_GAIN = 20   // automatic leveling lifts a quiet title by up to 20 dB and can lower a loud one by up to 5
 const FIRST_AT = 20, REFINE_AT = [60, 180], STOP_AT = 300   // seconds of playback
 const FAST_FIRST_AT = 6, FAST_REFINE_AT = [20, 60], FAST_STOP_AT = 120   // the TV Guide: you're surfing, so settle quickly
 export const GUIDE_MAX_GAIN = 5   // ...and never boost by more than this many dB
@@ -64,8 +65,8 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   const key = (fast ? 'guide:' : '') + memKey(media)
   const hi = fast ? GUIDE_MAX_GAIN : MAX_GAIN
   const limit = useCallback((v: number) => Math.max(MIN_GAIN, Math.min(hi, v)), [hi])
-  // A boost you set by hand goes from -10 to +10 dB; the automatic one from -5 to +15.
-  const manual = (v: number) => Math.max(-MAX_BOOST, Math.min(MAX_BOOST, v))
+  // A boost you set by hand goes from -10 to +20 dB; the automatic one from -5 to +20.
+  const manual = (v: number) => Math.max(MIN_BOOST, Math.min(MAX_BOOST, v))
   const [boost, setBoostState] = useState<Boost>(() => readMem(key).boost ?? 'auto')
   const [gain, setGain] = useState(0)
   /** For a title that hasn't been measured yet: 'measuring' while it listens, then 'applied' (briefly) with the boost it chose. */
