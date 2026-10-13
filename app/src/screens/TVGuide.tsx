@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Copy, Info as InfoIcon, Languages, ListChecks, Play as PlayIcon, RefreshCw, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, Copy, Info as InfoIcon, Languages, ListChecks, Play as PlayIcon, RefreshCw, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { AddChannel, Btn, CheckRow, NameField, Pill } from '../components/AddChannel'
 import { ChannelEditor } from '../components/ChannelEditor'
@@ -60,6 +60,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   const [prefsFor, setPrefsFor] = useState<Channel>()
   const [editing, setEditing] = useState<string>()   // id of the channel whose content is being edited
   const [guideSettings, setGuideSettings] = useState(false)
+  const [reorder, setReorder] = useState<string | true>()   // choosing the channel order (the id of the channel to start on, if opened from its menu)
   const [watching, setWatching] = useState<number>()
   const [slow, setSlow] = useState(false)
   const track = useRef<HTMLDivElement>(null)
@@ -144,6 +145,8 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   const clone = (c: Channel) => { if (settings.channels.length < 40) update({ channels: [...settings.channels, cloneChannel(c, settings.channels)] }) }
   const setPrefs = (c: Channel, prefs: Channel['prefs']) => (c.seasonal ? update({ seasonalPrefs: { ...settings.seasonalPrefs, [c.id]: prefs ?? {} } }) : update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, prefs } : x)) }))
   const remove = (c: Channel) => { update({ channels: settings.channels.filter((x) => x.id !== c.id) }); setMenu(undefined); setSel({ row: 0, t: Date.now() }) }
+  // Channel numbers are the order: saving a new order renumbers them 1, 2, 3...
+  const saveOrder = (ids: string[]) => { update({ channels: ids.map((id, i) => ({ ...settings.channels.find((c) => c.id === id)!, number: i + 1 })) }); setReorder(undefined); setSel({ row: seasonalChans.length, t: Date.now() }) }
   const rename = (c: Channel, name: string) => { update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, name: uniqueName(name, settings.channels.filter((y) => y.id !== c.id).map((y) => y.name)) } : x)) }); setRenaming(undefined) }
 
   const span = hours * 60 * PPM
@@ -160,6 +163,11 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
       {channels.length > 0 && (
         <Focusable focusKey="guide-options" onEnter={() => { const c = channels[selRef.current.row]; if (c) setMenu(c) }} title="Edit the highlighted channel" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
           <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-3.5 text-[0.86rem] whitespace-nowrap font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ListChecks size={17} />Edit</div>
+        </Focusable>
+      )}
+      {userChannels.length > 1 && (
+        <Focusable focusKey="guide-reorder" onEnter={() => setReorder(true)} title="Change channel order" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
+          <div className="flex h-11 items-center gap-2 rounded-full bg-white/12 px-3.5 text-[0.86rem] whitespace-nowrap font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><ArrowUpDown size={17} />Order</div>
         </Focusable>
       )}
       <Focusable focusKey="guide-refresh" onEnter={refreshGuide} title="Refresh guide" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
@@ -294,6 +302,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
           <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
             <div className="px-3.5 pb-2 pt-3"><div className="truncate text-[1.02rem] font-bold">{menu.seasonal ? '' : `${menu.number} · `}{menu.name}</div><div className="text-sm text-white/55">{menu.seasonal ? 'Seasonal channel · built from this season’s list' : 'Channel options'}</div></div>
             {!menu.seasonal && <MenuItem icon={<ListChecks size={20} />} label="Edit content" onEnter={() => { setEditing(menu.id); setMenu(undefined) }} />}
+            {!menu.seasonal && userChannels.length > 1 && <MenuItem icon={<ArrowUpDown size={20} />} label="Change order" onEnter={() => { setReorder(menu.id); setMenu(undefined) }} />}
             <MenuItem icon={<Languages size={20} />} label="Preferences" onEnter={() => { setPrefsFor(menu); setMenu(undefined) }} />
             <MenuItem icon={<Copy size={20} />} label="Clone channel" onEnter={() => { clone(menu); setMenu(undefined) }} />
             {!menu.seasonal && <MenuItem icon={<Pencil size={20} />} label="Rename" onEnter={() => { setRenaming(menu); setMenu(undefined) }} />}
@@ -303,6 +312,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
       )}
       {editing && settings.channels.find((c) => c.id === editing) && <ChannelEditor channel={settings.channels.find((c) => c.id === editing)!} server={server} sections={sections} onChange={(patch) => patchChannel(editing, patch)} onClose={() => setEditing(undefined)} />}
       {prefsFor && <Prefs channel={prefsFor.seasonal ? (seasonalChans.find((c) => c.id === prefsFor.id) ?? prefsFor) : (settings.channels.find((c) => c.id === prefsFor.id) ?? prefsFor)} onChange={(p) => setPrefs(prefsFor, p)} onClose={() => setPrefsFor(undefined)} />}
+      {reorder && <ReorderChannels channels={userChannels} start={typeof reorder === 'string' ? reorder : undefined} onClose={() => setReorder(undefined)} onSave={saveOrder} />}
       {guideSettings && <GuideDefaults onClose={() => setGuideSettings(false)} />}
       {renaming && <Rename channel={renaming} onClose={() => setRenaming(undefined)} onSave={(n) => rename(renaming, n)} />}
     </div>
@@ -314,6 +324,39 @@ function MenuItem({ icon, label, onEnter, danger }: { icon: React.ReactNode; lab
     <Focusable onEnter={onEnter} title={label}>
       <div className={`flex h-12 items-center gap-3 rounded-xl px-3.5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${danger ? 'text-red-300 group-data-[hl=true]/f:text-red-700' : ''}`}>{icon}{label}</div>
     </Focusable>
+  )
+}
+
+/** Move channels up and down, then save: nothing changes until you do. */
+function ReorderChannels({ channels, start, onClose, onSave }: { channels: Channel[]; start?: string; onClose: () => void; onSave: (ids: string[]) => void }) {
+  const [ids, setIds] = useState(() => channels.map((c) => c.id))
+  const byId = (id: string) => channels.find((c) => c.id === id)!
+  const changed = ids.some((id, i) => id !== channels[i].id)
+  const move = (i: number, d: -1 | 1) => setIds((l) => { const j = i + d; if (j < 0 || j >= l.length) return l; const n = [...l]; [n[i], n[j]] = [n[j], n[i]]; return n })
+  useEffect(() => { const t = setTimeout(() => setFocus(`ro-down-${start ?? ids[0]}`), 80); return () => clearTimeout(t) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const arrow = (key: string, icon: React.ReactNode, label: string, off: boolean, onEnter: () => void) => (
+    <Focusable focusKey={key} onEnter={off ? undefined : onEnter} title={label}>
+      <div className={`grid size-11 place-items-center rounded-full transition-colors ${off ? 'bg-white/5 text-white/25' : 'bg-white/12 group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black'}`}>{icon}</div>
+    </Focusable>
+  )
+  return (
+    <Layer onClose={onClose} scrim="bg-black/60 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(520px,94vw)] -translate-x-1/2 -translate-y-1/2">
+      <div className="pop rounded-3xl bg-[#17171c]/95 p-5 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+        <div className="text-lg font-bold">Change channel order</div>
+        <p className="mb-3 text-sm text-white/55">Use the arrows to move a channel, then save. Channels are numbered in this order.</p>
+        <div className="max-h-[56vh] space-y-1.5 overflow-y-auto pr-1 [scrollbar-width:none]">
+          {ids.map((id, i) => (
+            <div key={id} className="flex items-center gap-3 rounded-2xl bg-white/[0.06] py-1.5 pl-4 pr-2">
+              <span className="w-7 text-xl font-extrabold tabular-nums text-white/90">{i + 1}</span>
+              <span className="min-w-0 flex-1 truncate font-semibold">{byId(id).name}</span>
+              {arrow(`ro-up-${id}`, <ArrowUp size={20} />, 'Move up', i === 0, () => { move(i, -1); if (i === 1) setTimeout(() => setFocus(`ro-down-${id}`), 0) })}
+              {arrow(`ro-down-${id}`, <ArrowDown size={20} />, 'Move down', i === ids.length - 1, () => { move(i, 1); if (i === ids.length - 2) setTimeout(() => setFocus(`ro-up-${id}`), 0) })}
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex gap-2.5"><Btn onEnter={onClose}>Cancel</Btn><Btn primary disabled={!changed} onEnter={() => onSave(ids)}>Save order</Btn></div>
+      </div>
+    </Layer>
   )
 }
 

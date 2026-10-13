@@ -5,8 +5,6 @@ import { getChildren, getMetadata, type PlexMedia, type PlexServer } from './ple
 export interface Segment { start: number; len: number }
 
 export const PREVIEW_LEN = 30
-export const RECAP_PARTS = 6
-export const RECAP_LEN = 8       // each of the first five clips
 export const RECAP_FINALE = 20   // the last clip: the final seconds before the credits
 
 const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
@@ -20,20 +18,28 @@ export function previewSegments(m: PlexMedia): Segment[] {
   return [{ start: Math.round(start), len: PREVIEW_LEN }]
 }
 
+/** How many clips, and how long each is, by episode length: 40 minutes or less 14 x 6 s, up to 65 minutes 17 x 5 s, longer 20 x 5 s. */
+export function recapPlan(durationSec: number): { count: number; len: number } {
+  const min = durationSec / 60
+  return min <= 40 ? { count: 14, len: 6 } : min <= 65 ? { count: 17, len: 5 } : { count: 20, len: 5 }
+}
+
 /**
- * The episode (up to its credits, when Plex has marked them) is cut into six equal parts: 8 seconds from a little way into each of
- * the first five. The sixth clip is 20 seconds: the stretch right before the credits begin, or, without credits, from the last part.
+ * The episode (up to its credits, when Plex has marked them) is cut into equal parts, one more than there are short clips: a few seconds
+ * from a little way into each of the first parts (see `recapPlan`). The last clip is 20 seconds: the stretch right before the credits
+ * begin, or, without credits, from the last part.
  */
 export function recapSegments(m: PlexMedia): Segment[] {
   const dur = durationOf(m)
   if (dur <= 0) return []
+  const { count, len } = recapPlan(dur)
   const credits = m.Marker?.find((k) => k.type === 'credits')
   const creditsAt = credits && credits.startTimeOffset / 1000 > 60 ? credits.startTimeOffset / 1000 : 0
   const end = creditsAt || dur
-  const part = end / RECAP_PARTS
-  const clamp = (start: number, len: number) => Math.max(0, Math.min(start, dur - len - 1))
-  const segs: Segment[] = Array.from({ length: RECAP_PARTS - 1 }, (_, i) => ({ start: clamp(i * part + part * 0.25, RECAP_LEN), len: RECAP_LEN }))
-  segs.push(creditsAt ? { start: Math.max(0, creditsAt - RECAP_FINALE), len: RECAP_FINALE } : { start: clamp((RECAP_PARTS - 1) * part + part * 0.25, RECAP_FINALE), len: RECAP_FINALE })
+  const part = end / (count + 1)
+  const clamp = (start: number, l: number) => Math.max(0, Math.min(start, dur - l - 1))
+  const segs: Segment[] = Array.from({ length: count }, (_, i) => ({ start: clamp(i * part + part * 0.25, len), len }))
+  segs.push(creditsAt ? { start: Math.max(0, creditsAt - RECAP_FINALE), len: RECAP_FINALE } : { start: clamp(count * part + part * 0.25, RECAP_FINALE), len: RECAP_FINALE })
   return segs
 }
 

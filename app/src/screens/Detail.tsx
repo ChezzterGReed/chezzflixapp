@@ -185,7 +185,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
       if (target) setClip({ media: target, segments: previewSegments(target), heading: m.title, subheading: m.type === 'show' ? `Preview · ${episodeLabel(target) || 'Episode 1'}` : 'Preview' })
     } finally { setBusy(false) }
   }
-  // Recap: eight short snippets spread across one episode.
+  // Recap: short snippets spread across one episode (see recapPlan).
   const recap = async (ep: PlexMedia) => {
     const full = await getMetadata(server, ep.ratingKey)   // the full record carries the credits marker the last clip needs
     const segments = recapSegments(full)

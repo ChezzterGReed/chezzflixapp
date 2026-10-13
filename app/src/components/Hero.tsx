@@ -8,13 +8,13 @@ import { backdropPath, episodeLabel, formatRuntime, imageUrl, logoPath, type Ple
 
 const ROTATE_MS = 8000
 
-function playLabel(m: PlexMedia): string {
+export function playLabel(m: PlexMedia): string {
   const next = m.type === 'show' ? m.OnDeck?.Metadata : undefined
   if (next) return `${next.viewOffset ? 'Resume' : 'Play'} ${episodeLabel(next)}`.trim()
   return m.viewOffset ? 'Resume' : 'Play'
 }
 
-function Meta({ m }: { m: PlexMedia }) {
+export function Meta({ m }: { m: PlexMedia }) {
   const score = m.audienceRating ?? m.rating
   const length = m.type === 'show' ? (m.childCount ? `${m.childCount} Season${m.childCount > 1 ? 's' : ''}` : '') : formatRuntime(m.duration)
   const bits = [m.year, length, ...(m.Genre ?? []).slice(0, 3).map((g) => g.tag)].filter(Boolean)

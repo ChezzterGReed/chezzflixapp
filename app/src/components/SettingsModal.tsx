@@ -5,7 +5,7 @@ import { Layer } from './Layer'
 import { resetGuide } from '../lib/tvguide'
 import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
-import { ACCENTS, brandName, cleanBrand, currentSeason, useSettings, useSync, type HomeRowCfg, type HomeTab } from '../lib/settings'
+import { ACCENTS, brandName, cleanBrand, currentSeason, hidesWatched, useSettings, useSync, type HomeRowCfg, type HomeTab } from '../lib/settings'
 import { getCollections, getGenres, getPlaylists, type PlexSection, type PlexServer } from '../lib/plex'
 import { mergeRows, rowCatalog } from '../lib/homeData'
 import { inTauri } from '../lib/player'
@@ -301,6 +301,7 @@ function HomeEditor({ server, sections }: { server: PlexServer; sections: PlexSe
       <div className="flex flex-wrap gap-2 px-4 pb-3">
         {(Object.keys(TAB_LABEL) as HomeTab[]).filter((t) => t !== 'foryou').map((t) => <Pill key={t} active={tab === t} onEnter={() => setTab(t)}>{TAB_LABEL[t]}</Pill>)}
       </div>
+      <Toggle label={`Only show titles I haven't watched on ${TAB_LABEL[tab]}`} hint="Keeps finished movies and shows out of this tab's rows (Continue Watching is unaffected)" on={hidesWatched(settings, tab)} onChange={(v) => update({ hideWatchedTabs: { ...settings.hideWatchedTabs, [tab]: v } })} />
       <div className="space-y-0.5">
         {rows.map((r, i) => (
           <div key={r.id} className="flex items-center gap-1 rounded-xl pr-2 transition-colors hover:bg-white/5">
@@ -367,7 +368,6 @@ function Content() {
   return (
     <>
       <Toggle label="Hide spoilers" hint="Blur thumbnails and descriptions of episodes you haven't watched. You can reveal one at a time." on={settings.hideSpoilers} onChange={(v) => update({ hideSpoilers: v })} />
-      <Toggle label="Hide watched titles" hint="Keep finished movies and shows out of discovery rows" on={settings.hideWatched} onChange={(v) => update({ hideWatched: v })} />
       <Heading>Trending</Heading>
       <TmdbKey />
       <Heading>Home</Heading>

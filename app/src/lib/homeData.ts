@@ -2,7 +2,7 @@ import {
   getAllSectionItems, getCollectionItems, getCollections, getGenreItems, getGenreRandom, getGenres, getHubs, getMetadata, getOnDeck, getPlaylistItems,
   getRandomItems, getRecentShows, getSectionItems, isOtherSection, isWatched, serverTrending, type PlexMedia, type PlexSection, type PlexServer,
 } from './plex'
-import type { HomeRowCfg, HomeTab, Season, Settings } from './settings'
+import { hidesWatched, type HomeRowCfg, type HomeTab, type Season, type Settings } from './settings'
 import { trendingInLibrary } from './tmdb'
 import { shuffled } from './session'
 import { getWatchlist, matchLibrary } from './watchlist'
@@ -281,7 +281,7 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
       else items = await custom(cfg.kind === 'genre' && defaults.has(cfg.id) ? bctx : cctx, cfg)
     } catch { return null }
     items = items.filter(keep)
-    if (!cont) { items = dedupe(items); if (settings.hideWatched) items = items.filter((m) => !isWatched(m)) }
+    if (!cont) { items = dedupe(items); if (hidesWatched(settings, tab)) items = items.filter((m) => !isWatched(m)) }
     return items.length ? { id: cfg.id, title: cfg.title, items: items.slice(0, 30), continue: cont } : null
   }))
   const out = rows.filter((r): r is HomeRow => !!r)
@@ -350,4 +350,24 @@ export async function loadHero(server: PlexServer, sections: PlexSection[], tab:
   }
   const full = await Promise.all(picks.map((m) => getMetadata(server, showKey(m)).catch(() => null)))
   return full.filter((m): m is PlexMedia => !!m).map((m) => (nsInfo.get(m.ratingKey) ? { ...m, newSeason: nsInfo.get(m.ratingKey) } : m))
+}
+
+/** The numbers a tab's banner shows: how much is in the library, how much is unwatched, what's new. */
+export interface TabStat { label: string; value: number }
+export async function tabStats(server: PlexServer, visible: PlexSection[], tab: Tab, anime: AnimeInfo | undefined): Promise<TabStat[]> {
+  const real = visible.filter((s) => !isOtherSection(s))
+  const count = async (type: 'movie' | 'show', unwatched: boolean) => (await Promise.all(real.filter((s) => s.type === type && !(animeEnabled(anime) && anime?.sections.has(s.key))).map((s) => getSectionItems(server, s.key, 'added', 0, 1, undefined, unwatched).then((r) => r.total).catch(() => 0)))).reduce((a, n) => a + n, 0)
+  if (tab === 'movie') {
+    const [all, left] = await Promise.all([count('movie', false), count('movie', true)])
+    return [{ label: 'movies', value: all }, { label: 'unwatched', value: left }]
+  }
+  if (tab === 'show') {
+    const [all, left, ns, air] = await Promise.all([count('show', false), count('show', true), newSeasonItems(server, visible, tab, anime).then((l) => l.length).catch(() => 0), currentlyAiring(server, visible).then((l) => l.filter((m) => tabOk(tab, m, anime)).length).catch(() => 0)])
+    return [{ label: 'shows', value: all }, { label: 'unwatched', value: left }, { label: 'new seasons', value: ns }, { label: 'airing now', value: air }]
+  }
+  if (tab === 'anime') {
+    const [ns, air] = await Promise.all([newSeasonItems(server, visible, tab, anime).then((l) => l.length).catch(() => 0), currentlyAiring(server, visible).then((l) => l.filter((m) => tabOk(tab, m, anime)).length).catch(() => 0)])
+    return [{ label: 'series', value: anime?.shows ?? 0 }, { label: 'new seasons', value: ns }, { label: 'airing now', value: air }]
+  }
+  return []
 }

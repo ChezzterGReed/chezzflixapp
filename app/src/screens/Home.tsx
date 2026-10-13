@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Hero, HeroSkeleton } from '../components/Hero'
 import { TrendingBanner } from '../components/TrendingBanner'
+import { TabBanner, hasTabBanner } from '../components/TabBanner'
 import { Row, RowSkeleton } from '../components/Row'
 import { Layers, Settings as Cog, Tags, TrendingUp } from 'lucide-react'
 import { Focusable } from '../components/Focusable'
@@ -9,7 +10,7 @@ import { setBooted } from '../lib/boot'
 import { animeEnabled, loadAnime, loadHero, loadRows, refreshContinue, type AnimeInfo, type HomeNotice, type HomeRow, type Tab } from '../lib/homeData'
 import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
-import { useSeason, useSettings } from '../lib/settings'
+import { hidesWatched, useSeason, useSettings } from '../lib/settings'
 
 interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
 
@@ -52,7 +53,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   const activeTab: Tab = tab === 'anime' && anime && !showAnime ? 'all' : tab === 'foryou' && !settings.recs ? 'all' : tab === 'trending' && !settings.tmdbKey ? 'all' : tab
 
   // What identifies this view for the cache: who, which tab, and every setting that changes what the rows contain.
-  const cacheSig = [server.uri, server.accessToken, activeTab, season, settings.hiddenLibraries.join(','), settings.tmdbKey, settings.hideWatched, JSON.stringify(settings.homeRows[activeTab] ?? null), settings.genres.join(','), settings.hero].join('|')
+  const cacheSig = [server.uri, server.accessToken, activeTab, season, settings.hiddenLibraries.join(','), settings.tmdbKey, hidesWatched(settings, activeTab), JSON.stringify(settings.homeRows[activeTab] ?? null), settings.genres.join(','), settings.hero].join('|')
 
   // Rows
   useEffect(() => {
@@ -143,6 +144,8 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
     if (!settings.hero && rows && !focusedOnce.current) { focusedOnce.current = true; setTimeout(() => setFocus(`tab-${activeTab}`), 60) }
   }, [settings.hero, rows, activeTab])
 
+  // For You: the genres your picks lean towards.
+  const topGenres = useMemo(() => { const n = new Map<string, number>(); for (const m of hero ?? []) for (const g of m.Genre ?? []) n.set(g.tag, (n.get(g.tag) ?? 0) + 1); return [...n].sort((a, b) => b[1] - a[1]).map(([g]) => g) }, [hero])
   const switchTab = (t: Tab) => { if (t === activeTab) return; setRows(undefined); setHero(undefined); heroFor.current = ''; setTab(t) }
 
   // Home shows the first couple of personalized rows under Continue Watching; the For You tab shows them all.
@@ -167,6 +170,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
 
       {activeTab === 'trending'
         ? <TrendingBanner server={server} posters={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).flatMap((r) => r.items)} count={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).reduce((n, r) => n + r.items.length, 0)} loading={!rows} />
+        : hasTabBanner(activeTab) ? <TabBanner tab={activeTab} server={server} visible={visible} anime={rowsAnime ?? anime} picks={hero ?? []} topGenres={topGenres} count={recRows.reduce((n, r) => n + r.items.length, 0)} profileName={profileName} tabKey={`tab-${activeTab}`} onPlay={onPlay} onInfo={onOpen} />
         : !settings.hero ? <div className="h-28" />
         : hero?.length ? <Hero key={activeTab} tabKey={`tab-${activeTab}`} items={hero} server={server} rotate={settings.heroRotate} onPlay={onPlay} onInfo={onOpen} />
           : hero ? <div className="h-28" /> : <HeroSkeleton />}

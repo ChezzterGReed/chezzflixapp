@@ -27,6 +27,8 @@ export interface Settings {
   hero: boolean
   heroRotate: boolean
   hideWatched: boolean
+  /** Per Home tab: show only titles you haven't watched (a tab without an entry follows `hideWatched`). */
+  hideWatchedTabs: Partial<Record<HomeTab, boolean>>
   hideSpoilers: boolean
   brand: string
   avatarLogo: boolean
@@ -122,7 +124,7 @@ export interface Settings {
 
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
-  accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
+  accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideWatchedTabs: {}, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
   hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: true, seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: false, dialogueBoost: false, autoplayNext: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
 }
 
@@ -144,6 +146,9 @@ export const forcedHoliday = (): HolidayStyle | null => { const h = new URLSearc
 export const seasonAccent = (season: Season, style: HolidayStyle): string | null => (season === 'halloween' ? PUMPKIN : season === 'christmas' ? (style === 'frost' ? FROST_BLUE : FESTIVE_RED) : null)
 /** One word for the look in use: 'halloween', 'frost', 'festive' or '' (used by the stylesheet). */
 export const themeKey = (season: Season, style: HolidayStyle): string => (season === 'christmas' ? style : season ?? '')
+
+/** Does this Home tab leave out titles you've already watched? */
+export const hidesWatched = (s: Pick<Settings, 'hideWatched' | 'hideWatchedTabs'>, tab: HomeTab): boolean => s.hideWatchedTabs?.[tab] ?? s.hideWatched
 
 export const brandName = (s: Pick<Settings, 'brand'>) => `${s.brand || DEFAULT_BRAND}FLIX`
 export const cleanBrand = (v: string) => v.replace(/flix$/i, '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 12)
