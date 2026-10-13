@@ -1,0 +1,13 @@
+name = "chezzflix-sync"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# After `npm run db:create`, paste the database_id it prints here.
+[[d1_databases]]
+binding = "DB"
+database_name = "chezzflix-sync"
+database_id = "REPLACE_WITH_THE_ID_FROM_db:create"
+
+[vars]
+# Where the Worker checks who someone is. Leave as is (the local test setup points this at a fake).
+PLEX_API = "https://plex.tv"

@@ -5,13 +5,14 @@ import { Layer } from './Layer'
 import { resetGuide } from '../lib/tvguide'
 import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
-import { ACCENTS, brandName, cleanBrand, currentSeason, useSettings, type HomeRowCfg, type HomeTab } from '../lib/settings'
+import { ACCENTS, brandName, cleanBrand, currentSeason, useSettings, useSync, type HomeRowCfg, type HomeTab } from '../lib/settings'
 import { getCollections, getGenres, getPlaylists, type PlexSection, type PlexServer } from '../lib/plex'
 import { listPlexHubs, mergeRows, rowCatalog } from '../lib/homeData'
 import { inTauri } from '../lib/player'
 import { isAndroid } from '../lib/native'
 import { trendingIds } from '../lib/tmdb'
 import { SeasonIcon } from './SeasonIcon'
+import { RECAP_GAP_MAX, RECAP_GAP_MIN } from '../lib/recapNudge'
 import { checkForUpdate, fetchReleases, installUpdate, useUpdater, type ReleaseInfo } from '../lib/updater'
 import { normalizeBase, testConnection } from '../lib/overseerr'
 
@@ -155,6 +156,17 @@ function Playback() {
         <p className="px-4 pb-2 text-sm text-white/55">{isAndroid ? 'Auto leveling can be switched on or off while watching, and you can set the boost amount yourself, from the player\'s volume button. Dolby and DTS sent straight to a receiver can\'t be adjusted.' : 'Both can be switched on or off while watching, and you can set the boost amount yourself, from the player\'s volume button.'}</p>
       </>}
       <Heading>Episodes</Heading>
+      <Toggle label="Offer a recap after a long break" hint="Before an episode you haven't seen, if it's been a while since the one before it, offer a quick recap of that episode. Never for rewatches" on={settings.recapNudge} onChange={(v) => update({ recapNudge: v })} />
+      {settings.recapNudge && (
+        <>
+          <div className="px-4 pt-2 text-sm font-semibold text-white/60">Counts as a long break after</div>
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+            <Pill onEnter={() => update({ recapNudgeDays: Math.max(RECAP_GAP_MIN, settings.recapNudgeDays - 1) })} title="One day less">−</Pill>
+            <span className="min-w-[5.5rem] text-center text-sm font-bold tabular-nums">{settings.recapNudgeDays} day{settings.recapNudgeDays === 1 ? '' : 's'}</span>
+            <Pill onEnter={() => update({ recapNudgeDays: Math.min(RECAP_GAP_MAX, settings.recapNudgeDays + 1) })} title="One day more">+</Pill>
+          </div>
+        </>
+      )}
       <Toggle label="Autoplay next episode" hint="Continue to the next episode after a short countdown" on={settings.autoplayNext} onChange={(v) => update({ autoplayNext: v })} />
       {settings.autoplayNext && (
         <>
@@ -458,6 +470,8 @@ function WhatsNew({ current, onClose }: { current: string; onClose: () => void }
 
 function About({ server }: { server: PlexServer }) {
   const u = useUpdater()
+  const { settings, update } = useSettings()
+  const sync = useSync()
   const [copied, setCopied] = useState(false)
   const [notes, setNotes] = useState(false)
   const copyId = () => { if (server.id) navigator.clipboard?.writeText(server.id).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }).catch(() => {}) }
@@ -473,6 +487,16 @@ function About({ server }: { server: PlexServer }) {
         <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">What’s new</span>
       </Row>
       {notes && <WhatsNew current={u.current} onClose={() => setNotes(false)} />}
+      {sync.enabled && (
+        <>
+          <Toggle label="Sync my settings across devices" hint="Keeps your colours, home layout, TV Guide channels and other preferences the same on every device you use on this server. Your Plex login, TMDB key and Overseerr address are never sent" on={settings.syncSettings} onChange={(v) => update({ syncSettings: v })} />
+          {settings.syncSettings && (
+            <Row label="Sync status" hint={sync.status === 'syncing' ? 'Syncing…' : sync.status === 'error' ? 'Couldn’t reach the sync service. It will try again.' : sync.at ? `Last synced ${new Date(sync.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Waiting to sync'} onEnter={sync.now}>
+              <span className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold">Sync now</span>
+            </Row>
+          )}
+        </>
+      )}
       <Row label="Updates" hint={line}>
         {u.status === 'available'
           ? <Focusable onEnter={installUpdate} title="Update now"><div className="flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-black transition-transform group-hover/f:scale-105 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white"><Download size={16} />Update now</div></Focusable>

@@ -21,6 +21,8 @@ import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home, clearHomeCache } from './screens/Home'
 import { clearRecsCache } from './lib/recsData'
 import { clearBoot, clearResume, loadBoot, loadResume, saveBoot } from './lib/resume'
+import { recapNudgeFor, type RecapNudge as NudgeInfo } from './lib/recapNudge'
+import { RecapNudge } from './components/RecapNudge'
 import { Library } from './screens/Library'
 import { Search } from './screens/Search'
 import { Watchlist } from './screens/Watchlist'
@@ -152,13 +154,22 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     push({ type: 'list', title: found.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: found.ratingKey } })
   }
 
+  // After a long break between episodes: offer a recap first (see lib/recapNudge.ts).
+  const [nudge, setNudge] = useState<{ target: PlexMedia; info: NudgeInfo }>()
   const play = async (m: PlexMedia) => {
     try {
       const target = m.versionIndex !== undefined ? m : await resolvePlayable(server, m)   // a version picked from the list is already complete
       if (!target) return say('No playable file found for ' + m.title)
+      const info = await recapNudgeFor(server, target, settings).catch(() => null)
+      if (info) { setNudge({ target, info }); return }
+      await startNow(target)
+    } catch (e) { say('Could not start playback: ' + (e as Error).message) }
+  }
+  const startNow = async (target: PlexMedia) => {
+    try {
       if (settings.player === 'mpv' && inTauri) {
         const url = directPlayUrl(server, target)
-        if (!url) return say('No playable file found for ' + m.title)
+        if (!url) return say('No playable file found for ' + target.title)
         await startPlayback(server, target, url)
         return
       }
@@ -258,6 +269,10 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
       {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
         onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)} />}
+      {nudge && <RecapNudge server={server} target={nudge.target} prev={nudge.info.prev} days={nudge.info.days}
+        onSkip={() => update({ recapNudgeSkipped: { ...settings.recapNudgeSkipped, [nudge.target.grandparentRatingKey!]: nudge.info.prev.lastViewedAt! } })}
+        onNever={() => update({ recapNudgeOff: { ...settings.recapNudgeOff, [nudge.target.grandparentRatingKey!]: true } })}
+        onPlay={() => { void startNow(nudge.target) }} onDone={() => setNudge(undefined)} />}
       {playing && <Player key={`${playing.ratingKey}:${playing.versionIndex ?? 0}`} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} onSwitch={setPlaying} />}
 
       {toast && <div className="pop fixed bottom-8 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black shadow-2xl">{toast}</div>}
@@ -369,7 +384,7 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
   if (!server || !me) return null // the animated loading screen (rendered by App) covers this
 
   return (
-    <SettingsProvider profileKey={me.key} shared={shared}>
+    <SettingsProvider profileKey={me.key} shared={shared} syncAuth={token === 'demo' ? (import.meta.env.DEV ? { token: `tok-demo-${me.key}`, serverId: 'srv1' } : undefined) : server.id ? { token, serverId: server.id } : undefined}>
       <Gate key={me.key} token={token} server={server} allSections={sections} profiles={profiles} me={me} onSwitch={switchTo} onSignOut={onSignOut} />
     </SettingsProvider>
   )

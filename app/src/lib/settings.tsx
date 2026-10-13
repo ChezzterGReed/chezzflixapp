@@ -1,8 +1,9 @@
 import { LOW_POWER } from './perf'
 import { setNavSounds } from './sfx'
 import { setActiveProfile } from './profile'
+import { initialMeta, isSynced, mergeSettings, pullSettings, pushSettings, syncedValues, SYNC_URL, type Meta, type SyncAuth } from './sync'
 import type { Channel, ChannelPrefs } from './tvguide'
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 export const ACCENTS: { name: string; value: string }[] = [
   { name: 'Ember', value: '#ff4b3e' }, { name: 'Amber', value: '#ffa21f' }, { name: 'Lime', value: '#9be15d' },
@@ -75,6 +76,15 @@ export interface Settings {
   player: 'app' | 'mpv'
   /** Measures each title and holds one steady volume boost, so quiet movies don't need the TV turned way up (desktop player). */
   autoLevel: boolean
+  /** Keep this profile's settings the same on every device (when the sync service is set up). Not itself synced. */
+  syncSettings: boolean
+  /** After a long break between episodes, offer a recap before the next one (days = how long a break counts). */
+  recapNudge: boolean
+  recapNudgeDays: number
+  /** Shows (by rating key) where it was turned off for good. */
+  recapNudgeOff: Record<string, boolean>
+  /** Shows where "Skip" was chosen: the last-viewed time of the episode it was for, so the same break isn't offered again. */
+  recapNudgeSkipped: Record<string, number>
   /** December look: an icy theme or a festive red-and-green one. */
   holidayStyle: 'frost' | 'festive'
   /** Shows (by rating key) whose episodes you've chosen never to blur. */
@@ -113,7 +123,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: true, seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: false, dialogueBoost: false, autoplayNext: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: true, seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: false, dialogueBoost: false, autoplayNext: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
 }
 
 export const PUMPKIN = '#ff7a1a'
@@ -163,9 +173,13 @@ interface SettingsCtx {
   tmdbShared: boolean
   ownOverseerrUrl: string
   overseerrShared: boolean
+  /** Syncing this profile's settings with the person's other devices. */
+  sync: { enabled: boolean; status: 'idle' | 'syncing' | 'ok' | 'error'; at: number; now: () => void }
 }
-const Ctx = createContext<SettingsCtx>({ settings: DEFAULTS, update: () => {}, ownTmdbKey: '', tmdbShared: false, ownOverseerrUrl: '', overseerrShared: false })
+const Ctx = createContext<SettingsCtx>({ settings: DEFAULTS, update: () => {}, ownTmdbKey: '', tmdbShared: false, ownOverseerrUrl: '', overseerrShared: false, sync: { enabled: false, status: 'idle', at: 0, now: () => {} } })
 export const useSettings = () => useContext(Ctx)
+/** Sync status for the Settings screen. */
+export const useSync = () => useContext(Ctx).sync
 /** The active seasonal theme for this profile (null when off or out of season). */
 export function useSeason(): Season { const { settings } = useContext(Ctx); return settings.seasonal ? currentSeason() : null }
 /** Season plus which holiday style is chosen and the colour it brings. */
@@ -176,15 +190,30 @@ export function useTheme(): { season: Season; style: HolidayStyle; key: string; 
   return { season, style, key: themeKey(season, style), accent: seasonAccent(season, style) }
 }
 
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const metaKey = (profileKey: string) => `chezzflix_syncmeta_${profileKey}`
+function loadMeta(profileKey: string, settings: Settings): Meta {
+  try { const raw = localStorage.getItem(metaKey(profileKey)); if (raw) return JSON.parse(raw) as Meta } catch { /* fall through */ }
+  return initialMeta(settings as unknown as Record<string, unknown>, DEFAULTS as unknown as Record<string, unknown>)   // first time on this device: what's already customised counts as an old change
+}
+const saveMeta = (profileKey: string, m: Meta) => { try { localStorage.setItem(metaKey(profileKey), JSON.stringify(m)) } catch { /* private mode */ } }
+
 /** Settings are stored per Plex profile, so each person gets their own accent, name, rows and libraries. */
-export function SettingsProvider({ profileKey, shared: sharedValues, children }: { profileKey: string; shared?: { tmdbKey?: string; overseerrUrl?: string }; children: ReactNode }) {
+export function SettingsProvider({ profileKey, shared: sharedValues, syncAuth, children }: { profileKey: string; shared?: { tmdbKey?: string; overseerrUrl?: string }; /** Who this is, for the sync service (the person's Plex token and the server). */ syncAuth?: SyncAuth; children: ReactNode }) {
   setActiveProfile(profileKey)   // (for the few per-profile things kept outside these settings, like each show's audio / subtitle choice)
   const [settings, setSettings] = useState<Settings>(() => load(profileKey))
   const loadedFor = useRef(profileKey)
+  const settingsRef = useRef(settings); settingsRef.current = settings
+  const metaRef = useRef<Meta>(loadMeta(profileKey, settings))
+  const authRef = useRef(syncAuth); authRef.current = syncAuth
+  const syncTimer = useRef(0)
+  const syncing = useRef(false)
+  const lastSync = useRef(0)
+  const [syncState, setSyncState] = useState<{ status: 'idle' | 'syncing' | 'ok' | 'error'; at: number }>({ status: 'idle', at: 0 })
   const skipSave = useRef(false)   // the render right after switching profile still holds the previous person's settings: never save those under the new profile
 
   useEffect(() => {
-    if (loadedFor.current !== profileKey) { loadedFor.current = profileKey; skipSave.current = true; setSettings(load(profileKey)) }
+    if (loadedFor.current !== profileKey) { loadedFor.current = profileKey; skipSave.current = true; const next = load(profileKey); metaRef.current = loadMeta(profileKey, next); setSettings(next) }
   }, [profileKey])
 
   useEffect(() => {
@@ -207,9 +236,47 @@ export function SettingsProvider({ profileKey, shared: sharedValues, children }:
     if (loadedFor.current === profileKey) { try { localStorage.setItem(keyFor(profileKey), JSON.stringify(settings)) } catch { /* private mode */ } }
   }, [settings, profileKey])
 
+  // ----- sync with the person's other devices -----
+  const runSync = useCallback(async () => {
+    const auth = authRef.current
+    if (!SYNC_URL || !auth || !settingsRef.current.syncSettings || syncing.current || loadedFor.current !== profileKey) return
+    syncing.current = true
+    setSyncState((s) => ({ ...s, status: 'syncing' }))
+    try {
+      const remote = await pullSettings(auth)
+      const cur = settingsRef.current as unknown as Record<string, unknown>
+      const rd = remote.found && remote.data && remote.data.values && remote.data.meta ? remote.data : undefined
+      const { adopt, meta, push } = mergeSettings(cur, metaRef.current, DEFAULTS as unknown as Record<string, unknown>, rd)
+      metaRef.current = meta; saveMeta(profileKey, meta)
+      if (Object.keys(adopt).length) setSettings((s) => ({ ...s, ...adopt }))   // (changes that came from another device are not sent back)
+      if (push) await pushSettings(auth, syncedValues({ ...cur, ...adopt }, DEFAULTS as unknown as Record<string, unknown>), meta)
+      setSyncState({ status: 'ok', at: Date.now() })
+    } catch { setSyncState((s) => ({ ...s, status: 'error' })) } finally { syncing.current = false; lastSync.current = Date.now() }
+  }, [profileKey])
+  const scheduleSync = useCallback(() => { clearTimeout(syncTimer.current); syncTimer.current = window.setTimeout(() => { void runSync() }, 3000) }, [runSync])
+
+  // On start (and when the profile or connection changes), then every few minutes and whenever the app comes back to the front.
+  useEffect(() => {
+    if (!SYNC_URL || !syncAuth) return
+    const first = window.setTimeout(() => { void runSync() }, 800)
+    const every = window.setInterval(() => { void runSync() }, 5 * 60_000)
+    const back = () => { if (!document.hidden && Date.now() - lastSync.current > 60_000) void runSync() }
+    document.addEventListener('visibilitychange', back)
+    return () => { clearTimeout(first); clearInterval(every); clearTimeout(syncTimer.current); document.removeEventListener('visibilitychange', back) }
+  }, [runSync, syncAuth?.token, syncAuth?.serverId, settings.syncSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A change made here: note when (per setting), and send it on shortly.
+  const update = useCallback((p: Partial<Settings>) => {
+    const cur = settingsRef.current as unknown as Record<string, unknown>, now = Date.now()
+    let changed = false
+    for (const [k, v] of Object.entries(p)) if (isSynced(k) && !same(v, cur[k])) { metaRef.current[k] = now; changed = true }
+    if (changed) { saveMeta(profileKey, metaRef.current); scheduleSync() }
+    setSettings((s) => ({ ...s, ...p }))
+  }, [profileKey, scheduleSync])
+
   // Values shared by this server's owner are applied on top, never saved into this person's own settings.
   const tmdbShared = !settings.tmdbKey && !!sharedValues?.tmdbKey
   const overseerrShared = !settings.overseerrUrl && !!sharedValues?.overseerrUrl
   const effective = { ...settings, ...(tmdbShared ? { tmdbKey: sharedValues!.tmdbKey! } : {}), ...(overseerrShared ? { overseerrUrl: sharedValues!.overseerrUrl! } : {}) }
-  return <Ctx.Provider value={{ settings: effective, update: (p) => setSettings((s) => ({ ...s, ...p })), ownTmdbKey: settings.tmdbKey, tmdbShared, ownOverseerrUrl: settings.overseerrUrl, overseerrShared }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ settings: effective, update, ownTmdbKey: settings.tmdbKey, tmdbShared, ownOverseerrUrl: settings.overseerrUrl, overseerrShared, sync: { enabled: !!SYNC_URL && !!syncAuth, status: syncState.status, at: syncState.at, now: () => { void runSync() } } }}>{children}</Ctx.Provider>
 }

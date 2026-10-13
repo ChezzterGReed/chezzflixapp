@@ -119,7 +119,7 @@ function episode(showId: number, season: number, ep: number, viewed = false, off
     summary: `${s.title} — season ${season}, episode ${ep}. The consequences of the last hour start to catch up with everyone involved, and a decision nobody wanted to make gets made anyway.`,
     index: ep, parentIndex: season, duration: s.min * 60000, grandparentTitle: s.title, grandparentRatingKey: String(showId),
     parentRatingKey: `s-${showId}-${season}`, grandparentThumb: `demo:poster:${s.title}`, grandparentArt: `demo:art:${s.title}`,
-    thumb: `demo:still:${t}`, viewCount: viewed ? 1 : 0, viewOffset: offset || undefined, addedAt: NOW - ep * 3600,
+    thumb: `demo:still:${t}`, viewCount: viewed ? 1 : 0, lastViewedAt: viewed ? NOW - 12 * 86400 : undefined, viewOffset: offset || undefined, addedAt: NOW - ep * 3600,
     librarySectionID: 2,
     Marker: [{ type: 'intro', startTimeOffset: 6000, endTimeOffset: 18000 }, { type: 'credits', startTimeOffset: 540000, endTimeOffset: s.min * 60000 }],
     Media: [STREAMS(`/demo/${showId}-${season}-${ep}.mkv`)],

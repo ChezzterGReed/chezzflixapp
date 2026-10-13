@@ -9,7 +9,7 @@ import { useSettings } from '../lib/settings'
 import { mpvCmd, mpvSet, nativeStart, onMpv, setNativeVideoActive } from '../lib/native'
 import type { Segment } from '../lib/clips'
 
-interface Props { server: PlexServer; media: PlexMedia; segments: Segment[]; heading: string; subheading?: string; onClose: () => void }
+interface Props { server: PlexServer; media: PlexMedia; segments: Segment[]; heading: string; subheading?: string; onClose: () => void; /** Called after the last clip has faded to black (instead of offering Replay): used when a recap leads into the episode. */ onFinished?: () => void }
 
 /**
  * Plays a few snippets of a title (Preview: one clip; Recap: several) and then stops.
@@ -35,7 +35,7 @@ function Bars({ segments, cur, t, done }: { segments: Segment[]; cur: number; t:
   )
 }
 
-function NativeClip({ server, media, segments, heading, subheading, onClose, onFail }: Props & { onFail: () => void }) {
+function NativeClip({ server, media, segments, heading, subheading, onClose, onFinished, onFail }: Props & { onFail: () => void }) {
   const { settings } = useSettings()
   const [cur, setCur] = useState(0)
   const [t, setT] = useState(0)
@@ -81,7 +81,11 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
         const end = seg.start + seg.len
         if (!fading.current && curRef.current < segments.length - 1 && n >= end - 0.4) { fading.current = true; setCut(true) }   // start the fade just before the clip ends
         if (n >= end) {
-          if (curRef.current >= segments.length - 1) { mpvSet('pause', 'yes').catch(() => {}); doneRef.current = true; setDone(true); return }
+          if (curRef.current >= segments.length - 1) {
+            mpvSet('pause', 'yes').catch(() => {}); doneRef.current = true
+            if (onFinished) { setCut(true); setTimeout(onFinished, 700) } else setDone(true)   // (the last clip fades to black, then whatever comes next)
+            return
+          }
           switching.current = true; settling.current = true; seekIssued.current = false
           curRef.current += 1; setCur(curRef.current); setT(0); setCut(true)
           mpvSet('pause', 'yes').catch(() => {})
@@ -162,7 +166,7 @@ function NativeClip({ server, media, segments, heading, subheading, onClose, onF
   )
 }
 
-function WebClip({ server, media, segments, heading, subheading, onClose }: Props) {
+function WebClip({ server, media, segments, heading, subheading, onClose, onFinished }: Props) {
   const video = useRef<HTMLVideoElement>(null)
   const hls = useRef<{ destroy: () => void } | null>(null)
   const step = useRef<'none' | 'stream' | 'transcode'>('none')
@@ -226,7 +230,7 @@ function WebClip({ server, media, segments, heading, subheading, onClose }: Prop
     if (!seg) return
     setT(Math.max(0, v.currentTime - seg.start))
     if (v.currentTime >= seg.start + seg.len) {
-      if (curRef.current >= segs.current.length - 1) { v.pause(); setDone(true); return }
+      if (curRef.current >= segs.current.length - 1) { v.pause(); if (onFinished) { switching.current = true; setCut(true); setTimeout(onFinished, 600) } else setDone(true); return }
       switching.current = true
       curRef.current += 1; setCur(curRef.current); setT(0); setCut(true)
       setTimeout(() => { v.currentTime = segs.current[curRef.current].start; setLoading(true); setCut(false); switching.current = false }, 200)

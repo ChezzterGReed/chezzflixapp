@@ -5,8 +5,8 @@ import { getChildren, getMetadata, type PlexMedia, type PlexServer } from './ple
 export interface Segment { start: number; len: number }
 
 export const PREVIEW_LEN = 30
-export const RECAP_PARTS = 5
-export const RECAP_LEN = 10      // each of the first four clips
+export const RECAP_PARTS = 6
+export const RECAP_LEN = 8       // each of the first five clips
 export const RECAP_FINALE = 20   // the last clip: the final seconds before the credits
 
 const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
@@ -21,8 +21,8 @@ export function previewSegments(m: PlexMedia): Segment[] {
 }
 
 /**
- * The episode (up to its credits, when Plex has marked them) is cut into five equal parts: 10 seconds from a little way into each of
- * the first four. The fifth clip is 20 seconds: the stretch right before the credits begin, or, without credits, from the last part.
+ * The episode (up to its credits, when Plex has marked them) is cut into six equal parts: 8 seconds from a little way into each of
+ * the first five. The sixth clip is 20 seconds: the stretch right before the credits begin, or, without credits, from the last part.
  */
 export function recapSegments(m: PlexMedia): Segment[] {
   const dur = durationOf(m)
