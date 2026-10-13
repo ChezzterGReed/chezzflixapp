@@ -7,6 +7,7 @@ import { Eye, EyeOff, Layers, Tags } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
 import { Focusable } from '../components/Focusable'
+import { orderByNewestEpisode } from '../lib/newSeason'
 import { getAllSectionItems, getCollections, getFirstCharacters, getSectionItems, getYears, isWatched, type PlexCollectionRef, type PlexMedia, type PlexSection, type PlexServer, type SortKey } from '../lib/plex'
 import { useSettings } from '../lib/settings'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
@@ -82,12 +83,16 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
   useEffect(() => {
     let alive = true
     setLoading(true); setItems([])
+    // "New episodes": the shows are ordered by their newest episode here (the server can't do that for us).
+    const arrange = (list: PlexMedia[]) => (sort === 'newEpisodes' ? orderByNewestEpisode(server, section.key, list) : Promise.resolve(list))
     if (collapse) {
-      Promise.all([getAllSectionItems(server, section.key, sort, year, 5000, unwatched), getCollections(server, section.key)]).then(([all, cols]) => {
+      Promise.all([getAllSectionItems(server, section.key, sort, year, 5000, unwatched).then(arrange), getCollections(server, section.key)]).then(([all, cols]) => {
         if (!alive) return
         const grouped = groupByCollection(all, cols).filter((m) => !unwatched || m.type === 'collection' || !isWatched(m))
         setItems(grouped); setTotal(grouped.length); setLoading(false)
       })
+    } else if (sort === 'newEpisodes') {
+      getAllSectionItems(server, section.key, sort, year, 5000, unwatched).then(arrange).then((list) => { if (alive) { setItems(list); setTotal(list.length); setLoading(false) } })
     } else {
       getSectionItems(server, section.key, sort, 0, PAGE, year, unwatched).then((r) => { if (alive) { setItems(r.items); setTotal(r.total); setLoading(false) } })
     }
@@ -131,7 +136,7 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
             </Focusable>
           </div>
         </div>
-        <div className="pt-1.5"><SortBar sort={sort} onSort={setSort} years={years} year={year} onYear={setYear} /></div>
+        <div className="pt-1.5"><SortBar sort={sort} onSort={setSort} years={years} year={year} onYear={setYear} tv={section.type === 'show'} /></div>
       </div>
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {items.map((m) => (

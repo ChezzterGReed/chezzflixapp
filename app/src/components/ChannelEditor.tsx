@@ -5,7 +5,8 @@ import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Btn, CheckRow, LetterBar, NameField, Pill, RatingPicker, letterOf, lettersIn } from './AddChannel'
 import { getAllSectionItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
-import type { Channel } from '../lib/tvguide'
+import { SeasonPicker, SeasonsReview } from './SeasonPicker'
+import { describeSeasons, type Channel } from '../lib/tvguide'
 
 type ShowEntry = NonNullable<Channel['shows']>[number]
 type MovieEntry = NonNullable<Channel['movieItems']>[number]
@@ -82,6 +83,8 @@ export function ChannelEditor({ channel, server, sections, onChange, onClose }: 
   const [movies, setMovies] = useState<MovieEntry[]>(channel.movieItems ?? [])
   const [genres, setGenres] = useState<string[]>(channel.genres ?? [])
   const [adding, setAdding] = useState<'shows' | 'movies' | 'genres'>()
+  const [seasonsFor, setSeasonsFor] = useState<ShowEntry>()   // a show whose seasons are being chosen
+  const [reviewing, setReviewing] = useState<ShowEntry[]>()   // shows just added, to choose their seasons
   const [note, setNote] = useState('')
 
   const onShows = channel.shows ?? [], onMovies = channel.movieItems ?? [], onGenres = channel.genres ?? []
@@ -93,8 +96,13 @@ export function ChannelEditor({ channel, server, sections, onChange, onClose }: 
   const toggleGenre = (g: string) => { if (onGenres.includes(g)) { if (!guard()) onChange({ genres: onGenres.filter((x) => x !== g) }) } else onChange({ genres: [...onGenres, g] }) }
 
   const exclude = useMemo(() => new Set<string>(adding === 'shows' ? onShows.map((s) => s.key) : adding === 'movies' ? onMovies.map((m) => m.key) : onGenres), [adding, onShows, onMovies, onGenres])
+  const setSeasons = (key: string, seasons: number[] | undefined) => {
+    const upd = (l: ShowEntry[]) => l.map((x) => (x.key === key ? { ...x, seasons } : x))
+    setShows(upd); onChange({ shows: upd(onShows) })
+  }
+  const addShows = (list: ShowEntry[]) => { setShows((l) => [...l, ...list.filter((s) => !l.some((x) => x.key === s.key))]); onChange({ shows: [...onShows, ...list.filter((s) => !onShows.some((x) => x.key === s.key))] }) }
   const picked = (p: Picked) => {
-    if (p.shows) { setShows((l) => [...l, ...p.shows!.filter((s) => !l.some((x) => x.key === s.key))]); onChange({ shows: [...onShows, ...p.shows.filter((s) => !onShows.some((x) => x.key === s.key))] }) }
+    if (p.shows) setReviewing(p.shows)   // (which seasons of them to include is asked before they're added)
     if (p.movies) { setMovies((l) => [...l, ...p.movies!.filter((s) => !l.some((x) => x.key === s.key))]); onChange({ movieItems: [...onMovies, ...p.movies.filter((s) => !onMovies.some((x) => x.key === s.key))] }) }
     if (p.genres) { setGenres((l) => [...l, ...p.genres!.filter((g) => !l.includes(g))]); onChange({ genres: [...onGenres, ...p.genres.filter((g) => !onGenres.includes(g))] }) }
     setAdding(undefined)
@@ -117,7 +125,15 @@ export function ChannelEditor({ channel, server, sections, onChange, onClose }: 
               {shows.length > 1 && <><span className="mx-1 text-white/30">|</span>{[1, 2, 3, 4, 5].map((n) => <Pill key={n} active={(channel.perBlock ?? 1) === n} onEnter={() => onChange({ perBlock: n })}>{n} per turn</Pill>)}</>}
             </div>
             {heading(`Shows (${onShows.length})`)}
-            {shows.map((s) => <CheckRow key={s.key} label={s.title} on={onShows.some((x) => x.key === s.key)} onEnter={() => toggleShow(s)} />)}
+            {shows.map((s) => {
+              const on = onShows.find((x) => x.key === s.key)
+              return (
+                <div key={s.key} className="flex items-center gap-1">
+                  <div className="min-w-0 flex-1"><CheckRow label={s.title} on={!!on} onEnter={() => toggleShow(s)} /></div>
+                  {on && <Pill onEnter={() => setSeasonsFor(on)}>{describeSeasons(on.seasons)}</Pill>}
+                </div>
+              )
+            })}
             <div className="pt-2"><Btn onEnter={() => setAdding('shows')}><Plus size={16} />Add shows</Btn></div>
           </> : <>
             {heading('How it plays')}
@@ -134,6 +150,8 @@ export function ChannelEditor({ channel, server, sections, onChange, onClose }: 
           <Btn primary focusKey="ce-done" onEnter={onClose}>Done</Btn>
         </div>
       </div>
+      {seasonsFor && <SeasonPicker server={server} show={seasonsFor} value={onShows.find((x) => x.key === seasonsFor.key)?.seasons} onSave={(v) => setSeasons(seasonsFor.key, v)} onClose={() => setSeasonsFor(undefined)} />}
+      {reviewing && <SeasonsReview server={server} shows={reviewing} onDone={(list) => { addShows(list); setReviewing(undefined); setAdding(undefined) }} onCancel={() => setReviewing(undefined)} />}
       {adding && <ContentPicker kind={adding} server={server} sections={sections} exclude={exclude} onPick={picked} onClose={() => setAdding(undefined)} />}
     </Layer>
   )

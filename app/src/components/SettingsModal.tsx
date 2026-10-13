@@ -7,7 +7,7 @@ import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
 import { ACCENTS, brandName, cleanBrand, currentSeason, useSettings, useSync, type HomeRowCfg, type HomeTab } from '../lib/settings'
 import { getCollections, getGenres, getPlaylists, type PlexSection, type PlexServer } from '../lib/plex'
-import { listPlexHubs, mergeRows, rowCatalog } from '../lib/homeData'
+import { mergeRows, rowCatalog } from '../lib/homeData'
 import { inTauri } from '../lib/player'
 import { isAndroid } from '../lib/native'
 import { trendingIds } from '../lib/tmdb'
@@ -269,21 +269,21 @@ const TAB_LABEL: Record<HomeTab, string> = { all: 'Home', foryou: 'For You', tre
 function HomeEditor({ server, sections }: { server: PlexServer; sections: PlexSection[] }) {
   const { settings, update } = useSettings()
   const [tab, setTab] = useState<HomeTab>('all')
-  const [plexHubs, setPlexHubs] = useState<HomeRowCfg[]>([])
   const [genres, setGenres] = useState<string[]>([])
   const [playlists, setPlaylists] = useState<{ id: string; title: string }[]>([])
   const [collections, setCollections] = useState<{ id: string; title: string }[]>([])
   const [adding, setAdding] = useState<'genre' | 'playlist' | 'collection' | null>(null)
 
   useEffect(() => {
-    listPlexHubs(server).then(setPlexHubs)
     Promise.all(sections.map((s) => getGenres(server, s.key))).then((g) => setGenres([...new Set(g.flat().map((x) => x.title))].sort()))
     getPlaylists(server).then((p) => setPlaylists(p.map((x) => ({ id: x.ratingKey, title: x.title }))))
     Promise.all(sections.map((s) => getCollections(server, s.key))).then((c) => setCollections(c.flat().map((x) => ({ id: x.ratingKey, title: x.title }))))
   }, [server, sections])
 
   const saved = settings.homeRows[tab]
-  const rows = mergeRows(saved, rowCatalog(tab, plexHubs, settings.genres))
+  // (Plex's own rows are gone; the Trending tab keeps to its own few rows and lets you add no others.)
+  const own = tab === 'trending' ? new Set(rowCatalog('trending').map((c) => c.id)) : undefined
+  const rows = mergeRows(saved, rowCatalog(tab, settings.genres)).filter((r) => r.kind !== 'hub' && (!own || own.has(r.id)))
   const save = (next: HomeRowCfg[]) => update({ homeRows: { ...settings.homeRows, [tab]: next } })
   const reset = () => { const { [tab]: _drop, ...rest } = settings.homeRows; void _drop; update({ homeRows: rest }) }
   const move = (i: number, d: -1 | 1) => { const n = [...rows]; [n[i], n[i + d]] = [n[i + d], n[i]]; save(n) }
@@ -293,7 +293,7 @@ function HomeEditor({ server, sections }: { server: PlexServer; sections: PlexSe
     setAdding(null)
   }
   const choices = adding === 'genre' ? genres.map((g) => ({ ref: g, title: g })) : adding === 'playlist' ? playlists.map((p) => ({ ref: p.id, title: p.title })) : adding === 'collection' ? collections.map((c) => ({ ref: c.id, title: c.title })) : []
-  const kindLabel = (r: HomeRowCfg) => (r.kind === 'builtin' ? undefined : r.kind === 'hub' ? 'From Plex' : r.kind[0].toUpperCase() + r.kind.slice(1))
+  const kindLabel = (r: HomeRowCfg) => (r.kind === 'builtin' ? undefined : r.kind[0].toUpperCase() + r.kind.slice(1))
 
   return (
     <>
@@ -312,11 +312,13 @@ function HomeEditor({ server, sections }: { server: PlexServer; sections: PlexSe
         ))}
       </div>
 
-      <Heading>Add a row</Heading>
+      {tab !== 'trending' && <Heading>Add a row</Heading>}
       <div className="flex flex-wrap gap-2 px-4 py-2">
+        {tab !== 'trending' && <>
         <Pill active={adding === 'genre'} onEnter={() => setAdding(adding === 'genre' ? null : 'genre')}><Plus size={15} />Genre</Pill>
         <Pill active={adding === 'playlist'} onEnter={() => setAdding(adding === 'playlist' ? null : 'playlist')}><Plus size={15} />Playlist</Pill>
         <Pill active={adding === 'collection'} onEnter={() => setAdding(adding === 'collection' ? null : 'collection')}><Plus size={15} />Collection</Pill>
+        </>}
         {saved && <Pill onEnter={reset}><RotateCcw size={15} />Reset {TAB_LABEL[tab]} to default</Pill>}
       </div>
       {adding && (
@@ -328,7 +330,7 @@ function HomeEditor({ server, sections }: { server: PlexServer; sections: PlexSe
     </>
   )
 }
-const defaultIds = (tab: HomeTab, genres: string[]) => new Set(rowCatalog(tab, [], genres).map((r) => r.id))
+const defaultIds = (tab: HomeTab, genres: string[]) => new Set(rowCatalog(tab, genres).map((r) => r.id))
 
 /** TMDB key entry for the Trending tab, with a quick check and the attribution TMDB's terms require. */
 function TmdbKey() {

@@ -13,10 +13,11 @@ import { Layer } from '../components/Layer'
 import { Focusable } from '../components/Focusable'
 import { Avatar } from '../components/Avatar'
 import { Row } from '../components/Row'
+import { moreLikeThis } from '../lib/similar'
 import { ClipPopup } from '../components/ClipPopup'
 import { firstEpisode, previewSegments, recapSegments, withFile, type Segment } from '../lib/clips'
 import {
-  backdropPath, posterPath, episodeLabel, formatLeft, formatRuntime, getChildren, getMetadata, getRelated, imageUrl, isSpoilerRisk, isWatched, logoPath,
+  backdropPath, posterPath, episodeLabel, formatLeft, formatRuntime, getChildren, getMetadata, getRelated, getSections, imageUrl, isSpoilerRisk, isWatched, logoPath,
   progressOf, setWatched, type PlexMedia, type PlexServer,
   resolvePlayable,
 } from '../lib/plex'
@@ -37,7 +38,7 @@ function Episode({ ep, server, spoiler, onReveal, onRevealShow, onPlay, onRecap,
         <Focusable focusKey={`ep-${ep.ratingKey}`} onEnter={() => onPlay(ep)} onFocus={(el) => reveal(el)} onArrow={(d) => { if (d === 'up' && upTo) { setFocus(upTo); return false } }}>
           <div className="flex gap-5 rounded-2xl p-3 transition-all duration-200 group-hover/f:bg-white/6 group-data-[hl=true]/f:bg-white/12 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white">
             <div className="relative aspect-video w-[min(280px,32vw)] shrink-0 overflow-hidden rounded-xl bg-surface-2">
-              <img src={imageUrl(server, ep.thumb, 560, 315)} alt="" loading="lazy" draggable={false} className={`h-full w-full object-cover transition-all duration-500 ${spoiler ? 'scale-125 blur-2xl brightness-75' : ''}`} />
+              <img src={imageUrl(server, ep.thumb, 560, 315)} alt="" loading="lazy" draggable={false} className={`h-full w-full object-cover transition-all duration-500 ${spoiler ? 'scale-110 blur-lg brightness-90' : ''}`} />
               <div className="absolute inset-0 grid place-items-center bg-black/30 opacity-0 transition-opacity group-hover/f:opacity-100 group-data-[hl=true]/f:opacity-100"><Play size={34} fill="white" /></div>
               {p > 0 && <div className="absolute inset-x-0 bottom-0 h-1 bg-white/25"><div className="h-full bg-accent" style={{ width: `${p * 100}%` }} /></div>}
             </div>
@@ -72,9 +73,9 @@ function Episode({ ep, server, spoiler, onReveal, onRevealShow, onPlay, onRecap,
   )
 }
 
-interface Props { ratingKey: string; server: PlexServer; token: string; /** Land on this episode (its season selected) instead of the Play button. */ focusEpisode?: { season?: string; ep: string }; onClose: () => void; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onCollection: (title: string, sectionId?: string | number) => void }
+interface Props { ratingKey: string; server: PlexServer; token: string; /** Land on this episode (its season selected) instead of the Play button. */ focusEpisode?: { season?: string; ep: string }; onClose: () => void; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; /** Opens everything on the server with this person. */ onActor: (a: { name: string; id?: string }) => void; onCollection: (title: string, sectionId?: string | number) => void }
 
-export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay, onOpen, onCollection }: Props) {
+export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay, onOpen, onActor, onCollection }: Props) {
   const [m, setM] = useState<PlexMedia>()
   const [seasons, setSeasons] = useState<PlexMedia[]>([])
   const [season, setSeason] = useState<string>()
@@ -115,9 +116,18 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
         setSeason((ss.find((s) => s.ratingKey === focusEpisode?.season) ?? ss.find((s) => s.ratingKey === current) ?? ss[0])?.ratingKey)
       }
     })
-    getRelated(server, ratingKey).then((r) => alive && setRelated(r))
+    // ("More like this" is worked out once the title itself has loaded; see below)
     return () => { alive = false }
   }, [ratingKey, server])
+
+  // "More like this": the same collection or series first, then the closest matches, drawn from ALL your libraries of this kind (Plex's own list is the fallback).
+  useEffect(() => {
+    if (!m || (m.type !== 'movie' && m.type !== 'show')) return
+    let alive = true
+    const fallback = () => getRelated(server, m.ratingKey)
+    getSections(server).then((secs) => moreLikeThis(server, secs, settings.hiddenLibraries, m)).then((r) => (r.length ? r : fallback())).catch(fallback).then((r) => alive && setRelated(r))
+    return () => { alive = false }
+  }, [m?.ratingKey, server]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!season) return
@@ -316,14 +326,16 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
               <h2 className="mb-4 px-[var(--gutter)] text-[1.35rem] font-bold tracking-tight">Cast</h2>
               <div className="flex gap-6 overflow-x-auto px-[var(--gutter)] pb-2">
                 {cast.map((c) => (
-                  <div key={c.tag} className="w-24 shrink-0 text-center">
-                    <div className="relative mx-auto size-20 overflow-hidden rounded-full">
+                  <Focusable key={c.tag} onEnter={() => onActor({ name: c.tag, id: c.id != null ? String(c.id) : undefined })} onFocus={(el) => reveal(el, { block: 'center', inline: 'center' })} title={`${c.tag}: everything with them on your server`} className="w-24 shrink-0">
+                  <div className="text-center">
+                    <div className="relative mx-auto size-20 overflow-hidden rounded-full transition-all group-hover/f:ring-2 group-hover/f:ring-white/60 group-data-[hl=true]/f:scale-110 group-data-[hl=true]/f:ring-4 group-data-[hl=true]/f:ring-white">
                       <Avatar name={c.tag} size={80} />
                       {c.thumb && <img src={imageUrl(server, c.thumb, 160, 160)} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />}
                     </div>
                     <div className="mt-2 truncate text-sm font-semibold">{c.tag}</div>
                     <div className="truncate text-xs text-white/45">{c.role}</div>
                   </div>
+                  </Focusable>
                 ))}
               </div>
             </section>
@@ -356,7 +368,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
           </div>
         </Layer>
       )}
-      {addToChannel && m && <AddToChannel items={[m]} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => setAddToChannel(false)} />}
+      {addToChannel && m && <AddToChannel server={server} items={[m]} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => setAddToChannel(false)} />}
       {clip && <ClipPopup key={clip.media.ratingKey + clip.segments.length} server={server} media={clip.media} segments={clip.segments} heading={clip.heading} subheading={clip.subheading} onClose={() => setClip(undefined)} />}
     </Layer>
   )

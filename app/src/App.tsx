@@ -21,6 +21,8 @@ import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home, clearHomeCache } from './screens/Home'
 import { clearRecsCache } from './lib/recsData'
 import { clearBoot, clearResume, loadBoot, loadResume, saveBoot } from './lib/resume'
+import { resetNewSeason } from './lib/newSeason'
+import { withActor } from './lib/similar'
 import { recapNudgeFor, type RecapNudge as NudgeInfo } from './lib/recapNudge'
 import { RecapNudge } from './components/RecapNudge'
 import { Library } from './screens/Library'
@@ -129,6 +131,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     return async (): Promise<PlexMedia[]> => {
       if (src.kind === 'collection') return getCollectionItems(server, src.id)
       if (src.kind === 'seasonal') { const l = seasonalList(src.id); return l ? matchList(server, sections, l) : [] }
+      if (src.kind === 'actor') return withActor(server, allSections, settings.hiddenLibraries, { name: src.name, id: src.id })   // everything with this person, from every library
       const anime = await loadAnime(server, sections, 0).catch(() => undefined)
       const secs = sections.filter((x) => (src.sectionKey ? x.key === src.sectionKey : src.tab === 'all' || src.tab === 'anime' || src.tab === 'trending' || x.type === src.tab))
       if (src.tab === 'anime') return (anime?.items ?? []).filter((m) => m.Genre?.some((g) => g.tag === src.genre))
@@ -138,7 +141,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       }))
       return lists.flat().filter((m) => tabOk(src.tab, m, anime))
     }
-  }, [view, server, sections])
+  }, [view, server, sections, allSections, settings.hiddenLibraries])
 
   // A list the app built from a pre-made list of titles: anything on it that the server lacks can be offered as a request.
   const missingLoader = useMemo(() => {
@@ -147,6 +150,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     return l ? () => missingFromList(server, allSections, l, settings.tmdbKey) : undefined
   }, [view, server, allSections, settings.requests, settings.tmdbKey, settings.overseerrUrl])
 
+  const openActor = (a: { name: string; id?: string }) => push({ type: 'list', title: a.name, subtitle: 'On your server', source: { kind: 'actor', name: a.name, id: a.id } })
   const openCollection = async (title: string, sectionId?: string | number) => {
     const secs = sectionId != null ? sections.filter((x) => x.key === String(sectionId)) : sections
     const found: PlexCollectionRef | undefined = (await Promise.all((secs.length ? secs : sections).map((x) => getCollections(server, x.key)))).flat().find((c) => c.title === title)
@@ -192,7 +196,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     }).catch(() => clearResume())
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const closePlayer = (home?: boolean) => { clearResume(); setPlaying(undefined); invalidateWatchState(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
+  const closePlayer = (home?: boolean) => { clearResume(); setPlaying(undefined); invalidateWatchState(); resetNewSeason(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
   const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying(full) }
 
   const open = (m: PlexMedia) => {
@@ -246,7 +250,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
-          {view.type === 'home' && <Home server={server} sections={allSections} refreshKey={refreshKey} watchKey={watchKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
+          {view.type === 'home' && <Home server={server} sections={allSections} token={token} profileName={me.name} refreshKey={refreshKey} watchKey={watchKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
@@ -263,7 +267,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
       {details.length > 0 && <Detail key={`${details[details.length - 1]}.${refreshKey}.${watchKey}`} ratingKey={details[details.length - 1]} server={server} token={token}
         focusEpisode={epFocus && epFocus.show === details[details.length - 1] ? epFocus : undefined}
-        onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onOpen={open} onCollection={openCollection} />}
+        onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onOpen={open} onCollection={openCollection} onActor={openActor} />}
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}

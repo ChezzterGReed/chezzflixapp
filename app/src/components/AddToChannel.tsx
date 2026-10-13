@@ -4,15 +4,16 @@ import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Btn, Choice, NameField, Pill } from './AddChannel'
-import type { PlexMedia } from '../lib/plex'
+import { SeasonsReview } from './SeasonPicker'
+import type { PlexMedia, PlexServer } from '../lib/plex'
 import { MAX_CHANNELS, newChannel, type Channel } from '../lib/tvguide'
 
 type Step = 'choose' | 'existing' | 'newShow' | 'newMovie' | 'done'
 
-interface Props { items: PlexMedia[]; channels: Channel[]; onSave: (channels: Channel[]) => void; onClose: () => void }
+interface Props { server: PlexServer; items: PlexMedia[]; channels: Channel[]; onSave: (channels: Channel[]) => void; onClose: () => void }
 
 /** Put one or several shows (or several movies) on a channel: an existing one, or a new one. */
-export function AddToChannel({ items, channels, onSave, onClose }: Props) {
+export function AddToChannel({ server, items, channels, onSave, onClose }: Props) {
   const isShow = items[0]?.type === 'show'
   const many = items.length > 1
   const [step, setStep] = useState<Step>('choose')
@@ -21,8 +22,10 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
   const [perBlock, setPerBlock] = useState(1)
   const [added, setAdded] = useState('')
   const [note, setNote] = useState('')
+  const [review, setReview] = useState<{ then: (shows: ShowEntry[]) => void }>()   // asking which seasons of the shows to include
 
-  const showEntries = items.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art }))
+  type ShowEntry = NonNullable<Channel['shows']>[number]
+  const showEntries: ShowEntry[] = items.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art }))
   const movieEntries = items.map((m) => ({ key: m.ratingKey, title: m.title, year: m.year, dur: m.duration ?? 100 * 60_000, date: m.originallyAvailableAt, thumb: m.thumb, art: m.art, rating: m.contentRating ?? '' }))
   // A channel is a candidate when at least one of these isn't on it yet.
   const missing = (c: Channel) => (isShow ? showEntries.filter((s) => !c.shows?.some((x) => x.key === s.key)) : movieEntries.filter((s) => !c.movieItems?.some((x) => x.key === s.key)))
@@ -36,16 +39,17 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
     return () => clearTimeout(t)
   }, [step])
 
-  const addTo = (c: Channel) => {
-    const add = missing(c)
+  const askSeasons = (then: (shows: ShowEntry[]) => void) => (isShow ? setReview({ then }) : then(showEntries))   // (movies have no seasons)
+  const addTo = (c: Channel, chosen = showEntries) => {
+    const add = isShow ? chosen.filter((s) => !c.shows?.some((x) => x.key === s.key)) : missing(c)
     setNote(add.length < items.length ? `${add.length} new added · ${items.length - add.length} ${items.length - add.length === 1 ? 'was' : 'were'} already on it` : '')
     onSave(channels.map((x) => (x.id !== c.id ? x : isShow ? { ...x, shows: [...(x.shows ?? []), ...(add as typeof showEntries)] } : { ...x, movieItems: [...(x.movieItems ?? []), ...(add as typeof movieEntries)] })))
     setAdded(c.name); setStep('done')
   }
-  const create = () => {
+  const create = (chosen = showEntries) => {
     const finalName = name.trim() || suggested
     const draft = isShow
-      ? { name: finalName, kind: 'shows' as const, shows: showEntries, perBlock: many ? perBlock : 1, episodeOrder: order === 'random' ? 'random' as const : 'ordered' as const }
+      ? { name: finalName, kind: 'shows' as const, shows: chosen, perBlock: many ? perBlock : 1, episodeOrder: order === 'random' ? 'random' as const : 'ordered' as const }
       : { name: finalName, kind: 'movies' as const, genres: [], movieItems: movieEntries, movieOrder: order === 'release' ? 'release' as const : 'random' as const }
     const ch = newChannel(draft, channels)
     onSave([...channels, ch])
@@ -77,7 +81,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
 
         {step === 'existing' && (
           <div className="mt-4 space-y-2">
-            {eligible.map((c, i) => <Choice key={c.id} focusKey={i === 0 ? 'atc-first' : undefined} icon={<span className="text-lg font-extrabold tabular-nums">{c.number}</span>} label={c.name} hint={`${missing(c).length === items.length ? `Adds ${items.length}` : `Adds ${missing(c).length} of ${items.length} (the rest are already on it)`} · ${c.kind === 'shows' ? `${c.shows?.length ?? 0} show${(c.shows?.length ?? 0) === 1 ? '' : 's'} now` : 'movies'}`} onEnter={() => addTo(c)} />)}
+            {eligible.map((c, i) => <Choice key={c.id} focusKey={i === 0 ? 'atc-first' : undefined} icon={<span className="text-lg font-extrabold tabular-nums">{c.number}</span>} label={c.name} hint={`${missing(c).length === items.length ? `Adds ${items.length}` : `Adds ${missing(c).length} of ${items.length} (the rest are already on it)`} · ${c.kind === 'shows' ? `${c.shows?.length ?? 0} show${(c.shows?.length ?? 0) === 1 ? '' : 's'} now` : 'movies'}`} onEnter={() => askSeasons((chosen) => addTo(c, chosen))} />)}
           </div>
         )}
 
@@ -89,7 +93,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
                 ? <><Pill active={order === 'ordered'} onEnter={() => setOrder('ordered')}>In order</Pill><Pill active={order === 'random'} onEnter={() => setOrder('random')}>Random</Pill></>
                 : <><Pill active={order === 'release'} onEnter={() => setOrder('release')}>Release date</Pill><Pill active={order === 'random'} onEnter={() => setOrder('random')}>Random</Pill></>}</div></div>
             <div><div className="mb-2 font-bold">Name</div><NameField value={name} onChange={setName} placeholder={suggested} /></div>
-            <Btn primary focusKey="atc-create" disabled={full} onEnter={create}>Create channel</Btn>
+            <Btn primary focusKey="atc-create" disabled={full} onEnter={() => askSeasons(create)}>Create channel</Btn>
           </div>
         )}
 
@@ -99,6 +103,7 @@ export function AddToChannel({ items, channels, onSave, onClose }: Props) {
             <Btn primary focusKey="atc-done" onEnter={onClose}>Done</Btn></div>
         )}
       </div>
+      {review && <SeasonsReview server={server} shows={showEntries} onDone={(list) => { const r = review; setReview(undefined); r.then(list) }} onCancel={() => setReview(undefined)} />}
     </Layer>
   )
 }

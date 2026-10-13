@@ -40,6 +40,7 @@ export function ListView({ server, token, title, subtitle, load, missing, onOpen
       titleDesc: (a, b) => titleOf(b).localeCompare(titleOf(a)),
       added: (a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0),
       released: (a, b) => released(b).localeCompare(released(a)),
+      newEpisodes: () => 0,
     }
     return [...list].sort(cmp[sort])
   }, [items, sort, year])

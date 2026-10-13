@@ -14,7 +14,7 @@ export interface Channel {
   name: string
   kind: 'shows' | 'movies'
   /** Show channels: the shows (local ratingKey + title + artwork paths), how many episodes per turn, and the order. */
-  shows?: { key: string; title: string; thumb?: string; art?: string }[]
+  shows?: { key: string; title: string; thumb?: string; art?: string; /** Only these seasons play (season numbers; 0 = specials). Missing = every season except specials. */ seasons?: number[] }[]
   perBlock?: number
   episodeOrder?: 'ordered' | 'random'
   /** Movie channels: genre names (all movies in any of them), movies added one by one, and the order. */
@@ -111,7 +111,7 @@ export function cloneChannel(c: Channel, existing: Channel[]): Channel {
 /** What the schedule depends on: when this changes, the channel's schedule is rebuilt. */
 /** Bump when how schedules are built changes, so every device rebuilds its guide once instead of keeping an out-of-date one. */
 export const GUIDE_VERSION = 3
-const signature = (c: Channel) => JSON.stringify([GUIDE_VERSION, c.kind, c.shows?.map((s) => s.key), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings])
+const signature = (c: Channel) => JSON.stringify([GUIDE_VERSION, c.kind, c.shows?.map((s) => `${s.key}:${s.seasons?.join('.') ?? ''}`), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings])
 
 // ---------- Schedule ----------
 export interface Slot {
@@ -128,7 +128,7 @@ interface ShowState { start: number; seed: number; pos: number }
 interface ChanState { rot: number; inBlock: number; shows: Record<string, ShowState>; movie?: ShowState }
 interface Stored { sig: string; slots: Slot[]; st: ChanState }
 interface Source { eps?: Record<string, Ep[]>; movies?: Movie[] }
-interface Ep { key: string; dur: number; label: string; title: string }
+interface Ep { key: string; dur: number; label: string; title: string; season: number }
 interface Movie { key: string; dur: number; title: string; year?: number; date: string; th?: string; ar?: string; rating?: string }
 
 // ---------- Seeded randomness (so a saved position can be resumed exactly) ----------
@@ -147,6 +147,24 @@ function pick(n: number, st: ShowState, random: boolean): number {
 }
 const freshState = (n: number): ShowState => ({ start: Math.floor(Math.random() * Math.max(1, n)), seed: Math.floor(Math.random() * 2 ** 30), pos: 0 })
 
+// ---------- Seasons ----------
+export interface SeasonInfo { index: number; title: string; episodes: number }
+/** A show's seasons, specials (season 0) first. */
+export async function loadSeasons(server: PlexServer, showKey: string): Promise<SeasonInfo[]> {
+  const list = await getChildren(server, showKey).catch(() => [] as PlexMedia[])
+  return list.filter((s) => s.index != null).map((s) => ({ index: s.index!, title: s.index === 0 ? 'Specials' : `Season ${s.index}`, episodes: s.leafCount ?? 0 })).sort((a, b) => a.index - b.index)
+}
+/** "All seasons", "Season 2", "Seasons 1–3, 5", "Specials". */
+export function describeSeasons(seasons?: number[]): string {
+  if (!seasons) return 'All seasons'
+  const s = [...seasons].sort((a, b) => a - b)
+  const parts: string[] = []
+  for (let i = 0; i < s.length;) { let j = i; while (j + 1 < s.length && s[j + 1] === s[j] + 1 && s[j + 1] !== 0) j++; parts.push(s[i] === 0 ? 'Specials' : i === j ? `${s[i]}` : `${s[i]}–${s[j]}`); i = j + 1 }
+  const nums = parts.filter((p) => p !== 'Specials')
+  const label = nums.length ? `${nums.length === 1 && !nums[0].includes('–') ? 'Season' : 'Seasons'} ${nums.join(', ')}` : ''
+  return [label, parts.includes('Specials') ? 'Specials' : ''].filter(Boolean).join(' + ')
+}
+
 // ---------- Loading what a channel plays ----------
 const episodeCache = new Map<string, Ep[]>()
 async function loadEpisodes(server: PlexServer, showKey: string): Promise<Ep[]> {
@@ -159,10 +177,10 @@ async function loadEpisodes(server: PlexServer, showKey: string): Promise<Ep[]> 
     leaves = (await Promise.all(seasons.map((s) => getChildren(server, s.ratingKey).catch(() => [] as PlexMedia[])))).flat()
   }
   const eps = leaves
-    .filter((e) => e.type === 'episode' && (e.parentIndex ?? 1) !== 0)   // no specials
+    .filter((e) => e.type === 'episode')   // (every season incl. specials; which of them play is decided per show, see sources())
     .sort((a, b) => (a.parentIndex ?? 0) - (b.parentIndex ?? 0) || (a.index ?? 0) - (b.index ?? 0))
     .map((e): Ep => ({
-      key: e.ratingKey, dur: e.duration && e.duration > 60_000 ? e.duration : 30 * MIN, title: e.title,
+      key: e.ratingKey, dur: e.duration && e.duration > 60_000 ? e.duration : 30 * MIN, title: e.title, season: e.parentIndex ?? 1,
       label: `S${String(e.parentIndex ?? 0).padStart(2, '0')}E${String(e.index ?? 0).padStart(2, '0')}`,
     }))
   episodeCache.set(server.uri + showKey, eps)
@@ -201,7 +219,10 @@ export async function loadMovies(server: PlexServer, sections: PlexSection[], ge
 async function sources(server: PlexServer, sections: PlexSection[], ch: Channel): Promise<Source> {
   if (ch.kind === 'shows') {
     const eps: Record<string, Ep[]> = {}
-    await Promise.all((ch.shows ?? []).map(async (s) => { eps[s.key] = await loadEpisodes(server, s.key) }))
+    await Promise.all((ch.shows ?? []).map(async (s) => {
+      const all = await loadEpisodes(server, s.key)
+      eps[s.key] = all.filter((e) => (s.seasons ? s.seasons.includes(e.season) : e.season !== 0))   // the seasons chosen for this show, else all but specials
+    }))
     return { eps }
   }
   const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art, rating: m.rating }))

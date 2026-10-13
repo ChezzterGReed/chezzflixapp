@@ -35,15 +35,15 @@ function YearPicker({ years, year, onPick, onClose }: { years: number[]; year?: 
   )
 }
 
-interface Props { sort: SortKey; onSort: (s: SortKey) => void; years: number[]; year?: number; onYear: (y?: number) => void }
+interface Props { sort: SortKey; onSort: (s: SortKey) => void; years: number[]; year?: number; onYear: (y?: number) => void; /** TV libraries also get "New episodes" (shows ordered by their newest episode). */ tv?: boolean }
 
 /** Sort pills (A–Z, Z–A, recently added, release date) plus a release-year filter. */
-export function SortBar({ sort, onSort, years, year, onYear }: Props) {
+export function SortBar({ sort, onSort, years, year, onYear, tv }: Props) {
   const [picking, setPicking] = useState(false)
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        {(Object.keys(SORTS) as SortKey[]).map((k) => <Pill key={k} active={sort === k} onEnter={() => onSort(k)}>{SORTS[k].label}</Pill>)}
+        {(Object.keys(SORTS) as SortKey[]).filter((k) => k !== 'newEpisodes' || tv).map((k) => <Pill key={k} active={sort === k} onEnter={() => onSort(k)}>{SORTS[k].label}</Pill>)}
         <span className="mx-1 h-5 w-px bg-white/15" />
         <Pill active={!!year} onEnter={() => setPicking(true)} title="Filter by release year"><CalendarDays size={15} />{year ?? 'Year'}</Pill>
         {year && <Pill onEnter={() => onYear(undefined)} title="Clear year"><X size={14} />Clear</Pill>}

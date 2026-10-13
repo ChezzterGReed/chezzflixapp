@@ -52,6 +52,7 @@ export function PosterCard({ m, server, onEnter, onFocus, leftEdge, fromRecs, fr
         {selecting && <CheckMark checked={!!checked} />}
         <Img src={imageUrl(server, posterPath(m), 360, 540)} alt={title} />
         <Badge m={m} />
+        {m.newSeason && <div className="absolute left-2 top-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white [text-shadow:0_1px_2px_rgba(0,0,0,.45)]">New · S{m.newSeason.season}</div>}
         <PinMark m={m} />
         <Progress p={progressOf(m)} />
       </div>
@@ -74,7 +75,7 @@ export function LandscapeCard({ m, server, onEnter, onFocus, leftEdge }: { m: Pl
   return (
     <Focusable onEnter={onEnter} onLongPress={() => openMenu(m, { fromContinue: true })} onFocus={onFocus} title={title} leftToRail={leftEdge} className="w-[var(--land-w)] shrink-0 snap-start">
       <div className={`relative aspect-video overflow-hidden rounded-xl bg-surface ${focusRing}`}>
-        <Img src={imageUrl(server, art, 640, 360)} alt={title} className={blur ? 'scale-125 blur-2xl brightness-75' : ''} />
+        <Img src={imageUrl(server, art, 640, 360)} alt={title} className={blur ? 'scale-110 blur-lg brightness-90' : ''} />
         <div className="absolute inset-0 bg-linear-to-t from-black/85 via-black/10 to-transparent" />
         <div className="absolute inset-x-3.5 bottom-3.5">
           <div className="truncate text-[0.95rem] font-bold leading-tight drop-shadow">{title}</div>

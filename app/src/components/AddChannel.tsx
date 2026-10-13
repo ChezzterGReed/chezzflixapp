@@ -4,9 +4,10 @@ import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { getAllSectionItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
+import { SeasonsList } from './SeasonPicker'
 import { RATING_OPTIONS, uniqueName, type Channel, type ChannelDraft } from '../lib/tvguide'
 
-type Step = 'type' | 'shows' | 'showOpts' | 'movies' | 'ratings' | 'movieOpts' | 'name'
+type Step = 'type' | 'shows' | 'seasons' | 'showOpts' | 'movies' | 'ratings' | 'movieOpts' | 'name'
 const PAGE = 60
 
 export function Choice({ icon, label, hint, onEnter, focusKey }: { icon: ReactNode; label: string; hint?: string; onEnter: () => void; focusKey?: string }) {
@@ -100,6 +101,8 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
   const [ratings, setRatings] = useState<string[]>([])   // empty = every rating
   const [movieOrder, setMovieOrder] = useState<'release' | 'random'>('random')
   const [name, setName] = useState('')
+  const [seasonSel, setSeasonSel] = useState<Record<string, number[] | undefined>>({})   // per show: the seasons chosen (missing = all but specials)
+  const [seasonsShown, setSeasonsShown] = useState(false)   // the seasons step had something to ask (so Back from the next step returns to it)
 
   const showLibs = useMemo(() => sections.filter((s) => s.type === 'show' && !isOtherSection(s)), [sections])
   const movieLibs = useMemo(() => sections.filter((s) => s.type === 'movie' && !isOtherSection(s)), [sections])
@@ -117,7 +120,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
 
   // Land on something sensible whenever the step changes.
   useEffect(() => {
-    const k = { type: 'add-shows', shows: 'add-filter', showOpts: 'add-next', movies: 'add-next', ratings: 'add-next', movieOpts: 'add-next', name: 'name-field' }[step]
+    const k = { type: 'add-shows', shows: 'add-filter', seasons: 'add-next', showOpts: 'add-next', movies: 'add-next', ratings: 'add-next', movieOpts: 'add-next', name: 'name-field' }[step]
     const t = setTimeout(() => setFocus(k), 120)
     return () => clearTimeout(t)
   }, [step])
@@ -133,18 +136,18 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
   const finish = () => {
     const finalName = uniqueName(name.trim() || suggestedName || 'Channel', existing.map((c) => c.name))
     if (movieMode()) onCreate({ name: finalName, kind: 'movies', genres: pickedGenres, movieOrder, ratings: ratings.length ? ratings : undefined })
-    else onCreate({ name: finalName, kind: 'shows', shows: pickedShows.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art })), perBlock: pickedShows.length > 1 ? perBlock : 1, episodeOrder })
+    else onCreate({ name: finalName, kind: 'shows', shows: pickedShows.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art, seasons: seasonSel[m.ratingKey] })), perBlock: pickedShows.length > 1 ? perBlock : 1, episodeOrder })
   }
 
   const back = () => {
     if (step === 'type') return onClose()
-    setStep({ shows: 'type', showOpts: 'shows', movies: 'type', ratings: 'movies', movieOpts: 'ratings', name: movieMode() ? 'movieOpts' : 'showOpts' }[step] as Step)
+    setStep({ shows: 'type', seasons: 'shows', showOpts: seasonsShown ? 'seasons' : 'shows', movies: 'type', ratings: 'movies', movieOpts: 'ratings', name: movieMode() ? 'movieOpts' : 'showOpts' }[step] as Step)
   }
 
   const letters = useMemo(() => lettersIn((shows ?? []).map((m) => m.title)), [shows])
   // Typing in the filter box takes over from a chosen letter.
   const filtered = (shows ?? []).filter((m) => (filter ? m.title.toLowerCase().includes(filter.toLowerCase()) : letter ? letterOf(m.title) === letter : true))
-  const title = { type: 'Add a channel', shows: 'Choose shows', showOpts: 'How should it play?', movies: 'Choose genres', ratings: 'Which ratings?', movieOpts: 'How should it play?', name: 'Name your channel' }[step]
+  const title = { type: 'Add a channel', shows: 'Choose shows', seasons: 'Which seasons?', showOpts: 'How should it play?', movies: 'Choose genres', ratings: 'Which ratings?', movieOpts: 'How should it play?', name: 'Name your channel' }[step]
 
   return (
     <Layer onClose={back} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 flex max-h-[88vh] w-[min(660px,94vw)] -translate-x-1/2 -translate-y-1/2 flex-col">
@@ -174,6 +177,8 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
                 </>}
             </>
           )}
+
+          {step === 'seasons' && <SeasonsList server={server} shows={pickedShows.map((m) => ({ key: m.ratingKey, title: m.title }))} sel={seasonSel} onSel={(k, v) => setSeasonSel((p) => ({ ...p, [k]: v }))} onNone={() => { setSeasonsShown(false); setStep('showOpts') }} />}
 
           {step === 'showOpts' && (
             <div className="space-y-6 px-1 py-2">
@@ -213,7 +218,8 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
         <div className="flex shrink-0 items-center gap-3 border-t border-white/8 px-6 py-4">
           <Btn onEnter={back}><ArrowLeft size={16} />{step === 'type' ? 'Cancel' : 'Back'}</Btn>
           <div className="flex-1" />
-          {step === 'shows' && <Btn focusKey="add-next" primary disabled={!pickedShows.length} onEnter={() => setStep(pickedShows.length > 1 ? 'showOpts' : 'showOpts')}>Next · {pickedShows.length} selected</Btn>}
+          {step === 'shows' && <Btn focusKey="add-next" primary disabled={!pickedShows.length} onEnter={() => { setSeasonsShown(true); setStep('seasons') }}>Next · {pickedShows.length} selected</Btn>}
+          {step === 'seasons' && <Btn focusKey="add-next" primary onEnter={() => setStep('showOpts')}>Next</Btn>}
           {step === 'showOpts' && <Btn focusKey="add-next" primary onEnter={() => { setName(''); setStep('name') }}>Next</Btn>}
           {step === 'movies' && <Btn focusKey="add-next" primary disabled={!pickedGenres.length} onEnter={() => setStep('ratings')}>Next · {pickedGenres.length} selected</Btn>}
           {step === 'ratings' && <Btn focusKey="add-next" primary onEnter={() => setStep('movieOpts')}>Next</Btn>}

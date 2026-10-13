@@ -145,6 +145,14 @@ function hubs(): PlexHub[] {
   ]
 }
 
+// TV: every episode of a show (seasons before the last are watched; the last one is unwatched, and for some shows just came out), and the newest episodes in a library.
+const leavesOf = (seed: Seed): PlexMedia[] => Array.from({ length: (seed.seasons ?? 1) * 8 }, (_, n) => {
+  const season = Math.floor(n / 8) + 1, ep = (n % 8) + 1, last = season === (seed.seasons ?? 1)
+  const recent = last && seed.id % 3 !== 0   // two in three shows have their newest season out recently
+  const day = recent ? new Date(NOW * 1000 - (ep * 5 + (seed.id % 4) * 9) * 86400_000).toISOString().slice(0, 10) : `${seed.year + season}-03-01`
+  return { ...episode(seed.id, season, ep, !last), originallyAvailableAt: day }
+})
+
 export function mockGet(rawPath: string): unknown {
   const [path, query = ''] = rawPath.split('?')
   const q = new URLSearchParams(query)
@@ -207,6 +215,10 @@ export function mockGet(rawPath: string): unknown {
   if (path === '/playlists') return { Metadata: [{ ratingKey: 'p1', title: 'Friday Movie Night' }, { ratingKey: 'p2', title: 'Rainy Day Comfort' }] }
   const plItems = path.match(/^\/playlists\/(\w+)\/items/)
   if (plItems) return { Metadata: (plItems[1] === 'p1' ? [5, 1, 14, 7, 12] : [3, 15, 6, 10]).map((i) => item(bySeed(i))) }
+  if (path.startsWith('/library/sections/') && q.get('type') === '4') {
+    const eps = S.filter((x) => x.type === 'show').flatMap(leavesOf).sort((a, b) => String(b.originallyAvailableAt).localeCompare(String(a.originallyAvailableAt)))
+    return { Metadata: eps.slice(0, Number(q.get('X-Plex-Container-Size') ?? 100)) }
+  }
   if (path.startsWith('/library/sections/')) {
     const type = path.includes('/1/') ? 'movie' : 'show'
     const genre = q.get('genre')
@@ -230,6 +242,8 @@ export function mockGet(rawPath: string): unknown {
   }
   const rel = path.match(/^\/hubs\/metadata\/(\d+)\/related/)
   if (rel) return { Hub: [{ title: 'More like this', hubIdentifier: 'rel', Metadata: S.filter((s) => String(s.id) !== rel[1]).slice(0, 8).map((s) => item(s)) }] }
+  const leaves = path.match(/^\/library\/metadata\/(\d+)\/allLeaves/)
+  if (leaves) return { Metadata: leavesOf(bySeed(parseInt(leaves[1]))) }
   const kids = path.match(/^\/library\/metadata\/([^/]+)\/children/)
   if (kids) {
     const id = kids[1]

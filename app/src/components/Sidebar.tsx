@@ -12,7 +12,7 @@ import { Avatar } from './Avatar'
 import type { PlexSection } from '../lib/plex'
 import type { HomeTab } from '../lib/settings'
 
-export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string } | { kind: 'seasonal'; id: string }
+export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string } | { kind: 'seasonal'; id: string } | { kind: 'actor'; name: string; id?: string }
 export type View =
   | { type: 'home' } | { type: 'search' } | { type: 'watchlist' } | { type: 'guide' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }

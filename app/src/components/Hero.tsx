@@ -74,6 +74,7 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
         <div className="absolute inset-x-0 top-0 h-40 bg-linear-to-b from-black/60 to-transparent" />
 
         <div key={m.ratingKey} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="fade-up absolute bottom-[12%] left-[var(--gutter)] max-w-[min(640px,52vw)]">
+          {m.newSeason && <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-white shadow-lg [text-shadow:0_1px_2px_rgba(0,0,0,.4)]">New Season<span className="font-semibold normal-case tracking-normal opacity-90">· S{m.newSeason.season}{m.newSeason.count > 1 ? ` · ${m.newSeason.count} new episodes` : ''}</span></div>}
           {logo
             ? <img src={imageUrl(server, logo, 800, 300)} alt={m.title} className="mb-5 max-h-36 max-w-[28rem] object-contain object-left drop-shadow-2xl" />
             : <h1 className="mb-4 text-[clamp(2.6rem,5.6vw,5.4rem)] font-extrabold leading-[0.98] tracking-[-0.035em] drop-shadow-2xl">{m.title}</h1>}

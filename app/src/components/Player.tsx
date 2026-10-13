@@ -653,7 +653,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
       {showNext && next && (
         <div data-nopause className="pop absolute bottom-60 right-12 z-[25] w-80 overflow-hidden rounded-2xl bg-[#17171c]/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
-          <div className="relative aspect-video overflow-hidden"><img src={imageUrl(server, next.thumb, 640, 360)} alt="" className={`size-full object-cover transition-all duration-500 ${settings.hideSpoilers && isSpoilerRisk(next) ? 'scale-125 blur-2xl brightness-75' : ''}`} />
+          <div className="relative aspect-video overflow-hidden"><img src={imageUrl(server, next.thumb, 640, 360)} alt="" className={`size-full object-cover transition-all duration-500 ${settings.hideSpoilers && isSpoilerRisk(next) ? 'scale-110 blur-lg brightness-90' : ''}`} />
             <div className="absolute inset-0 bg-linear-to-t from-black/80 to-transparent" />
             <div className="absolute bottom-3 left-4 right-4"><div className="text-xs font-bold uppercase tracking-widest text-white/60">Up next{countdown !== null ? ` · ${Math.max(0, countdown)}s` : ''}</div>
               <div className="truncate font-bold">{episodeLabel(next)} · {next.title}</div></div></div>

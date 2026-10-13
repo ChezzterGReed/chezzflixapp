@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.20',
+    'X-Plex-Version': '0.3.21',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -52,7 +52,7 @@ export interface PlexServer {
   relay?: boolean
 }
 
-export interface PlexTag { tag: string; role?: string; thumb?: string }
+export interface PlexTag { id?: number | string; tag: string; role?: string; thumb?: string }
 
 export interface PlexMedia {
   ratingKey: string
@@ -100,6 +100,8 @@ export interface PlexMedia {
   Media?: PlexMediaInfo[]
   /** Client-side: which of the file versions was picked (that one has been moved to Media[0]); used when asking Plex to transcode it. */
   versionIndex?: number
+  /** Client-side: a show with a new season (or new episodes in a later season than you've watched) out in the last 90 days. */
+  newSeason?: { season: number; count: number }
   /** Client-side: opened again after the app was closed behind your back; it was paused when you left. */
   resumePaused?: boolean
   grandparentGuid?: string
@@ -239,7 +241,13 @@ async function get<T>(server: PlexServer, path: string, ttl = 60_000): Promise<T
 export function invalidateCache() { cache.clear() }
 /** After watching something: forget only what depends on watch progress (item details, Continue Watching, hubs); keep the big library lists. */
 export function invalidateWatchState() {
-  for (const k of [...cache.keys()]) if (/\/library\/metadata\/|\/library\/onDeck|\/hubs|\/status\//.test(k)) cache.delete(k)
+  for (const k of [...cache.keys()]) if (/\/library\/metadata\/|\/library\/onDeck|\/hubs|\/status\/|type=4/.test(k)) cache.delete(k)
+}
+
+/** The newest episodes in a TV library, newest release first: the basis for "sort by new episodes" and "New Season Available". */
+export async function getRecentEpisodes(server: PlexServer, sectionKey: string, size = 600): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/sections/${sectionKey}/all?type=4&sort=originallyAvailableAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=${size}`, 120_000)
+  return c.Metadata ?? []
 }
 
 /** Asks the server to scan a library for new, changed or removed files (what "Scan Library Files" does in Plex). Needs a server admin account. */
@@ -414,6 +422,8 @@ export const SORTS = {
   titleDesc: { label: 'Z – A', q: 'titleSort:desc' },
   added: { label: 'Recently added', q: 'addedAt:desc' },
   released: { label: 'Release date', q: 'originallyAvailableAt:desc' },
+  /** TV libraries only: shows ordered by the release date of their newest episode (worked out in the app, see getRecentEpisodes). */
+  newEpisodes: { label: 'New episodes', q: 'originallyAvailableAt:desc' },
 } as const
 export type SortKey = keyof typeof SORTS
 
@@ -632,6 +642,25 @@ export async function getHistory(server: PlexServer, size = 30): Promise<PlexHis
     const acct = who.get(m.accountID)
     return { key: `${m.historyKey ?? m.ratingKey}-${m.viewedAt}`, ratingKey: m.ratingKey != null ? String(ep ? m.grandparentRatingKey ?? m.ratingKey : m.ratingKey) : undefined, title: ep ? m.grandparentTitle ?? m.title : m.title, subtitle: ep ? `S${m.parentIndex} · E${m.index} · ${m.title}` : String(m.year ?? ''), type: m.type, viewedAt: m.viewedAt, user: acct?.name || 'Someone', userThumb: acct?.thumb, thumb: ep ? m.grandparentThumb ?? m.thumb : m.thumb }
   })
+}
+
+/**
+ * What other people on this server have watched lately (last `days` days) plus what's streaming right now, most-watched first: the title's key, how many
+ * different people, how many plays. Only the server owner's account can read this; for anyone else it throws (and the row stays empty).
+ */
+export async function serverTrending(server: PlexServer, excludeUser = '', days = 7): Promise<{ key: string; users: number; plays: number }[]> {
+  const me = excludeUser.trim().toLowerCase()
+  const [history, live] = await Promise.all([getHistory(server, 400), getSessions(server).catch(() => [] as PlexSession[])])
+  const since = Date.now() / 1000 - days * 86400
+  const tally = new Map<string, { users: Set<string>; plays: number; last: number }>()
+  const bump = (key: string | undefined, user: string, at: number) => {
+    if (!key || (me && user.trim().toLowerCase() === me)) return
+    const t = tally.get(key) ?? { users: new Set<string>(), plays: 0, last: 0 }
+    t.users.add(user); t.plays++; t.last = Math.max(t.last, at); tally.set(key, t)
+  }
+  for (const h of history) if (h.viewedAt >= since && (h.type === 'movie' || h.type === 'episode' || h.type === 'show')) bump(h.ratingKey, h.user, h.viewedAt)
+  for (const s of live) bump(s.ratingKey, s.user.name, Date.now() / 1000)
+  return [...tally.entries()].map(([key, t]) => ({ key, users: t.users.size, plays: t.plays, last: t.last })).sort((a, b) => b.users - a.users || b.plays - a.plays || b.last - a.last).map(({ key, users, plays }) => ({ key, users, plays }))
 }
 
 export async function getServerInfo(server: PlexServer): Promise<ServerInfo> {

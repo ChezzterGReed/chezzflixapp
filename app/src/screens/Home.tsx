@@ -11,7 +11,7 @@ import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
 import { useSeason, useSettings } from '../lib/settings'
 
-interface Props { server: PlexServer; sections: PlexSection[]; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
+interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
 
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'foryou', label: 'For You' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
 const TAB_KEY = 'chezzflix_home_tab'
@@ -24,7 +24,7 @@ const FRESH_MS = 10 * 60_000
 /** Forget what Home last showed (switching profile or signing out: the next Home is read fresh, never the previous person's). */
 export const clearHomeCache = () => homeCache.clear()
 
-export function Home({ server, sections, refreshKey, watchKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
+export function Home({ server, sections, token, profileName, refreshKey, watchKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
   const { settings } = useSettings()
   const season = useSeason()
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(TAB_KEY) as Tab) || 'all')
@@ -66,12 +66,12 @@ export function Home({ server, sections, refreshKey, watchKey, onPlay, onOpen, o
       setBooted(true)
     }
     const needFull = !hit || Date.now() - hit.at > FRESH_MS || hit.refreshKey !== refreshKey
-    skipRecs.current = !needFull
+    skipRecs.current = !needFull && !!hit && hit.watchKey === watchKey   // (after watching something, the recommendations are worked out again from the new history)
     if (!needFull) return () => { alive = false }   // fresh enough: the Continue Watching effect below brings that row up to date
     const animeP = loadAnime(server, visible, refreshKey)
     animeP.then((a) => alive && setAnime(a)).catch(() => {})
     ;(activeTab === 'all' || activeTab === 'trending' ? Promise.resolve(undefined) : animeP.catch(() => undefined))
-      .then(async (a) => { const r = await loadRows(server, sections, activeTab, settings, a, season); if (alive) { meta.current = { at: Date.now(), refreshKey, watchKey }; setRowsAnime(a); setNotices(r.notices); putRows(r.rows) } })
+      .then(async (a) => { const r = await loadRows(server, sections, activeTab, settings, a, season, token, profileName); if (alive) { meta.current = { at: Date.now(), refreshKey, watchKey }; setRowsAnime(a); setNotices(r.notices); putRows(r.rows) } })
       .catch((e) => { if (alive && !hit) { setError(String(e)); setBooted(true) } })
     return () => { alive = false }
   }, [cacheSig, server, sections, refreshKey, season, fullTick]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,7 +85,7 @@ export function Home({ server, sections, refreshKey, watchKey, onPlay, onOpen, o
     if (contSeen.current === contSig && meta.current.watchKey === watchKey) return
     contSeen.current = contSig
     let alive = true
-    refreshContinue(server, activeTab, settings, rowsAnime ?? anime, base)
+    refreshContinue(server, visible, activeTab, settings, rowsAnime ?? anime, base)
       .then((r) => { if (!alive) return; meta.current.watchKey = watchKey; if (r) putRows(r); else { homeCache.delete(cacheSig); setFullTick((n) => n + 1) } })
       .catch(() => {})
     return () => { alive = false }
@@ -103,12 +103,12 @@ export function Home({ server, sections, refreshKey, watchKey, onPlay, onOpen, o
     if (skipRecs.current) { skipRecs.current = false; return }   // restored from the cache: those are still good
     let alive = true
     setRecsReady(false)
-    loadRecs(server, visible, { tab: activeTab, anime, seedGenres: settings.genres, notInterested: settings.notInterested, bust: refreshKey, maxRows: 12 })
+    loadRecs(server, visible, { tab: activeTab, anime, seedGenres: settings.genres, notInterested: settings.notInterested, bust: refreshKey, watchBust: watchKey, maxRows: 12 })
       .then((r) => { if (alive) { setRecRows(r.map((x) => ({ id: x.id, title: x.title, subtitle: x.subtitle, items: x.items }))); setRecsReady(true) } })
       .catch(() => { if (alive) { setRecRows([]); setRecsReady(true) } })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [server, sections, wantsRecs, activeTab, anime, settings.genres, settings.notInterested, settings.hiddenLibraries, refreshKey])
+  }, [server, sections, wantsRecs, activeTab, anime, settings.genres, settings.notInterested, settings.hiddenLibraries, refreshKey, watchKey])
 
   // Hero (re-rolled when the tab or library set changes, not on every row tweak). It appears as soon as continue/new/trending are ready;
   // recommendations fill the remaining slots once they've been worked out (they're the last priority, so nothing already shown moves).

@@ -49,7 +49,7 @@ export function useTitleSelection(server: PlexServer, token: string) {
           ...(settings.tvGuide && sameKind ? [{ label: 'Add to a channel', icon: <Radio size={20} />, onEnter: () => setChannelFor(items) }] : []),
         ]} />
       {!active && note && <div className="pop fixed bottom-8 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black shadow-2xl">{note}</div>}
-      {channelFor && <AddToChannel items={channelFor} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => { setChannelFor(undefined); cancel() }} />}
+      {channelFor && <AddToChannel server={server} items={channelFor} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => { setChannelFor(undefined); cancel() }} />}
     </>
   )
   return { active, has, toggle, start, cancel, bar }
