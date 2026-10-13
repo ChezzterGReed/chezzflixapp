@@ -56,6 +56,9 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
 
   const m = items[i]
   const logo = logoPath(m)
+  // Long titles get a smaller size (and a wider column) so they wrap into fewer lines and the banner never grows up under the tab bar.
+  const long = m.title.length > 34 ? 2 : m.title.length > 18 ? 1 : 0
+  const titleSize = ['text-[clamp(2.6rem,5.6vw,5.4rem)]', 'text-[clamp(2.3rem,4.6vw,4.2rem)]', 'text-[clamp(2rem,3.6vw,3.2rem)]'][long]
   // The tab bar floats over the banner, so spatial navigation can't tell it's "above": go there directly.
   const up = (dir: string) => { if (dir === 'up') { setFocus(tabKey); return false } }
   const toTop = () => { if (!auto.current) scrollTo(window, 'y', 0) }
@@ -63,7 +66,7 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
   return (
     <FocusContext.Provider value={focusKey}>
       <header ref={ref}
-        className="relative h-[66vh] min-h-[480px] max-h-[820px] w-full overflow-hidden">
+        className="relative h-[66vh] min-h-[540px] max-h-[820px] w-full overflow-hidden">
         {/* Backdrops crossfade; only neighbours are mounted so we don't pull every image up front */}
         {items.map((it, n) => Math.abs(n - i) <= 1 || (i === 0 && n === items.length - 1) ? (
           <img key={it.ratingKey} src={imageUrl(server, backdropPath(it), BIG_IMAGE.w, BIG_IMAGE.h)} alt="" draggable={false}
@@ -73,13 +76,13 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
         <div className="absolute inset-0 bg-linear-to-t from-bg via-transparent via-40% to-transparent" />
         <div className="absolute inset-x-0 top-0 h-40 bg-linear-to-b from-black/60 to-transparent" />
 
-        <div key={m.ratingKey} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="fade-up absolute bottom-[12%] left-[var(--gutter)] max-w-[min(640px,52vw)]">
+        <div key={m.ratingKey} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="fade-up absolute bottom-[9%] left-[var(--gutter)] max-w-[min(760px,60vw)]">
           {m.newSeason && <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-white shadow-lg [text-shadow:0_1px_2px_rgba(0,0,0,.4)]">New Season<span className="font-semibold normal-case tracking-normal opacity-90">· S{m.newSeason.season}{m.newSeason.count > 1 ? ` · ${m.newSeason.count} new episodes` : ''}</span></div>}
           {logo
             ? <img src={imageUrl(server, logo, 800, 300)} alt={m.title} className="mb-5 max-h-36 max-w-[28rem] object-contain object-left drop-shadow-2xl" />
-            : <h1 className="mb-4 text-[clamp(2.6rem,5.6vw,5.4rem)] font-extrabold leading-[0.98] tracking-[-0.035em] drop-shadow-2xl">{m.title}</h1>}
+            : <h1 className={`mb-4 ${titleSize} text-balance font-extrabold leading-[1] tracking-[-0.035em] drop-shadow-2xl`}>{m.title}</h1>}
           <Meta m={m} />
-          <p className="clamp-3 mt-4 max-w-[34rem] text-[1.05rem] leading-relaxed text-white/80">{m.summary}</p>
+          <p className={`${long ? 'clamp-2' : 'clamp-3'} mt-4 max-w-[34rem] text-[1.05rem] leading-relaxed text-white/80`}>{m.summary}</p>
           <div className="mt-7 flex items-center gap-3">
             <Focusable focusKey="hero-play" onEnter={() => onPlay(m)} onFocus={toTop} onArrow={up} title="Play" leftToRail>
               <div className="flex h-13 items-center gap-2.5 rounded-full bg-white px-8 text-[1.05rem] font-bold text-black transition-all duration-200 group-hover/f:bg-white/90 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
@@ -112,7 +115,7 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
 
 export function HeroSkeleton() {
   return (
-    <div className="relative h-[66vh] min-h-[480px] max-h-[820px] w-full">
+    <div className="relative h-[66vh] min-h-[540px] max-h-[820px] w-full">
       <div className="skeleton absolute inset-0" />
       <div className="absolute bottom-[12%] left-[var(--gutter)] space-y-4">
         <div className="h-16 w-96 rounded-lg bg-white/5" /><div className="h-4 w-72 rounded bg-white/5" /><div className="h-4 w-[30rem] rounded bg-white/5" />
