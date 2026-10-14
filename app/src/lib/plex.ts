@@ -613,13 +613,27 @@ export function transcodeUrl(server: PlexServer, media: PlexMedia, offsetSec = 0
   return `${server.uri}/video/:/transcode/universal/start.m3u8?${p}`
 }
 
-export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'playing' | 'paused' | 'stopped', timeMs: number) {
+/** The transcode session a stream URL belongs to (so the server's dashboard ties what is playing to that stream), if it is a transcode. */
+export function sessionOf(url?: string): string | undefined {
+  if (!url || !url.includes('/transcode/universal/')) return undefined
+  try { return new URL(url).searchParams.get('session') ?? undefined } catch { return undefined }
+}
+/** Tells the server to stop a transcode we are done with (replaced by another quality, or the player closed), so it doesn't keep encoding and showing on its dashboard. */
+export function stopTranscode(server: PlexServer, url?: string) {
+  const session = sessionOf(url)
+  if (!session || server.uri === DEMO_URI) return
+  fetch(`${server.uri}/video/:/transcode/universal/stop?session=${encodeURIComponent(session)}`, { headers: baseHeaders(server.accessToken) }).catch(() => {})
+}
+
+export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'playing' | 'paused' | 'stopped', timeMs: number, session?: string) {
   if (server.uri === DEMO_URI) return
   const p = new URLSearchParams({
     ratingKey: m.ratingKey, key: `/library/metadata/${m.ratingKey}`, state,
     time: String(Math.round(timeMs)), duration: String(m.duration ?? 0),
   })
-  await fetch(`${server.uri}/:/timeline?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => {})
+  const headers = baseHeaders(server.accessToken)
+  if (session) headers['X-Plex-Session-Identifier'] = session   // (this is what ties the playing stream to its transcode on the server's dashboard)
+  await fetch(`${server.uri}/:/timeline?${p}`, { headers }).catch(() => {})
   invalidateCache()
 }
 

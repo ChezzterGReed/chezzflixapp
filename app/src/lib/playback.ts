@@ -80,7 +80,7 @@ export function planPlayback(server: PlexServer, m: PlexMedia, choice: TrackChoi
     session: crypto.randomUUID(), 'X-Plex-Client-Identifier': clientId(), 'X-Plex-Product': 'Chezzflix', 'X-Plex-Platform': 'Chrome', 'X-Plex-Token': server.accessToken,
     'X-Plex-Client-Profile-Extra': `append-transcode-target-codec(type=videoProfile&context=streaming&protocol=hls&videoCodec=${vCodecs.join(',')}&audioCodec=${aCodecs.join(',')})`,
   })
-  if (maxKbps) { q.set('maxVideoBitrate', String(maxKbps)); q.set('videoBitrate', String(maxKbps)); q.set('videoResolution', resolutionFor(maxKbps)) }
+  if (maxKbps) { q.set('autoAdjustQuality', '0'); q.set('maxVideoBitrate', String(maxKbps)); q.set('videoBitrate', String(maxKbps)); q.set('videoResolution', resolutionFor(maxKbps)) }
   if (wantAudio) q.set('audioStreamID', String(wantAudio.id))
   if (wantSub) { q.set('subtitleStreamID', String(wantSub.id)); q.set('subtitles', isImageSub(wantSub) ? 'burn' : 'auto') }
   else if (choice.subtitleId === null) q.set('subtitleStreamID', '0')

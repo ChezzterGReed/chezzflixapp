@@ -13,7 +13,7 @@ import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
-import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
+import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, sessionOf, stopTranscode, type PlexMedia, type PlexServer } from '../lib/plex'
 import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { NextMovies } from './NextMovies'
 import { useBack } from '../lib/back'
@@ -57,6 +57,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   // Start from what you chose last time on this show (web player); the native player applies it once the file loads.
   const [choice, setChoice] = useState<TrackChoice>(() => webChoice(media, streamsOf(media, 2), streamsOf(media, 3)))
   const [plan, setPlan] = useState<PlaybackPlan>()
+  const planRef = useRef<PlaybackPlan | undefined>(undefined); planRef.current = plan
   const [error, setError] = useState<string>()
   const [buffering, setBuffering] = useState(true)
   const [paused, setPausedState] = useState(true)
@@ -142,6 +143,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     const v = video.current
     if (!v) return
     hls.current?.destroy(); hls.current = null
+    if (planRef.current && planRef.current.url !== p.url) stopTranscode(server, planRef.current.url)
     setPlan(p); setError(undefined); setBuffering(true)
     const seekOnReady = () => { if (startAt > 1) v.currentTime = startAt; v.removeEventListener('loadedmetadata', seekOnReady) }
     v.addEventListener('loadedmetadata', seekOnReady)
@@ -343,8 +345,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   // ----- progress reporting -----
   useEffect(() => {
     if (media.type === 'clip') return   // (a trailer or extra: nothing to remember)
-    const t = setInterval(() => { if (timeRef.current > 0) reportProgress(server, media, (mode === 'native' ? pausedRef.current : video.current?.paused) ? 'paused' : 'playing', timeRef.current * 1000) }, 10_000)
-    return () => { clearInterval(t); reportProgress(server, media, 'stopped', timeRef.current * 1000) }
+    const t = setInterval(() => { if (timeRef.current > 0) reportProgress(server, media, (mode === 'native' ? pausedRef.current : video.current?.paused) ? 'paused' : 'playing', timeRef.current * 1000, sessionOf(planRef.current?.url)) }, 10_000)
+    return () => { clearInterval(t); reportProgress(server, media, 'stopped', timeRef.current * 1000, sessionOf(planRef.current?.url)); stopTranscode(server, planRef.current?.url) }
   }, [server, media, mode])
 
   // ----- next episode lookup -----
@@ -460,6 +462,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   // A different quality: reload the same spot (a transcode capped at that bitrate, or back to the original file). Waits a moment so stepping through the list doesn't reload at every step.
   const startStream = (kbps: number | null, at: number) => {
     fallbackStep.current = 'none'
+    stopTranscode(server, planRef.current?.url)   // the stream being replaced is finished with
     if (mode === 'native') {
       if (kbps === null) {
         const url = directPlayUrl(server, media)
