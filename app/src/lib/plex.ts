@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.26',
+    'X-Plex-Version': '0.3.27',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -604,6 +604,7 @@ export interface PlexSession {
   kind: StreamKind
   detail: string               // e.g. "1080p · 8.2 Mbps"
   progress: number             // 0..1
+  offsetMs: number; durationMs: number   // where it is now, and how long it is (so a screen can keep counting between refreshes)
 }
 export interface PlexHistoryEntry { key: string; ratingKey?: string; title: string; subtitle: string; type: string; viewedAt: number; user: string; userThumb?: string; thumb?: string }
 export interface ServerInfo { version?: string; platform?: string; name?: string; cpu?: number; memory?: number }
@@ -627,6 +628,7 @@ export async function getSessions(server: PlexServer): Promise<PlexSession[]> {
       bandwidth: bw, location: m.Session?.location ?? 'lan', kind,
       detail: [res, bw ? `${(bw / 1000).toFixed(1)} Mbps` : ''].filter(Boolean).join(' · '),
       progress: m.duration ? Math.min(1, (m.viewOffset ?? 0) / m.duration) : 0,
+      offsetMs: m.viewOffset ?? 0, durationMs: m.duration ?? 0,
     }
   })
 }

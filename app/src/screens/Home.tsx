@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Hero, HeroSkeleton } from '../components/Hero'
+import { Clock } from '../components/Clock'
 import { TrendingBanner } from '../components/TrendingBanner'
 import { TabBanner, hasTabBanner } from '../components/TabBanner'
 import { Row, RowSkeleton } from '../components/Row'
@@ -158,6 +159,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
 
   return (
     <div className="relative pb-24">
+      <Clock className="pointer-events-none absolute right-[var(--gutter)] top-8 z-20 text-xl font-semibold text-white/85 drop-shadow" />
       <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
         <div className="flex gap-1 rounded-full bg-black/50 p-1">
           {TABS.filter((t) => (t.id !== 'anime' || showAnime) && (t.id !== 'foryou' || settings.recs) && (t.id !== 'trending' || !!settings.tmdbKey)).map((t) => (

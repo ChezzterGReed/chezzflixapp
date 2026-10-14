@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { findVersions, lighterThan, type Version } from '../lib/versions'
+import { Clock } from './Clock'
 import { StallOffer } from './StallOffer'
 import { VolumePill } from './VolumePill'
 import { queueNeighbors } from '../lib/shuffleQueue'
@@ -674,8 +675,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel || levelPanel !== null || stylePanel !== null) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
         <div data-nopause className="absolute inset-x-0 top-0 flex items-start gap-4 bg-linear-to-b from-black/80 to-transparent px-8 pb-16 pt-6">
           <button onClick={close} aria-label="Back" className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/25"><ArrowLeft size={22} /></button>
-          <div className="min-w-0 flex-1 pt-0.5"><div className="truncate text-xl font-bold">{title}</div><div className="truncate text-sm text-white/65">{subtitle}</div></div>
-          {plan && <div className={`rounded-full px-3.5 py-1.5 text-xs font-bold ring-1 ${KIND_STYLE[plan.kind]}`}>{plan.summary}</div>}
+          <div className="min-w-0 flex-1 pt-0.5"><div className="truncate text-xl font-bold">{title}</div><div className="truncate text-sm text-white/65">{subtitle}</div>
+            {plan && <div className={`mt-2 inline-block rounded-full px-3.5 py-1 text-xs font-bold ring-1 ${KIND_STYLE[plan.kind]}`}>{plan.summary}</div>}</div>
+          <Clock className="shrink-0 pt-1 text-xl font-semibold text-white/90" />
         </div>
 
         <div data-nopause className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/90 via-black/50 to-transparent px-8 pb-7 pt-24">

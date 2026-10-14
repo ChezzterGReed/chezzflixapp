@@ -12,6 +12,8 @@ const KIND: Record<StreamKind, { label: string; cls: string }> = {
   transcode: { label: 'Transcoding', cls: 'bg-amber-400/15 text-amber-300 ring-amber-300/30' },
 }
 
+/** 83000 -> 1:23 and 5025000 -> 1:23:45. */
+const clock = (ms: number) => { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}` }
 const ago = (t: number) => {
   const s = Math.max(0, Date.now() / 1000 - t)
   if (s < 90) return 'just now'
@@ -40,11 +42,17 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
   const [history, setHistory] = useState<PlexHistoryEntry[]>()
   const [info, setInfo] = useState<ServerInfo>({})
   const [error, setError] = useState<string>()
+  const [who, setWho] = useState<string | null>(null)   // filter for recent activity: one person's name, or everyone
+  const [deep, setDeep] = useState<PlexHistoryEntry[]>()   // the longer history, read only while someone is picked
+  // Playing streams keep counting between the 5-second refreshes: where each was when we last looked, plus the time since.
+  const [seenAt, setSeenAt] = useState(Date.now())
+  const [tick, setTick] = useState(Date.now())
+  useEffect(() => { const t = setInterval(() => setTick(Date.now()), 1000); return () => clearInterval(t) }, [])
 
   useEffect(() => {
     let alive = true
     const live = () => {
-      getSessions(server).then((s) => { if (alive) { setSessions(s); setError(undefined) } }).catch((e) => alive && setError(String(e)))
+      getSessions(server).then((s) => { if (alive) { setSessions(s); setSeenAt(Date.now()); setError(undefined) } }).catch((e) => alive && setError(String(e)))
       getServerInfo(server).then((i) => alive && setInfo(i)).catch(() => {})
     }
     live()
@@ -53,6 +61,16 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
     const h = setInterval(() => getHistory(server, 30).then((x) => alive && setHistory(x)).catch(() => {}), 60_000)
     return () => { alive = false; clearInterval(t); clearInterval(h) }
   }, [server])
+
+  // Everyone: the latest 30. One person picked: a longer stretch (100) is read, so there is more of their activity to show.
+  useEffect(() => {
+    if (!who) { setDeep(undefined); return }
+    let alive = true
+    const load = () => getHistory(server, 100).then((x) => alive && setDeep(x)).catch(() => {})
+    load()
+    const t = setInterval(load, 60_000)
+    return () => { alive = false; clearInterval(t) }
+  }, [server, who])
 
   const list = sessions ?? []
   const total = list.reduce((n, s) => n + s.bandwidth, 0)
@@ -99,7 +117,13 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
                   <div className="mt-2 truncate text-[1.1rem] font-bold">{s.title}</div>
                   <div className="truncate text-sm text-white/60">{s.subtitle}</div>
                   <div className="mt-auto pt-3">
-                    <div className="h-1 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-accent" style={{ width: `${s.progress * 100}%` }} /></div>
+                    {(() => {
+                      const at = s.durationMs ? Math.min(s.durationMs, s.offsetMs + (s.device.state === 'playing' ? Math.max(0, tick - seenAt) : 0)) : 0
+                      return <>
+                        <div className="h-1 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-accent transition-[width] duration-1000 ease-linear" style={{ width: `${s.durationMs ? (at / s.durationMs) * 100 : s.progress * 100}%` }} /></div>
+                        {s.durationMs > 0 && <div className="mt-1.5 flex justify-between text-[0.75rem] tabular-nums text-white/55"><span>{clock(at)}</span><span>{clock(s.durationMs)}</span></div>}
+                      </>
+                    })()}
                     <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.8rem] text-white/60">
                       <span className={`rounded-full px-2.5 py-0.5 font-bold ring-1 ${KIND[s.kind].cls}`}>{KIND[s.kind].label}</span>
                       <span>{s.detail}</span>
@@ -117,9 +141,24 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
       <h2 className="mb-4 text-[1.3rem] font-bold tracking-tight">Recent activity</h2>
       {!history && <div className="skeleton h-48 rounded-2xl" />}
       {history && history.length === 0 && <p className="rounded-2xl bg-white/5 p-6 text-white/55">No watch history yet.</p>}
-      {history && history.length > 0 && (
+      {history && history.length > 0 && (() => {
+        const people = [...history.reduce((m, h) => m.set(h.user, { thumb: h.userThumb, n: (m.get(h.user)?.n ?? 0) + 1 }), new Map<string, { thumb?: string; n: number }>())].sort((a, b) => b[1].n - a[1].n)
+        const shown = who ? (deep ?? history).filter((h) => h.user === who) : history
+        return <>
+        {people.length > 1 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Focusable focusKey="dash-who-all" onEnter={() => setWho(null)} title="Everyone" leftToRail><div className={`${who === null ? 'bg-accent text-black' : 'bg-white/10 text-white/80'} flex h-10 items-center rounded-full px-4 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black`}>Everyone</div></Focusable>
+            {people.map(([name, p]) => (
+              <Focusable key={name} onEnter={() => setWho(who === name ? null : name)} title={`Only ${name}`}>
+                <div className={`${who === name ? 'bg-accent text-black' : 'bg-white/10 text-white/80'} flex h-10 items-center gap-2 rounded-full pl-1.5 pr-4 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black`}><Avatar name={name} thumb={p.thumb} size={28} />{name}</div>
+              </Focusable>
+            ))}
+          </div>
+        )}
+        {shown.length === 0 && <p className="rounded-2xl bg-white/5 p-6 text-white/55">Nothing from {who} lately.</p>}
+        {shown.length > 0 && (
         <div className="divide-y divide-white/8 overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/10">
-          {history.map((h) => (
+          {shown.map((h) => (
             <Focusable key={h.key} onEnter={() => { if (h.ratingKey) onOpen({ ratingKey: h.ratingKey, type: h.type === 'episode' ? 'show' : h.type, title: h.title }) }} onFocus={(el) => reveal(el)} title={`${h.user} — ${h.title}`}>
               <div className="flex items-center gap-4 px-5 py-3.5 transition-colors group-hover/f:bg-white/6 group-data-[hl=true]/f:bg-white/15 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-inset group-data-[hl=true]/f:ring-white">
                 <Avatar name={h.user} thumb={h.userThumb} size={34} />
@@ -129,7 +168,9 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
             </Focusable>
           ))}
         </div>
-      )}
+        )}
+        </>
+      })()}
     </div>
   )
 }
