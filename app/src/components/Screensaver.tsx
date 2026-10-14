@@ -36,6 +36,10 @@ export function Screensaver({ server, sections, enabled, minutes }: { server: Pl
   const [on, setOn] = useState(false)
   const [slides, setSlides] = useState<Slide[]>([])
   const [at, setAt] = useState(0)
+  // Coming in: the app fades to black, then the slideshow fades up. Going out: the slideshow fades to black, then the app fades back.
+  const [mounted, setMounted] = useState(false)   // the overlay exists
+  const [dark, setDark] = useState(false)          // the black layer is opaque
+  const [content, setContent] = useState(false)    // the slideshow is showing
   const idle = useRef(0)
   const last = useRef({ x: -1, y: -1 })
   const onRef = useRef(false); onRef.current = on
@@ -58,6 +62,19 @@ export function Screensaver({ server, sections, enabled, minutes }: { server: Pl
     arm()
     return () => { clearTimeout(idle.current); evs.forEach((n) => window.removeEventListener(n, wake, true)) }
   }, [enabled, minutes])
+
+  useEffect(() => {
+    if (on) {
+      setMounted(true)
+      const raf = requestAnimationFrame(() => requestAnimationFrame(() => setDark(true)))
+      const t = setTimeout(() => setContent(true), 1100)
+      return () => { cancelAnimationFrame(raf); clearTimeout(t) }
+    }
+    setContent(false)
+    const t1 = setTimeout(() => setDark(false), 650)
+    const t2 = setTimeout(() => setMounted(false), 650 + 1150)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [on])
 
   // Starting: gather something to show (fresh at most every half hour).
   useEffect(() => {
@@ -90,10 +107,11 @@ export function Screensaver({ server, sections, enabled, minutes }: { server: Pl
     urls.forEach((u) => { const i = new Image(); i.src = u })
   }, [on, at, slides, server])
 
-  if (!on) return null
+  if (!mounted) return null
   const s = slides[at]
   return (
-    <div role="presentation" className="fixed inset-0 z-[200] overflow-hidden bg-black">
+    <div role="presentation" className={`fixed inset-0 z-[200] overflow-hidden bg-black transition-opacity duration-[1100ms] ease-in-out ${dark ? 'opacity-100' : 'opacity-0'} ${on ? '' : 'pointer-events-none'}`}>
+      <div className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${content ? 'opacity-100' : 'opacity-0'}`}>
       {s && (
         <div key={at} className="ss-slide absolute inset-0">
           {s.kind === 'art' ? (
@@ -119,6 +137,7 @@ export function Screensaver({ server, sections, enabled, minutes }: { server: Pl
         </div>
       )}
       <Clock className="absolute right-14 top-10 text-3xl font-semibold text-white/80 drop-shadow" />
+      </div>
     </div>
   )
 }
