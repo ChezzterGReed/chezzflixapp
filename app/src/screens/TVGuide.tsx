@@ -142,7 +142,14 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   // Throw the saved schedule away and build a new one.
   const refreshGuide = () => { resetGuide(); setSel({ row: 0, t: Date.now() }); setRefreshTick((n) => n + 1) }
   const patchChannel = (id: string, patch: Partial<Channel>) => update({ channels: settings.channels.map((x) => (x.id === id ? { ...x, ...patch } : x)) })
-  const clone = (c: Channel) => { if (settings.channels.length < 40) update({ channels: [...settings.channels, cloneChannel(c, settings.channels)] }) }
+  // The copy takes the next number, right under the channel it was made from (later channels move down one).
+  const clone = (c: Channel) => {
+    if (settings.channels.length >= 40) return
+    const at = c.seasonal ? 0 : c.number
+    const copy = cloneChannel(c, settings.channels)
+    update({ channels: [...settings.channels.map((x) => (x.number > at ? { ...x, number: x.number + 1 } : x)), { ...copy, number: at + 1 }] })
+    setSel({ row: seasonalChans.length + (c.seasonal ? 0 : userChannels.findIndex((x) => x.id === c.id) + 1), t: Date.now() })   // (the highlight follows to the copy)
+  }
   const setPrefs = (c: Channel, prefs: Channel['prefs']) => (c.seasonal ? update({ seasonalPrefs: { ...settings.seasonalPrefs, [c.id]: prefs ?? {} } }) : update({ channels: settings.channels.map((x) => (x.id === c.id ? { ...x, prefs } : x)) }))
   const remove = (c: Channel) => { update({ channels: settings.channels.filter((x) => x.id !== c.id) }); setMenu(undefined); setSel({ row: 0, t: Date.now() }) }
   // Channel numbers are the order: saving a new order renumbers them 1, 2, 3...

@@ -126,7 +126,7 @@ export interface Slot {
 }
 interface ShowState { start: number; seed: number; pos: number }
 interface ChanState { rot: number; inBlock: number; shows: Record<string, ShowState>; movie?: ShowState }
-interface Stored { sig: string; slots: Slot[]; st: ChanState }
+interface Stored { sig: string; slots: Slot[]; st: ChanState; /** What the channel could play when this schedule was last built (see fingerprint). */ fp?: string }
 interface Source { eps?: Record<string, Ep[]>; movies?: Movie[] }
 interface Ep { key: string; dur: number; label: string; title: string; season: number }
 interface Movie { key: string; dur: number; title: string; year?: number; date: string; th?: string; ar?: string; rating?: string }
@@ -166,10 +166,12 @@ export function describeSeasons(seasons?: number[]): string {
 }
 
 // ---------- Loading what a channel plays ----------
-const episodeCache = new Map<string, Ep[]>()
+// What the guide knows about the library is remembered for a while (not for as long as the app stays open), so new episodes and movies get noticed.
+const CACHE_MS = 10 * 60_000
+const episodeCache = new Map<string, { at: number; eps: Ep[] }>()
 async function loadEpisodes(server: PlexServer, showKey: string): Promise<Ep[]> {
   const hit = episodeCache.get(server.uri + showKey)
-  if (hit) return hit
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.eps
   let leaves: PlexMedia[] = []
   if (server.uri !== DEMO_URI) leaves = await getAllLeaves(server, showKey).catch(() => [])
   if (!leaves.length) {   // (also how the demo works) walk the seasons
@@ -183,16 +185,16 @@ async function loadEpisodes(server: PlexServer, showKey: string): Promise<Ep[]> 
       key: e.ratingKey, dur: e.duration && e.duration > 60_000 ? e.duration : 30 * MIN, title: e.title, season: e.parentIndex ?? 1,
       label: `S${String(e.parentIndex ?? 0).padStart(2, '0')}E${String(e.index ?? 0).padStart(2, '0')}`,
     }))
-  episodeCache.set(server.uri + showKey, eps)
+  episodeCache.set(server.uri + showKey, { at: Date.now(), eps })
   return eps
 }
 
-const movieCache = new Map<string, Movie[]>()
+const movieCache = new Map<string, { at: number; list: Movie[] }>()
 const lower = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
 export async function loadMovies(server: PlexServer, sections: PlexSection[], genres: string[]): Promise<Movie[]> {
   const ck = server.uri + '|' + sections.map((s) => s.key).join(',') + '|' + [...genres].sort().join(',')
   const hit = movieCache.get(ck)
-  if (hit) return hit
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.list
   const want = new Set(genres.map(lower))
   const libs = sections.filter((s) => s.type === 'movie' && !isOtherSection(s))
   const best = new Map<string, { m: PlexMedia; rank: number }>()
@@ -211,7 +213,7 @@ export async function loadMovies(server: PlexServer, sections: PlexSection[], ge
     key: m.ratingKey, dur: m.duration && m.duration > 10 * MIN ? m.duration : 100 * MIN, title: m.title, year: m.year,
     date: m.originallyAvailableAt ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art, rating: m.contentRating ?? '',
   }))
-  movieCache.set(ck, list)
+  movieCache.set(ck, { at: Date.now(), list })
   return list
 }
 
@@ -233,6 +235,15 @@ async function sources(server: PlexServer, sections: PlexSection[], ch: Channel)
   const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))].filter((m) => ratingAllowed(ch.ratings, m.rating)).filter((m) => { const k = `${lower(m.title)}:${m.year ?? ''}`; if (byName.has(k)) return false; byName.add(k); return true })
   return { movies: ch.movieOrder === 'release' ? [...movies].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)) : movies }
 }
+
+/** A short fingerprint of everything a channel could play right now: it changes when episodes or movies are added to (or removed from) what the channel draws on. */
+function fingerprint(src: Source): string {
+  const keys = [...Object.entries(src.eps ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([show, eps]) => `${show}:${eps.map((e) => e.key).join(',')}`), (src.movies ?? []).map((m) => m.key).sort().join(',')].join('|')
+  let h = 5381
+  for (let i = 0; i < keys.length; i++) h = ((h << 5) + h + keys.charCodeAt(i)) | 0
+  return `${keys.length}:${h >>> 0}`
+}
+const KEEP_AHEAD = 2 * HOUR   // when something new turns up, what is airing now and over the next two hours stays as scheduled
 
 /** Adds programs to the end of a channel's schedule until it reaches `until`. The first program of a fresh schedule is already part-way through. */
 function fill(ch: Channel, src: Source, stored: Stored, now: number, until: number) {
@@ -312,6 +323,11 @@ export function ensureGuide(server: PlexServer, sections: PlexSection[], scope: 
           const stored: Stored = same ? { ...prev, slots: prev.slots.filter((s) => s.end > now) } : { sig: signature(ch), slots: [], st: { rot: 0, inBlock: 0, shows: {} } }
           if (!stored.slots.length) stored.st = { rot: Math.floor(Math.random() * 1000), inBlock: 0, shows: stored.st.shows ?? {} }   // everything aired: start fresh somewhere else
           const src = await sources(server, sections, ch)
+          const fp = fingerprint(src)
+          // Something was added (or taken away) since this schedule was built: keep the next couple of hours as they are and plan the rest again, so it can air soon.
+          const hasContent = (src.movies?.length ?? 0) > 0 || Object.values(src.eps ?? {}).some((e) => e.length > 0)   // (a failed read must not wipe the plan)
+          if (same && stored.fp && stored.fp !== fp && hasContent) stored.slots = stored.slots.filter((s) => s.start < now + KEEP_AHEAD)
+          stored.fp = fp
           fill(ch, src, stored, now, until)
           all[ch.id] = stored
           if (live()) set({ slots: { ...state.slots, [ch.id]: stored.slots } })
@@ -333,6 +349,7 @@ export function ensureGuide(server: PlexServer, sections: PlexSection[], scope: 
 /** Forgets every saved schedule (on this device) and the one in memory; the next time the guide opens it builds a fresh one. */
 export function resetGuide() {
   try { Object.keys(localStorage).filter((k) => k.startsWith('chezzflix_guide_')).forEach((k) => localStorage.removeItem(k)) } catch { /* ignore */ }
+  episodeCache.clear(); movieCache.clear()
   jobId++; running = null; runKey = ''
   set({ slots: {}, ready: false, building: false, done: 0, total: 0 })
 }
