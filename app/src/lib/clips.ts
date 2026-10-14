@@ -18,10 +18,10 @@ export function previewSegments(m: PlexMedia): Segment[] {
   return [{ start: Math.round(start), len: PREVIEW_LEN }]
 }
 
-/** How many clips, and how long each is, by episode length: 40 minutes or less 14 x 6 s, up to 65 minutes 17 x 5 s, longer 20 x 5 s. */
+/** How many clips, and how long each is, by episode length: 40 minutes or less 10 clips, up to 65 minutes 13, longer 16; every short clip 7 s. */
 export function recapPlan(durationSec: number): { count: number; len: number } {
   const min = durationSec / 60
-  return min <= 40 ? { count: 14, len: 6 } : min <= 65 ? { count: 17, len: 5 } : { count: 20, len: 5 }
+  return min <= 40 ? { count: 10, len: 7 } : min <= 65 ? { count: 13, len: 7 } : { count: 16, len: 7 }
 }
 
 /**

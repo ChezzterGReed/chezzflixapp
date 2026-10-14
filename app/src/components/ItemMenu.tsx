@@ -1,4 +1,4 @@
-import { CheckSquare, Eye, EyeOff, Info, Play, ThumbsDown, X, XCircle } from 'lucide-react'
+import { CheckSquare, Eye, EyeOff, Info, Pencil, Play, ThumbsDown, X, XCircle } from 'lucide-react'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { episodeLabel, imageUrl, isWatched, posterPath, type PlexMedia, type PlexServer } from '../lib/plex'
@@ -6,6 +6,8 @@ import { episodeLabel, imageUrl, isWatched, posterPath, type PlexMedia, type Ple
 interface Props {
   item: PlexMedia; server: PlexServer; fromContinue?: boolean; fromRecs?: boolean
   onClose: () => void; onPlay: () => void; onInfo: () => void; onToggleWatched: () => void; onRemoveContinue: () => void; onNotInterested?: () => void; onSelect?: () => void
+  /** Desktop owner only: edit this title's details and artwork. */
+  onEdit?: () => void
 }
 
 function Item({ icon, label, onEnter, danger }: { icon: React.ReactNode; label: string; onEnter: () => void; danger?: boolean }) {
@@ -17,7 +19,7 @@ function Item({ icon, label, onEnter, danger }: { icon: React.ReactNode; label: 
 }
 
 /** The per-title menu: play, details, watched state, and (in Continue Watching) remove. */
-export function ItemMenu({ item, server, fromContinue, fromRecs, onClose, onPlay, onInfo, onToggleWatched, onRemoveContinue, onNotInterested, onSelect }: Props) {
+export function ItemMenu({ item, server, fromContinue, fromRecs, onClose, onPlay, onInfo, onToggleWatched, onRemoveContinue, onNotInterested, onSelect, onEdit }: Props) {
   const title = item.type === 'episode' ? item.grandparentTitle ?? item.title : item.title
   const sub = item.type === 'episode' ? `${episodeLabel(item)} · ${item.title}` : [item.year, item.type === 'show' ? 'Series' : undefined].filter(Boolean).join(' · ')
   const watched = isWatched(item)
@@ -34,6 +36,7 @@ export function ItemMenu({ item, server, fromContinue, fromRecs, onClose, onPlay
           <Item icon={<Play size={20} fill="currentColor" />} label={item.viewOffset ? 'Resume' : 'Play'} onEnter={act(onPlay)} />
           <Item icon={<Info size={20} />} label="More info" onEnter={act(onInfo)} />
           <Item icon={watched ? <EyeOff size={20} /> : <Eye size={20} />} label={watched ? 'Mark as unwatched' : 'Mark as watched'} onEnter={act(onToggleWatched)} />
+          {onEdit && <Item icon={<Pencil size={20} />} label="Edit info" onEnter={act(onEdit)} />}
           {onSelect && <Item icon={<CheckSquare size={20} />} label="Select" onEnter={act(onSelect)} />}
           {fromRecs && onNotInterested && <Item icon={<ThumbsDown size={20} />} label="Not interested" onEnter={act(onNotInterested)} />}
           {fromContinue && <Item danger icon={<XCircle size={20} />} label="Remove from Continue Watching" onEnter={act(onRemoveContinue)} />}

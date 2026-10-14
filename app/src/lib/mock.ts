@@ -167,6 +167,8 @@ export function mockGet(rawPath: string): unknown {
         User: { title: 'Jordan', thumb: 'demo:avatar:Jordan' }, Player: { title: 'Fire TV', product: 'Plex for Fire TV', platform: 'Android', state: 'playing', local: false }, Session: { id: 's3', bandwidth: 8800, location: 'wan' }, TranscodeSession: { videoDecision: 'copy', audioDecision: 'transcode' }, Media: [{ videoResolution: '1080', bitrate: 8800 }] },
     ] }
   }
+  const im = path.match(/^\/library\/metadata\/([^/]+)\/(posters|arts)$/)
+  if (im) return { Metadata: ['A', 'B', 'C', 'D', 'E'].map((x, i) => ({ ratingKey: `demo-${im[2]}-${x}`, thumb: `demo:${im[2] === 'posters' ? 'poster' : 'art'}:Choice ${x}`, selected: i === 0, provider: i === 0 ? 'local' : 'tmdb' })) }
   if (path === '/accounts') return { Account: [{ id: 1, name: 'Chezz' }, { id: 2, name: 'Alex' }, { id: 3, name: 'Mom' }, { id: 4, name: 'Jordan' }] }
   if (path === '/status/sessions/history/all') {
     const now = Math.floor(Date.now() / 1000)

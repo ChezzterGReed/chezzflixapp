@@ -40,6 +40,8 @@ import { ProfileMenu } from './components/ProfileMenu'
 import { SettingsModal } from './components/SettingsModal'
 import { Player } from './components/Player'
 import { ItemMenu } from './components/ItemMenu'
+import { EditInfo } from './components/EditInfo'
+import { canEdit } from './lib/edit'
 import { ItemMenuContext } from './lib/itemMenu'
 import { LoadingScreen } from './components/LoadingScreen'
 import { SeasonalAmbient } from './components/SeasonalAmbient'
@@ -202,6 +204,9 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     }).catch(() => clearResume())
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Something was changed on the server (details, tags, artwork): forget what we had and reload what's on screen.
+  const [editing, setEditing] = useState<PlexMedia>()
+  const edited = () => { invalidateCache(); setRefreshKey((k) => k + 1) }
   const closePlayer = (home?: boolean) => { clearResume(); setPlaying(undefined); invalidateWatchState(); resetNewSeason(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
   const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying(full) }
 
@@ -273,12 +278,14 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
       {details.length > 0 && <Detail key={`${details[details.length - 1]}.${refreshKey}.${watchKey}`} ratingKey={details[details.length - 1]} server={server} token={token}
         focusEpisode={epFocus && epFocus.show === details[details.length - 1] ? epFocus : undefined}
-        onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onShuffle={shuffle} onOpen={open} onCollection={openCollection} onActor={openActor} />}
+        onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onShuffle={shuffle} onEdited={edited} onOpen={open} onCollection={openCollection} onActor={openActor} />}
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
       {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
-        onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)} />}
+        onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)}
+        onEdit={canEdit(server) && ['movie', 'show', 'episode'].includes(menu.item.type) ? () => setEditing(menu.item) : undefined} />}
+      {editing && <EditInfo server={server} item={editing} onClose={() => setEditing(undefined)} onSaved={edited} />}
       {nudge && <RecapNudge server={server} target={nudge.target} prev={nudge.info.prev} days={nudge.info.days}
         onSkip={() => update({ recapNudgeSkipped: { ...settings.recapNudgeSkipped, [nudge.target.grandparentRatingKey!]: nudge.info.prev.lastViewedAt! } })}
         onNever={() => update({ recapNudgeOff: { ...settings.recapNudgeOff, [nudge.target.grandparentRatingKey!]: true } })}

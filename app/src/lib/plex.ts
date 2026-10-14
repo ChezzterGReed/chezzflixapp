@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.27',
+    'X-Plex-Version': '0.3.28',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -92,6 +92,8 @@ export interface PlexMedia {
   Collection?: PlexTag[]
   Role?: PlexTag[]
   Director?: PlexTag[]
+  Label?: PlexTag[]
+  titleSort?: string
   userRating?: number
   Image?: { type: string; url: string }[]
   OnDeck?: { Metadata?: PlexMedia }
@@ -672,4 +674,29 @@ export async function getServerInfo(server: PlexServer): Promise<ServerInfo> {
   ])
   const last = res.StatisticsResources?.[res.StatisticsResources.length - 1]
   return { version: id.version, platform: id.platform, name: id.friendlyName, cpu: last?.hostCpuUtilization, memory: last?.hostMemoryUtilization }
+}
+
+// ---------- Editing (server owner, desktop): details, tags and artwork, like Plex's own "Edit" ----------
+/** A change sent to the server (editing details, choosing artwork). Only the owner's token is allowed; the demo server just says yes. */
+export async function plexWrite(server: PlexServer, method: 'PUT' | 'POST', path: string, body?: BodyInit, contentType?: string): Promise<void> {
+  if (server.uri === DEMO_URI) { await new Promise((r) => setTimeout(r, 250)); return }
+  const headers = baseHeaders(server.accessToken)
+  if (contentType) headers['Content-Type'] = contentType
+  const r = await fetch(`${server.uri}${path}`, { method, headers, body })
+  if (r.status === 401 || r.status === 403) throw new Error('This account isn’t allowed to edit this server.')
+  if (!r.ok) throw new Error(`Plex answered ${r.status}`)
+  invalidateCache()
+}
+
+/** An item's details read fresh (an edit may have just changed them). */
+export async function getMetadataFresh(server: PlexServer, ratingKey: string): Promise<PlexMedia> {
+  const c = await get<{ Metadata: PlexMedia[] }>(server, `/library/metadata/${ratingKey}?includeOnDeck=1&includeMarkers=1`, 0)
+  return c.Metadata[0]
+}
+
+export interface ImageChoice { key: string; thumb: string; selected: boolean; provider?: string }
+/** The posters (or backgrounds) Plex has for an item: what it found online, and anything uploaded. */
+export async function getImageChoices(server: PlexServer, ratingKey: string, kind: 'posters' | 'arts'): Promise<ImageChoice[]> {
+  const c = await get<{ Metadata?: { key?: string; ratingKey?: string; thumb?: string; selected?: boolean; provider?: string }[] }>(server, `/library/metadata/${ratingKey}/${kind}`, 0)
+  return (c.Metadata ?? []).map((m) => ({ key: m.ratingKey ?? m.key ?? '', thumb: m.thumb ?? '', selected: !!m.selected, provider: m.provider })).filter((m) => m.key)
 }
