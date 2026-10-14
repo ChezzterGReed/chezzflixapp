@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { reveal } from '../lib/scroll'
+import { UpdateDot, useUpdatePending } from './UpdateDot'
 import { Bookmark, Film, Radio, RefreshCw, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
@@ -18,12 +19,16 @@ export type View =
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
   | { type: 'list'; title: string; subtitle?: string; source: ListSource }
 
-function NavItem({ icon, label, active, onEnter, onLongPress, focusKey }: { icon: ReactNode; label: string; active?: boolean; onEnter: () => void; onLongPress?: () => void; focusKey?: string }) {
+function CountBadge({ n }: { n: number }) {
+  return <span className="absolute right-[9px] top-[-3px] grid h-[17px] min-w-[17px] place-items-center rounded-full bg-accent px-1 text-[0.66rem] font-extrabold leading-none text-black ring-2 ring-black/60">{n > 9 ? '9+' : n}</span>
+}
+
+function NavItem({ icon, label, active, onEnter, onLongPress, focusKey, badge }: { icon: ReactNode; label: string; active?: boolean; onEnter: () => void; onLongPress?: () => void; focusKey?: string; /** A small count on the icon. */ badge?: number }) {
   return (
     <Focusable focusKey={focusKey} onEnter={onEnter} onLongPress={onLongPress} title={label} rightToContent onFocus={(el) => reveal(el, { block: 'nearest' })}>
       <div className={`relative flex h-12 items-center overflow-hidden rounded-xl transition-colors duration-200 group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${active ? 'text-white' : 'text-white/60'}`}>
         {active && <i className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r bg-accent group-data-[hl=true]/f:bg-black" />}
-        <span className="grid w-[52px] shrink-0 place-items-center">{icon}</span>
+        <span className="relative grid w-[52px] shrink-0 place-items-center">{icon}{!!badge && <CountBadge n={badge} />}</span>
         <span className="whitespace-nowrap pr-5 text-[0.95rem] font-semibold opacity-0 transition-opacity duration-200 group-data-[open=true]/nav:opacity-100">{label}</span>
       </div>
     </Focusable>
@@ -43,14 +48,17 @@ interface Props {
   onProfile: () => void
   /** Server owner only. */
   showDashboard?: boolean
+  /** Streams playing on the server right now (shown on the Dashboard icon). */
+  streams?: number
   /** The TV Guide is switched on in Settings. */
   tvGuide?: boolean
   /** Ask the server to scan a library for new content. */
   onScan?: (s: PlexSection) => void
 }
 
-export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, tvGuide, onScan }: Props) {
+export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, streams, tvGuide, onScan }: Props) {
   const mode = useInputMode()
+  const update = useUpdatePending()
   const typing = useTyping()
   const season = useSeason()
   const [hover, setHover] = useState(false)
@@ -120,10 +128,10 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
 
         <div className="mt-3 shrink-0">
           {sections.length > 0 && <div className="mb-1"><NavItem focusKey="nav-lib-more" icon={<LibraryIcon size={22} />} label="View all libraries" active={view.type === 'library' && sections.findIndex((x) => isLib(x.key)) >= LIMIT} onEnter={() => setPicker(true)} /></div>}
-          {showDashboard && <div className="mb-1"><NavItem focusKey="nav-dashboard" icon={<LayoutDashboard size={22} />} label="Dashboard" active={view.type === 'dashboard'} onEnter={() => onNavigate({ type: 'dashboard' })} /></div>}
+          {showDashboard && <div className="mb-1"><NavItem focusKey="nav-dashboard" icon={<LayoutDashboard size={22} />} label="Dashboard" badge={streams} active={view.type === 'dashboard'} onEnter={() => onNavigate({ type: 'dashboard' })} /></div>}
           <Focusable focusKey="nav-profile" onEnter={onProfile} title="Profile" rightToContent>
             <div className="flex h-14 items-center overflow-hidden rounded-xl transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
-              <span className="grid w-[52px] shrink-0 place-items-center"><Avatar name={profileName} thumb={profileThumb} size={32} /></span>
+              <span className="relative grid w-[52px] shrink-0 place-items-center"><Avatar name={profileName} thumb={profileThumb} size={32} />{update && <UpdateDot className="absolute right-[7px] top-[-2px]" />}</span>
               <span className="whitespace-nowrap pr-5 text-[0.95rem] font-semibold opacity-0 transition-opacity duration-200 group-data-[open=true]/nav:opacity-100">{profileName}</span>
             </div>
           </Focusable>
@@ -136,8 +144,8 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           { label: 'Watchlist', icon: <Bookmark size={22} />, active: view.type === 'watchlist', go: () => onNavigate({ type: 'watchlist' }) },
           ...(tvGuide ? [{ label: 'TV Guide', icon: <Radio size={22} />, active: view.type === 'guide', go: () => onNavigate({ type: 'guide' }) }] : []),
           ...sections.map((s) => ({ label: s.title, icon: s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />, active: isLib(s.key), go: () => onNavigate({ type: 'library', section: s }) })),
-          ...(showDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={22} />, active: view.type === 'dashboard', go: () => onNavigate({ type: 'dashboard' }) }] : []),
-          { label: 'You', icon: <Avatar name={profileName} thumb={profileThumb} size={24} />, active: false, go: onProfile },
+          ...(showDashboard ? [{ label: 'Dashboard', icon: <span className="relative"><LayoutDashboard size={22} />{!!streams && <CountBadge n={streams} />}</span>, active: view.type === 'dashboard', go: () => onNavigate({ type: 'dashboard' }) }] : []),
+          { label: 'You', icon: <span className="relative"><Avatar name={profileName} thumb={profileThumb} size={24} />{update && <UpdateDot className="absolute -right-1.5 -top-1.5" />}</span>, active: false, go: onProfile },
         ]).map((t) => (
           <button key={t.label} onClick={t.go} className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[0.68rem] font-semibold ${t.active ? 'text-white' : 'text-white/50'}`}>
             {t.icon}{t.label}

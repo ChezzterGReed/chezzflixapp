@@ -13,12 +13,13 @@ import { isAndroid } from '../lib/native'
 import { trendingIds } from '../lib/tmdb'
 import { SeasonIcon } from './SeasonIcon'
 import { RECAP_GAP_MAX, RECAP_GAP_MIN } from '../lib/recapNudge'
+import { UpdateDot, useUpdatePending } from './UpdateDot'
 import { checkForUpdate, fetchReleases, installUpdate, useUpdater, type ReleaseInfo } from '../lib/updater'
 import { normalizeBase, testConnection } from '../lib/overseerr'
 
 const ring = 'group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white'
 
-function Row({ label, hint, children, onEnter }: { label: string; hint?: string; children: ReactNode; onEnter?: () => void }) {
+function Row({ label, hint, children, onEnter }: { label: ReactNode; hint?: string; children: ReactNode; onEnter?: () => void }) {
   const inner = (
     <div className={`flex items-center gap-4 rounded-xl px-4 py-3.5 transition-colors ${onEnter ? `group-hover/f:bg-white/8 group-data-[hl=true]/f:bg-white/15 ${ring}` : ''}`}>
       <div className="min-w-0 flex-1"><div className="font-semibold">{label}</div>{hint && <div className="text-sm text-white/55">{hint}</div>}</div>
@@ -499,7 +500,7 @@ function About({ server }: { server: PlexServer }) {
           )}
         </>
       )}
-      <Row label="Updates" hint={line}>
+      <Row label={<span className="flex items-center gap-2">Updates{u.status === 'available' && <UpdateDot />}</span>} hint={line}>
         {u.status === 'available'
           ? <Focusable onEnter={installUpdate} title="Update now"><div className="flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-black transition-transform group-hover/f:scale-105 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white"><Download size={16} />Update now</div></Focusable>
           : <Focusable onEnter={() => !busy && checkForUpdate()} title="Check for updates"><div className="flex items-center gap-2 rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">{busy && <Loader2 size={16} className="animate-spin" />}Check now</div></Focusable>}
@@ -534,6 +535,7 @@ interface Props { server: PlexServer; token: string; sections: PlexSection[]; pr
 
 export function SettingsModal({ server, token, sections, profileName, profileThumb, onClose }: Props) {
   const [panel, setPanel] = useState<(typeof PANELS)[number]['id']>('appearance')
+  const updatePending = useUpdatePending()
   return (
     <Layer onClose={onClose} className="absolute left-1/2 top-1/2 h-[min(680px,90vh)] w-[min(980px,95vw)] -translate-x-1/2 -translate-y-1/2">
       <div className="pop flex h-full overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-white/10">
@@ -542,7 +544,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           <div className="space-y-1">
             {PANELS.map((p) => (
               <Focusable key={p.id} focusKey={`set-${p.id}`} onEnter={() => setPanel(p.id)} title={p.label}>
-                <div className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${panel === p.id ? 'bg-accent/20 text-accent' : 'text-white/60'}`}><p.icon size={20} /><span className="max-sm:hidden">{p.label}</span></div>
+                <div className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${panel === p.id ? 'bg-accent/20 text-accent' : 'text-white/60'}`}><p.icon size={20} /><span className="max-sm:hidden">{p.label}</span>{p.id === 'about' && updatePending && <UpdateDot className="ml-auto" />}</div>
               </Focusable>
             ))}
           </div>

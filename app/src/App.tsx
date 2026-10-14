@@ -16,6 +16,7 @@ import { brandName, SettingsProvider, useSettings } from './lib/settings'
 import { Login } from './screens/Login'
 import { unseal, type Sealed } from './lib/sealed'
 import sealedKeys from './lib/sealed-keys.json'
+import { useStreamCount } from './lib/streams'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home, clearHomeCache } from './screens/Home'
@@ -76,6 +77,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const [details, setDetails] = useState<string[]>([])
   const [layer, setLayer] = useState<'profile' | 'settings' | null>(null)
   const [playing, setPlaying] = useState<PlexMedia>()
+  const streams = useStreamCount(server, !!server.owned)
   const [refreshKey, setRefreshKey] = useState(0)
   const [watchKey, setWatchKey] = useState(0)   // bumped after playback: Continue Watching and open detail pages re-read, nothing else
   const [toast, setToast] = useState<string>()
@@ -250,7 +252,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs, onSelect: opts?.onSelect })}>
       <SeasonalAmbient />
       <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
-        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} onScan={scanLibrary} />
+        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} streams={streams} onScan={scanLibrary} />
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>

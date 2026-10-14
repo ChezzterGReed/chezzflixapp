@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, Delete, LogOut, Settings as Cog } from 'lucide-react'
+import { UpdateDot, useUpdatePending } from './UpdateDot'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Avatar } from './Avatar'
@@ -58,6 +59,7 @@ interface Props {
 }
 
 export function ProfileMenu({ profiles, currentName, onClose, onSwitch, onSettings, onSignOut }: Props) {
+  const update = useUpdatePending()
   const [pinFor, setPinFor] = useState<PlexProfile>()
   const [error, setError] = useState<string>()
 
@@ -81,7 +83,7 @@ export function ProfileMenu({ profiles, currentName, onClose, onSwitch, onSettin
           </Item>
         ))}
         <div className="my-2 h-px bg-white/10" />
-        <Item onEnter={onSettings}><Cog size={20} className="ml-1 mr-0.5" />Settings</Item>
+        <Item onEnter={onSettings}><Cog size={20} className="ml-1 mr-0.5" /><span className="flex-1">Settings</span>{update && <UpdateDot />}</Item>
         <Item onEnter={onSignOut} danger><LogOut size={20} className="ml-1 mr-0.5" />Sign out</Item>
       </div>
     </Layer>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Clapperboard, Info, Play, Shuffle, Sparkles, Tv, Wand2 } from 'lucide-react'
+import { ArrowRight, Clapperboard, Info, Play, Sparkles, Tv, Wand2 } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { Meta, playLabel } from './Hero'
@@ -15,16 +15,26 @@ const LOOKS: Partial<Record<Tab, Look>> = {
 }
 export const hasTabBanner = (t: Tab) => !!LOOKS[t]
 
+const MAX_PICKS = 10
+const ROTATE_MS = 8000
 const pill = 'flex h-11 items-center gap-2 rounded-full px-5 text-[0.95rem] font-bold transition-all duration-200'
 
 /** The banner for the For You, Movies, Shows and Anime tabs: each has its own colour, a few numbers about your library, and a spotlight pick (instead of Home's rotating hero). */
-export function TabBanner({ tab, server, visible, anime, picks, topGenres, count, profileName, tabKey, onPlay, onInfo }: {
-  tab: Tab; server: PlexServer; visible: PlexSection[]; anime?: AnimeInfo; /** The spotlight candidates (the hero list); empty when the hero is off. */ picks: PlexMedia[]
+export function TabBanner({ tab, server, visible, anime, picks: all, rotate, topGenres, count, profileName, tabKey, onPlay, onInfo }: {
+  tab: Tab; server: PlexServer; visible: PlexSection[]; anime?: AnimeInfo; /** The spotlight candidates (the hero list); empty when the hero is off. */ picks: PlexMedia[]; /** Move on to the next pick by itself (the same setting as the Home hero). */ rotate: boolean
   /** For You: titles recommended / the genres they lean towards. */ topGenres: string[]; count: number; profileName: string; tabKey: string; onPlay: (m: PlexMedia) => void; onInfo: (m: PlexMedia) => void
 }) {
   const look = LOOKS[tab]!
   const [stats, setStats] = useState<TabStat[]>([])
+  const picks = all.slice(0, MAX_PICKS)
   const [i, setI] = useState(0)
+  const [hover, setHover] = useState(false)
+  // Moves through the picks on its own, like the Home hero (it waits while the pointer rests on the card).
+  useEffect(() => {
+    if (!rotate || hover || picks.length < 2 || document.documentElement.dataset.nativeVideo) return
+    const t = setTimeout(() => setI((x) => (x + 1) % picks.length), ROTATE_MS)
+    return () => clearTimeout(t)
+  }, [i, rotate, hover, picks.length])
   useEffect(() => {
     let alive = true
     setStats([])
@@ -38,7 +48,7 @@ export function TabBanner({ tab, server, visible, anime, picks, topGenres, count
   const shown = tab === 'foryou' ? (count > 0 ? [{ label: 'titles lined up', value: count }] : []) : stats.filter((s) => s.value > 0)
 
   return (
-    <div className="relative isolate overflow-hidden pb-10 pt-28">
+    <div className="relative isolate overflow-hidden pb-10 pt-36">
       <div className={`absolute inset-0 -z-10 bg-linear-to-br ${look.wash}`} />
       <div className="absolute inset-0 -z-10" style={{ background: `radial-gradient(ellipse at 85% 25%, ${look.glow}, transparent 55%)` }} />
       <div className="banner-sheen absolute inset-y-0 -z-10 w-1/3 bg-linear-to-r from-transparent via-white/8 to-transparent" />
@@ -56,12 +66,12 @@ export function TabBanner({ tab, server, visible, anime, picks, topGenres, count
         </div>
 
         {m && (
-          <div key={m.ratingKey} className="fade-up hidden w-[min(28rem,40vw)] shrink-0 md:block">
+          <div key={m.ratingKey} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="fade-up hidden w-[min(28rem,40vw)] shrink-0 md:block">
             <div className="relative aspect-video overflow-hidden rounded-2xl bg-surface shadow-[0_24px_60px_-12px_rgba(0,0,0,.85)] ring-1 ring-white/15">
               <img src={imageUrl(server, backdropPath(m), 960, 540)} alt="" draggable={false} className="absolute inset-0 size-full object-cover" />
               <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/25 to-transparent" />
               <div className="absolute left-4 top-3 rounded-full bg-black/55 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-[0.18em] text-white/85">{m.newSeason ? 'New season' : tab === 'foryou' ? 'Top match' : 'Spotlight'}</div>
-              <div className="absolute inset-x-4 bottom-3">
+              <div className="absolute inset-x-4 bottom-6">
                 <div className="truncate text-xl font-extrabold">{m.title}</div>
                 <Meta m={m} />
               </div>
@@ -74,9 +84,12 @@ export function TabBanner({ tab, server, visible, anime, picks, topGenres, count
                 <div className={`${pill} bg-white/15 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]`}><Info size={18} />Info</div>
               </Focusable>
               {picks.length > 1 && (
-                <Focusable focusKey="hero-another" onEnter={() => setI((x) => (x + 1) % picks.length)} onArrow={up} title="Another pick">
-                  <div className={`${pill} bg-white/15 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]`}><Shuffle size={17} />Another</div>
+                <>
+                <Focusable focusKey="hero-another" onEnter={() => setI((x) => (x + 1) % picks.length)} onArrow={up} title="Next pick">
+                  <div className="grid size-11 place-items-center rounded-full bg-white/15 transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><ArrowRight size={19} /></div>
                 </Focusable>
+                <span className="ml-1 text-sm font-semibold tabular-nums text-white/50">{(i % picks.length) + 1} / {picks.length}</span>
+                </>
               )}
             </div>
           </div>

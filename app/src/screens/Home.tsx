@@ -170,7 +170,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
 
       {activeTab === 'trending'
         ? <TrendingBanner server={server} posters={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).flatMap((r) => r.items)} count={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).reduce((n, r) => n + r.items.length, 0)} loading={!rows} />
-        : hasTabBanner(activeTab) ? <TabBanner tab={activeTab} server={server} visible={visible} anime={rowsAnime ?? anime} picks={hero ?? []} topGenres={topGenres} count={recRows.reduce((n, r) => n + r.items.length, 0)} profileName={profileName} tabKey={`tab-${activeTab}`} onPlay={onPlay} onInfo={onOpen} />
+        : hasTabBanner(activeTab) ? <TabBanner tab={activeTab} server={server} visible={visible} anime={rowsAnime ?? anime} picks={hero ?? []} rotate={settings.heroRotate} topGenres={topGenres} count={recRows.reduce((n, r) => n + r.items.length, 0)} profileName={profileName} tabKey={`tab-${activeTab}`} onPlay={onPlay} onInfo={onOpen} />
         : !settings.hero ? <div className="h-28" />
         : hero?.length ? <Hero key={activeTab} tabKey={`tab-${activeTab}`} items={hero} server={server} rotate={settings.heroRotate} onPlay={onPlay} onInfo={onOpen} />
           : hero ? <div className="h-28" /> : <HeroSkeleton />}

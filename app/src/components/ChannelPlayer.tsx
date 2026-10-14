@@ -11,7 +11,7 @@ import { planPlayback } from '../lib/playback'
 import { applySubStyle, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
 import { hexA } from '../lib/seasonal'
-import { useLevelEngine } from '../lib/leveling'
+import { dbLabel, useLevelEngine } from '../lib/leveling'
 import { VolumePill } from './VolumePill'
 import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
 
@@ -139,6 +139,9 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
 
   // Even out loudness between channels and programs (measures a few seconds, then holds one steady gain; remembered per show / movie).
   const level = useLevelEngine({ active: mode === 'native' && settings.guideLeveling && !!media, loaded: loadedTick, media: media ?? ({ ratingKey: 'none', type: 'movie', title: '' } as PlexMedia), autoLevel: true, dialogueBoost: false, fast: true, ask: true })
+  // The current boost for this program, adjustable by hand from the audio menu (a hand-set level is remembered for the program).
+  const boostNow = typeof level.boost === 'number' ? level.boost : Math.round(level.gain)
+  const nudge = (d: number) => level.setBoost(Math.max(-10, Math.min(15, boostNow + d)))
   const noteShown = useRef(level.note); if (level.note) noteShown.current = level.note   // keeps the last text while it fades out
   const pillIds = level.note?.kind === 'offer' ? ['yes', 'no'] : level.note?.kind === 'applied' ? ['dismiss', 'disable'] : []
   // With the remote: Up / Down move onto the volume pill while it shows (then Left / Right choose, OK presses); Back closes it.
@@ -248,11 +251,22 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
                   </div>
                 </div>
               ))}
-              <div className="w-44 shrink-0">
+              <div className="w-48 shrink-0">
                 <div className="px-3 pb-1 pt-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Volume</div>
                 <Focusable onEnter={() => { if (!settings.guideLeveling) level.rescan(); update({ guideLeveling: !settings.guideLeveling }); setTracksOpen(false); flash() }} title="Audio scan">
                   <div className="rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><div className="flex items-center gap-2"><span className="flex-1">Audio scan</span><span className="text-xs font-bold">{settings.guideLeveling ? 'On' : 'Off'}</span></div><div className="mt-0.5 text-[0.7rem] font-medium opacity-60">{settings.guideLeveling ? 'OK turns it off' : 'OK scans this program'}</div></div>
                 </Focusable>
+                {settings.guideLeveling && (
+                  <div className="px-3 pt-2.5">
+                    <div className="pb-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Boost</div>
+                    <div className="flex items-center gap-1.5">
+                      <Focusable onEnter={() => nudge(-1)} title="Quieter by 1 dB"><div className="grid size-9 place-items-center rounded-full bg-white/12 text-lg font-bold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">−</div></Focusable>
+                      <span className="min-w-[3.6rem] text-center text-sm font-bold tabular-nums">{dbLabel(boostNow)}</span>
+                      <Focusable onEnter={() => nudge(1)} title="Louder by 1 dB"><div className="grid size-9 place-items-center rounded-full bg-white/12 text-lg font-bold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">+</div></Focusable>
+                    </div>
+                    {typeof level.boost === 'number' && <div className="mt-1.5"><Focusable onEnter={() => level.setBoost('auto')} title="Back to automatic"><div className="rounded-full px-3 py-1.5 text-xs font-semibold text-white/70 transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Back to automatic</div></Focusable></div>}
+                  </div>
+                )}
               </div>
             </div>
           </Layer>
