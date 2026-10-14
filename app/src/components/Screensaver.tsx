@@ -5,6 +5,14 @@ import { backdropPath, getRandomItems, imageUrl, isOtherSection, posterPath, typ
 const SLIDE_MS = 12_000
 const MOVED_ENOUGH = 40   // a TV's phantom pointer jitter shouldn't wake it
 
+// A slow drift for each background, a different one each time: zoom in, zoom out, or glide to one side. Only the picture's transform moves, which even a modest TV box can do smoothly.
+const DRIFTS = [
+  ['scale(1.04) translate(0%, 0%)', 'scale(1.16) translate(-1.6%, -1.2%)'],
+  ['scale(1.16) translate(1.4%, 1%)', 'scale(1.05) translate(0%, 0%)'],
+  ['scale(1.12) translate(2%, 0%)', 'scale(1.12) translate(-2%, 0%)'],
+  ['scale(1.12) translate(-1.5%, 1.5%)', 'scale(1.12) translate(1.5%, -1.5%)'],
+] as const
+
 type Slide = { kind: 'art'; m: PlexMedia } | { kind: 'collage'; items: PlexMedia[] }
 
 /** Builds the slideshow: full-screen backgrounds, with a poster collage now and then. */
@@ -90,7 +98,8 @@ export function Screensaver({ server, sections, enabled, minutes }: { server: Pl
         <div key={at} className="ss-slide absolute inset-0">
           {s.kind === 'art' ? (
             <>
-              <img src={imageUrl(server, backdropPath(s.m), 1280, 720)} alt="" draggable={false} className={`absolute inset-0 size-full object-cover ${low ? '' : 'ss-pan'}`} />
+              <img src={imageUrl(server, backdropPath(s.m), 1280, 720)} alt="" draggable={false} className="ss-pan absolute inset-0 size-full object-cover"
+                style={{ '--kb-from': DRIFTS[at % DRIFTS.length][0], '--kb-to': DRIFTS[at % DRIFTS.length][1] } as React.CSSProperties} />
               <div className="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-black/40" />
               <div className="absolute bottom-12 left-14 max-w-[60vw]">
                 <div className="text-[clamp(1.6rem,3vw,2.8rem)] font-extrabold tracking-tight drop-shadow-lg">{s.m.title}</div>
