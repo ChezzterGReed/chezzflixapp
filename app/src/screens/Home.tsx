@@ -133,6 +133,8 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   // The loading screen lifts once the first hero is ready (or we know there isn't one).
   useEffect(() => { if (hero || (!settings.hero && rows)) setBooted(true) }, [hero, settings.hero, rows])
   useEffect(() => { const t = setTimeout(() => setBooted(true), 20_000); return () => clearTimeout(t) }, [])
+  // Once the rows are in, the loading screen waits only a moment longer for the banner (it settles in behind, with a placeholder) instead of holding everything for it.
+  useEffect(() => { if (!rows) return; const t = setTimeout(() => setBooted(true), 2500); return () => clearTimeout(t) }, [!!rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'trending' && rows && !focusedOnce.current) { focusedOnce.current = true; setTimeout(() => setFocus('tab-trending'), 60) }

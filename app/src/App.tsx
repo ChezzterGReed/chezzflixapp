@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FocusContext, GetBoundingClientRectAdapter, doesFocusableExist, getCurrentFocusKey, init, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import {
   directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getMetadata, getProfiles, getSections, getServers, invalidateCache, invalidateWatchState,
-  isScanning, isWatched, removeFromContinueWatching, resolvePlayable, scanSection, setWatched, switchProfile, type PlexCollectionRef, type PlexMedia, type PlexProfile, type PlexSection, type PlexServer,
+  isScanning, isWatched, removeFromContinueWatching, resolvePlayable, scanSection, setWatched, switchProfile, switchProfileFull, type PlexCollectionRef, type PlexMedia, type PlexProfile, type PlexSection, type PlexServer,
 } from './lib/plex'
 import { loadAnime, tabOk } from './lib/homeData'
 import { setBooted, useBooted } from './lib/boot'
@@ -325,6 +325,8 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
   const [needsPick, setNeedsPick] = useState(false)
   const [shared, setShared] = useState<{ tmdbKey?: string; overseerrUrl?: string }>({})
   const demoPick = useRef<PlexProfile | undefined>(undefined)
+  // Switching profile on the same server: what is already known (the route to the server, the list of profiles, who the new profile is), so it isn't looked up again.
+  const hint = useRef<{ server: PlexServer; profiles: PlexProfile[]; user?: { title: string; thumb?: string; uuid?: string } } | undefined>(undefined)
 
   // A TMDB key sealed for this particular server unlocks only when you're connected to it.
   const serverId = server?.id
@@ -344,10 +346,11 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
     if (!quiet) { invalidateCache(); clearHomeCache(); clearRecsCache(); setError(undefined); setServer(undefined); setBooted(false) }
     try {
       // First sign-in on this device with more than one profile: ask who's watching before anything else.
-      const ps = await getProfiles(token)
+      const known = hint.current; hint.current = undefined
+      const ps = known ? known.profiles : await getProfiles(token)
       if (ps.length > 1 && !isChosen()) { setProfiles(ps); setNeedsPick(true); setBooted(true); return }
       setNeedsPick(false)
-      const [servers, user] = await Promise.all([getServers(token), token === 'demo' && demoPick.current ? Promise.resolve({ title: demoPick.current.title, thumb: demoPick.current.thumb, uuid: demoPick.current.uuid }) : getCurrentUser(token)])
+      const [servers, user] = await Promise.all([getServers(token, known?.server), token === 'demo' && demoPick.current ? Promise.resolve({ title: demoPick.current.title, thumb: demoPick.current.thumb, uuid: demoPick.current.uuid }) : known?.user ?? getCurrentUser(token)])
       if (!servers[0]) return setError('No Plex servers found on this account.')
       const secs = await getSections(servers[0])
       const next = servers[0], who = { name: user.title, thumb: user.thumb, key: user.uuid ?? user.title }
@@ -386,7 +389,9 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
   }
 
   const switchTo = async (p: PlexProfile, pin?: string) => {
-    const t = token === 'demo' ? 'demo' : await switchProfile(token, p.uuid, pin)
+    const sw = token === 'demo' ? undefined : await switchProfileFull(token, p.uuid, pin)
+    const t = sw ? sw.authToken : 'demo'
+    if (sw && server) hint.current = { server, profiles, user: sw.title ? { title: sw.title, thumb: sw.thumb, uuid: sw.uuid } : undefined }
     // The new profile gets a completely fresh start: the loading screen, then its own Continue Watching, hero and recommendations. (connect() clears everything read for the last profile.)
     demoPick.current = p; clearResume()
     if (t !== token) onToken(t); else connect()

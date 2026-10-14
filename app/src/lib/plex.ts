@@ -156,10 +156,14 @@ export async function getProfiles(token: string): Promise<PlexProfile[]> {
 
 /** Returns the new profile's auth token. Throws on wrong PIN. */
 export async function switchProfile(token: string, uuid: string, pin?: string): Promise<string> {
+  return (await switchProfileFull(token, uuid, pin)).authToken
+}
+/** Switching answers with the new profile's token and who they are, so asking again who is signed in is not needed. */
+export async function switchProfileFull(token: string, uuid: string, pin?: string): Promise<{ authToken: string; title?: string; thumb?: string; uuid?: string }> {
   const q = pin ? `?pin=${encodeURIComponent(pin)}` : ''
   const r = await fetch(`https://clients.plex.tv/api/v2/home/users/${uuid}/switch${q}`, { method: 'POST', headers: baseHeaders(token) })
   if (!r.ok) throw new Error(r.status === 403 ? 'Incorrect PIN' : `Could not switch profile (${r.status})`)
-  return (await r.json()).authToken
+  return r.json()
 }
 
 export async function getCurrentUser(token: string): Promise<{ title: string; thumb?: string; uuid?: string }> {
@@ -201,13 +205,19 @@ async function pickConnection(conns: PlexConnection[], token: string, machineId?
   return null
 }
 
-export async function getServers(token: string): Promise<PlexServer[]> {
+/** The servers this account can reach. `reuse`: a server we were just connected to (switching profile): its route is kept without testing the connections again. */
+export async function getServers(token: string, reuse?: PlexServer): Promise<PlexServer[]> {
   if (token === 'demo') return [demoServer()]
   const r = await fetch('https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1', { headers: baseHeaders(token) })
   const resources = await r.json()
   const out: PlexServer[] = []
   for (const res of resources) {
     if (!res.provides?.includes('server')) continue
+    if (reuse && reuse.id === res.clientIdentifier) {
+      // The same server, a different profile's token: the route that worked a moment ago still does, so skip testing every connection.
+      out.push({ id: res.clientIdentifier, owned: !!res.owned, name: res.name, uri: reuse.uri, accessToken: res.accessToken, local: reuse.local, relay: reuse.relay })
+      continue
+    }
     const conns: PlexConnection[] = res.connections ?? []
     const chosen = (await pickConnection(conns, res.accessToken, res.clientIdentifier)) ?? conns.find((c) => !c.relay) ?? conns[0]
     if (chosen) out.push({ id: res.clientIdentifier, owned: !!res.owned, name: res.name, uri: chosen.uri, accessToken: res.accessToken, local: chosen.local, relay: chosen.relay })
