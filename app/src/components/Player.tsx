@@ -13,7 +13,7 @@ import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
-import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, sessionOf, stopTranscode, type PlexMedia, type PlexServer } from '../lib/plex'
+import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, stopTranscode, type PlexMedia, type PlexServer } from '../lib/plex'
 import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { NextMovies } from './NextMovies'
 import { useBack } from '../lib/back'
@@ -23,7 +23,7 @@ import { clampBoost, dbLabel, MAX_BOOST, MIN_BOOST, useLevelEngine } from '../li
 const SPEEDS = [0.5, 0.75, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3]
 const SLEEPS: (number | 'episode' | null)[] = [null, 15, 30, 45, 60, 90, 'episode']   // minutes, or "when this episode ends"
 const QUALITIES: { kbps: number | null; label: string }[] = [   // each resolution is tied to a typical bitrate for that picture size
-  { kbps: null, label: 'Original' }, { kbps: 5000, label: '1080p' }, { kbps: 2500, label: '720p' }, { kbps: 800, label: '360p' }, { kbps: 400, label: '240p' },
+  { kbps: null, label: 'Original' }, { kbps: 3000, label: '1080p' }, { kbps: 1500, label: '720p' }, { kbps: 700, label: '360p' }, { kbps: 350, label: '240p' },
 ]
 const sleepLabel = (v: number | 'episode' | null) => (v === null ? 'Off' : v === 'episode' ? 'End of episode' : `${v} min`)
 
@@ -345,8 +345,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   // ----- progress reporting -----
   useEffect(() => {
     if (media.type === 'clip') return   // (a trailer or extra: nothing to remember)
-    const t = setInterval(() => { if (timeRef.current > 0) reportProgress(server, media, (mode === 'native' ? pausedRef.current : video.current?.paused) ? 'paused' : 'playing', timeRef.current * 1000, sessionOf(planRef.current?.url)) }, 10_000)
-    return () => { clearInterval(t); reportProgress(server, media, 'stopped', timeRef.current * 1000, sessionOf(planRef.current?.url)); stopTranscode(server, planRef.current?.url) }
+    const t = setInterval(() => { if (timeRef.current > 0) reportProgress(server, media, (mode === 'native' ? pausedRef.current : video.current?.paused) ? 'paused' : 'playing', timeRef.current * 1000) }, 10_000)
+    return () => { clearInterval(t); reportProgress(server, media, 'stopped', timeRef.current * 1000); stopTranscode(server, planRef.current?.url) }
   }, [server, media, mode])
 
   // ----- next episode lookup -----

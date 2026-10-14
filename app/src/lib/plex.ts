@@ -595,8 +595,8 @@ export function directPlayUrl(server: PlexServer, media: PlexMedia): string | nu
   return key ? `${server.uri}${key}?X-Plex-Token=${server.accessToken}` : null
 }
 
-/** The picture size that goes with a bitrate cap: 5000 kbps is 1080p, 2500 is 720p, 800 is 360p, 400 is 240p. */
-export const resolutionFor = (kbps: number) => (kbps >= 4500 ? '1920x1080' : kbps >= 2000 ? '1280x720' : kbps >= 600 ? '640x360' : '426x240')
+/** The picture size that goes with a bitrate cap: 3000 kbps is 1080p, 1500 is 720p, 700 is 360p, 350 is 240p. */
+export const resolutionFor = (kbps: number) => (kbps >= 2500 ? '1920x1080' : kbps >= 1200 ? '1280x720' : kbps >= 500 ? '640x360' : '426x240')
 
 /** An HLS transcode (a lower quality picked on purpose, or a last resort). `maxKbps` caps the video bitrate (and picks a matching size). */
 export function transcodeUrl(server: PlexServer, media: PlexMedia, offsetSec = 0, maxKbps?: number): string {
@@ -625,15 +625,13 @@ export function stopTranscode(server: PlexServer, url?: string) {
   fetch(`${server.uri}/video/:/transcode/universal/stop?session=${encodeURIComponent(session)}`, { headers: baseHeaders(server.accessToken) }).catch(() => {})
 }
 
-export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'playing' | 'paused' | 'stopped', timeMs: number, session?: string) {
+export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'playing' | 'paused' | 'stopped', timeMs: number) {
   if (server.uri === DEMO_URI) return
   const p = new URLSearchParams({
     ratingKey: m.ratingKey, key: `/library/metadata/${m.ratingKey}`, state,
     time: String(Math.round(timeMs)), duration: String(m.duration ?? 0),
   })
-  const headers = baseHeaders(server.accessToken)
-  if (session) headers['X-Plex-Session-Identifier'] = session   // (this is what ties the playing stream to its transcode on the server's dashboard)
-  await fetch(`${server.uri}/:/timeline?${p}`, { headers }).catch(() => {})
+  await fetch(`${server.uri}/:/timeline?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => {})
   invalidateCache()
 }
 
