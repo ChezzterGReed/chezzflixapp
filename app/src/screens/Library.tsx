@@ -3,7 +3,7 @@ import { AlphaRail, alphaOf } from '../components/AlphaRail'
 import { useGridNav } from '../lib/gridNav'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { reveal } from '../lib/scroll'
-import { Eye, EyeOff, Layers, Tags } from 'lucide-react'
+import { Eye, EyeOff, Layers, Loader2, Shuffle, Tags } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
 import { Focusable } from '../components/Focusable'
@@ -34,11 +34,13 @@ function groupByCollection(items: PlexMedia[], cols: PlexCollectionRef[]): PlexM
 interface Props {
   server: PlexServer; token: string; section: PlexSection
   onOpen: (m: PlexMedia) => void
+  /** Play everything in the list (with its filters) in a random order. */
+  onShuffle: (items: PlexMedia[]) => void
   onBrowse: (kind: 'genres' | 'collections') => void
   onCollection: (c: { ratingKey: string; title: string }) => void
 }
 
-export function Library({ server, token, section, onOpen, onBrowse, onCollection }: Props) {
+export function Library({ server, token, section, onOpen, onShuffle, onBrowse, onCollection }: Props) {
   const { settings, update } = useSettings()
   const sel = useTitleSelection(server, token)
   const collapse = !!settings.collapseCollections[section.key]
@@ -114,6 +116,16 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
 
   const noun = section.type === 'movie' ? 'movies' : 'shows'
   const count = useMemo(() => (collapse ? `${total.toLocaleString()} tiles · collections grouped` : `${total.toLocaleString()} ${unwatched ? `unwatched ${noun}` : noun}`) + (year ? ` from ${year}` : ''), [collapse, total, noun, year, unwatched])
+  const [shuffling, setShuffling] = useState(false)
+  // Everything the filters leave (not only what has scrolled into view), as movies: collections are only groupings.
+  const shuffleAll = async () => {
+    if (shuffling) return
+    setShuffling(true)
+    try {
+      const all = items.length >= total && !collapse ? items : await getAllSectionItems(server, section.key, sort, year, 8000, unwatched)
+      onShuffle(all.filter((m) => m.type === 'movie'))
+    } catch { onShuffle([]) } finally { setShuffling(false) }
+  }
   const toolBtn = 'flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black'
 
   return (
@@ -127,6 +139,11 @@ export function Library({ server, token, section, onOpen, onBrowse, onCollection
             <Focusable onEnter={() => update({ unwatchedOnly: { ...settings.unwatchedOnly, [section.key]: !unwatched } })} title="Show unwatched only" leftToRail>
               <div className={`${toolBtn} ${unwatched ? 'bg-accent text-black' : 'bg-white/8 text-white/80'}`}>{unwatched ? <EyeOff size={15} /> : <Eye size={15} />}{unwatched ? 'Unwatched only' : 'All titles'}</div>
             </Focusable>
+            {section.type === 'movie' && (
+              <Focusable onEnter={shuffleAll} title="Shuffle these movies">
+                <div className={`${toolBtn} bg-white/8 text-white/80`}>{shuffling ? <Loader2 size={15} className="animate-spin" /> : <Shuffle size={15} />}Shuffle</div>
+              </Focusable>
+            )}
             <Focusable onEnter={() => onBrowse('genres')} title="Browse genres"><div className={`${toolBtn} bg-white/8 text-white/80`}><Tags size={15} />Genres</div></Focusable>
             <Focusable onEnter={() => onBrowse('collections')} title="Browse collections"><div className={`${toolBtn} bg-white/8 text-white/80`}><Layers size={15} />Collections</div></Focusable>
             <Focusable onEnter={() => update({ collapseCollections: { ...settings.collapseCollections, [section.key]: !collapse } })} title="Group collections">

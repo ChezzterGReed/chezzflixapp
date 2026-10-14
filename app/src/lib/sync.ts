@@ -6,7 +6,7 @@
 import type { Settings } from './settings'
 
 /** Where the sync service lives (set once it's deployed; empty = sync is switched off everywhere). */
-export const SYNC_URL: string = import.meta.env.VITE_SYNC_URL || ''   // e.g. https://chezzflix-sync.<you>.workers.dev
+export const SYNC_URL: string = import.meta.env.VITE_SYNC_URL || 'https://chezzflix-sync.iamthechezz.workers.dev'
 
 /** Settings that stay on the device: secrets, and things that depend on this particular hardware. */
 export const NOT_SYNCED: readonly (keyof Settings | 'syncSettings')[] = ['tmdbKey', 'overseerrUrl', 'lightEffects', 'player', 'syncSettings']

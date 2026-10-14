@@ -26,6 +26,7 @@ import { withActor } from './lib/similar'
 import { recapNudgeFor, type RecapNudge as NudgeInfo } from './lib/recapNudge'
 import { RecapNudge } from './components/RecapNudge'
 import { Library } from './screens/Library'
+import { clearQueue, inQueue, startQueue } from './lib/shuffleQueue'
 import { Search } from './screens/Search'
 import { Watchlist } from './screens/Watchlist'
 import { TVGuide } from './screens/TVGuide'
@@ -161,14 +162,17 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   // After a long break between episodes: offer a recap first (see lib/recapNudge.ts).
   const [nudge, setNudge] = useState<{ target: PlexMedia; info: NudgeInfo }>()
   const play = async (m: PlexMedia) => {
+    if (!inQueue(m)) clearQueue()   // playing something on its own ends any shuffle
     try {
       const target = m.versionIndex !== undefined ? m : await resolvePlayable(server, m)   // a version picked from the list is already complete
       if (!target) return say('No playable file found for ' + m.title)
-      const info = await recapNudgeFor(server, target, settings).catch(() => null)
+      const info = inQueue(m) ? null : await recapNudgeFor(server, target, settings).catch(() => null)   // (no "welcome back" recap in a shuffle: the order is random)
       if (info) { setNudge({ target, info }); return }
       await startNow(target)
     } catch (e) { say('Could not start playback: ' + (e as Error).message) }
   }
+  // Shuffle: play these in a random order (Next / Previous in the player follow it).
+  const shuffle = (items: PlexMedia[]) => { const first = startQueue(items); if (first) play(first); else say('Nothing to shuffle here.') }
   const startNow = async (target: PlexMedia) => {
     try {
       if (settings.player === 'mpv' && inTauri) {
@@ -255,7 +259,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'list' && listLoader && <ListView server={server} token={token} title={view.title} subtitle={view.subtitle} load={listLoader} missing={missingLoader} onOpen={open} onBack={back} />}
-          {view.type === 'library' && <Library server={server} token={token} section={view.section} onOpen={open}
+          {view.type === 'library' && <Library server={server} token={token} section={view.section} onOpen={open} onShuffle={shuffle}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
@@ -267,7 +271,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
       {details.length > 0 && <Detail key={`${details[details.length - 1]}.${refreshKey}.${watchKey}`} ratingKey={details[details.length - 1]} server={server} token={token}
         focusEpisode={epFocus && epFocus.show === details[details.length - 1] ? epFocus : undefined}
-        onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onOpen={open} onCollection={openCollection} onActor={openActor} />}
+        onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onShuffle={shuffle} onOpen={open} onCollection={openCollection} onActor={openActor} />}
       {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}

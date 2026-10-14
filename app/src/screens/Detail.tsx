@@ -4,7 +4,7 @@ import { reveal, scrollToTopOf } from '../lib/scroll'
 import { VersionRows, focusFirstVersion } from '../components/VersionPicker'
 import { findVersions, type Version } from '../lib/versions'
 import { useBack } from '../lib/back'
-import { ArrowLeft, BookmarkCheck, BookmarkPlus, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Pin, PinOff, Play, Radio } from 'lucide-react'
+import { ArrowLeft, BookmarkCheck, BookmarkPlus, Check, Clapperboard, Eye, EyeOff, History, Layers, Loader2, Pin, PinOff, Play, Radio, Shuffle } from 'lucide-react'
 import { useSettings } from '../lib/settings'
 import { AddToChannel } from '../components/AddToChannel'
 import { getWatchlist, setOnWatchlist, watchItemOf, watchKey } from '../lib/watchlist'
@@ -17,7 +17,7 @@ import { moreLikeThis } from '../lib/similar'
 import { ClipPopup } from '../components/ClipPopup'
 import { firstEpisode, previewSegments, recapSegments, withFile, type Segment } from '../lib/clips'
 import {
-  backdropPath, posterPath, episodeLabel, formatLeft, formatRuntime, getChildren, getMetadata, getRelated, getSections, imageUrl, isSpoilerRisk, isWatched, logoPath,
+  backdropPath, posterPath, episodeLabel, formatLeft, formatRuntime, getAllLeaves, getChildren, getMetadata, getRelated, getSections, imageUrl, isSpoilerRisk, isWatched, logoPath,
   progressOf, setWatched, type PlexMedia, type PlexServer,
   resolvePlayable,
 } from '../lib/plex'
@@ -73,9 +73,9 @@ function Episode({ ep, server, spoiler, onReveal, onRevealShow, onPlay, onRecap,
   )
 }
 
-interface Props { ratingKey: string; server: PlexServer; token: string; /** Land on this episode (its season selected) instead of the Play button. */ focusEpisode?: { season?: string; ep: string }; onClose: () => void; onPlay: (m: PlexMedia) => void; onOpen: (m: PlexMedia) => void; /** Opens everything on the server with this person. */ onActor: (a: { name: string; id?: string }) => void; onCollection: (title: string, sectionId?: string | number) => void }
+interface Props { ratingKey: string; server: PlexServer; token: string; /** Land on this episode (its season selected) instead of the Play button. */ focusEpisode?: { season?: string; ep: string }; onClose: () => void; onPlay: (m: PlexMedia) => void; /** Play a show's episodes in a random order. */ onShuffle: (items: PlexMedia[]) => void; onOpen: (m: PlexMedia) => void; /** Opens everything on the server with this person. */ onActor: (a: { name: string; id?: string }) => void; onCollection: (title: string, sectionId?: string | number) => void }
 
-export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay, onOpen, onActor, onCollection }: Props) {
+export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay, onShuffle, onOpen, onActor, onCollection }: Props) {
   const [m, setM] = useState<PlexMedia>()
   const [seasons, setSeasons] = useState<PlexMedia[]>([])
   const [season, setSeason] = useState<string>()
@@ -100,6 +100,13 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
     const vs = target ? await findVersions(server, target) : []
     if (vs.length > 1) { setPicker({ anchor, versions: vs, title: target?.title ?? item.title }); if (anchor === 'button') focusFirstVersion('ver') }
     else onPlay(item)
+  }
+  const [shuffleBusy, setShuffleBusy] = useState(false)
+  // Every episode of the show (not the specials), in a random order.
+  const shuffleShow = async () => {
+    if (shuffleBusy) return
+    setShuffleBusy(true)
+    try { onShuffle((await getAllLeaves(server, ratingKey)).filter((e) => e.parentIndex !== 0)) } catch { onShuffle([]) } finally { setShuffleBusy(false) }
   }
   const pickVersion = (v: Version) => { setPicker(undefined); onPlay(v.media) }
 
@@ -252,6 +259,13 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
                   </div>
                 )}
                 </div>
+                {m.type === 'show' && (
+                  <Focusable focusKey="detail-shuffle" onEnter={shuffleShow} title="Shuffle episodes" onFocus={scrollToTopOf}>
+                    <div className="grid size-13 place-items-center rounded-full bg-white/15 transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
+                      {shuffleBusy ? <Loader2 size={20} className="animate-spin" /> : <Shuffle size={20} />}
+                    </div>
+                  </Focusable>
+                )}
                 <Focusable onEnter={toggleWatched} title={watched ? 'Mark unwatched' : 'Mark watched'} onFocus={scrollToTopOf}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-6 text-[1rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
                     {watched ? <EyeOff size={20} /> : <Eye size={20} />}{watched ? 'Mark unwatched' : 'Mark watched'}

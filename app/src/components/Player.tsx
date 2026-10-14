@@ -4,6 +4,7 @@ import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-sp
 import { findVersions, lighterThan, type Version } from '../lib/versions'
 import { StallOffer } from './StallOffer'
 import { VolumePill } from './VolumePill'
+import { queueNeighbors } from '../lib/shuffleQueue'
 import { saveResume } from '../lib/resume'
 import { activeProfile } from '../lib/profile'
 import { useStillWatching } from '../lib/stillWatching'
@@ -332,7 +333,12 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   }, [server, media, mode])
 
   // ----- next episode lookup -----
-  useEffect(() => { getNextEpisode(server, media).then(setNext).catch(() => setNext(null)); getPreviousEpisode(server, media).then(setPrev).catch(() => setPrev(null)) }, [server, media])
+  // (a shuffle in progress decides what comes next and before)
+  useEffect(() => {
+    const q = queueNeighbors(media)
+    if (q) { setNext(q.next); setPrev(q.prev); return }
+    getNextEpisode(server, media).then(setNext).catch(() => setNext(null)); getPreviousEpisode(server, media).then(setPrev).catch(() => setPrev(null))
+  }, [server, media])
 
   // Volume boost: auto leveling + dialogue boost + a manual amount, all adjustable while watching (see lib/leveling.ts).
   const level = useLevelEngine({ active: mode === 'native', loaded: loadedTick, media, autoLevel: settings.autoLevel, dialogueBoost: settings.dialogueBoost && !isAndroid, scanQuiet: !settings.quietHintOff })
@@ -653,10 +659,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
       {showNext && next && (
         <div data-nopause className="pop absolute bottom-60 right-12 z-[25] w-80 overflow-hidden rounded-2xl bg-[#17171c]/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
-          <div className="relative aspect-video overflow-hidden"><img src={imageUrl(server, next.thumb, 640, 360)} alt="" className={`size-full object-cover transition-all duration-500 ${settings.hideSpoilers && isSpoilerRisk(next) ? 'scale-110 blur-lg brightness-90' : ''}`} />
+          <div className="relative aspect-video overflow-hidden"><img src={imageUrl(server, next.type === 'movie' ? next.art ?? next.thumb : next.thumb, 640, 360)} alt="" className={`size-full object-cover transition-all duration-500 ${settings.hideSpoilers && isSpoilerRisk(next) ? 'scale-110 blur-lg brightness-90' : ''}`} />
             <div className="absolute inset-0 bg-linear-to-t from-black/80 to-transparent" />
             <div className="absolute bottom-3 left-4 right-4"><div className="text-xs font-bold uppercase tracking-widest text-white/60">Up next{countdown !== null ? ` · ${Math.max(0, countdown)}s` : ''}</div>
-              <div className="truncate font-bold">{episodeLabel(next)} · {next.title}</div></div></div>
+              <div className="truncate font-bold">{[episodeLabel(next), next.title].filter(Boolean).join(' · ')}</div></div></div>
           <div className="flex gap-2 p-3">
             <button onClick={goNext} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-2.5 text-sm font-bold text-black ring-2 ring-white/40 transition hover:scale-[1.04] hover:bg-accent hover:ring-accent active:scale-95"><Play size={15} fill="currentColor" />Play now</button>
             <button onClick={() => { setCountdown(null); setStayed(true) }} className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/25 active:scale-95">Stay</button>
@@ -677,7 +683,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
           <div className="mt-1.5 flex justify-between text-sm tabular-nums text-white/70"><span>{fmt(time)}</span><span>-{fmt(duration - time)}</span></div>
           <div className="mt-2 flex items-center gap-2">
             <Ctl label={paused ? 'Play' : 'Pause'} onClick={toggle} big focused={cf('play')}>{paused ? <Play size={28} fill="currentColor" /> : <Pause size={28} fill="currentColor" />}</Ctl>
-            {prev && <Ctl label="Previous episode" onClick={goPrev} focused={cf('prev')}><SkipBack size={24} /></Ctl>}
+            {prev && <Ctl label={media.type === 'movie' ? 'Previous movie' : 'Previous episode'} onClick={goPrev} focused={cf('prev')}><SkipBack size={24} /></Ctl>}
             <Ctl label={`Back ${settings.seekBack} seconds`} onClick={acts.back} focused={cf('back')}><span className="relative grid place-items-center"><RotateCcw size={28} /><b className="absolute text-[0.6rem] font-extrabold">{settings.seekBack}</b></span></Ctl>
             <Ctl label={`Forward ${settings.seekForward} seconds`} onClick={acts.fwd} focused={cf('fwd')}><span className="relative grid place-items-center"><RotateCw size={28} /><b className="absolute text-[0.6rem] font-extrabold">{settings.seekForward}</b></span></Ctl>
             <div className="group/vol ml-1 flex items-center">
@@ -687,7 +693,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
                 className="h-1 w-0 cursor-pointer appearance-none overflow-hidden rounded-full bg-white/30 accent-white opacity-0 transition-all group-hover/vol:w-24 group-hover/vol:opacity-100" />
             </div>
             <div className="flex-1" />
-            {next && <Ctl label="Next episode" onClick={goNext} focused={cf('next')}><SkipForward size={24} /></Ctl>}
+            {next && <Ctl label={media.type === 'movie' ? 'Next movie' : 'Next episode'} onClick={goNext} focused={cf('next')}><SkipForward size={24} /></Ctl>}
             {hasBoost && <Ctl label="Volume boost" onClick={() => setLevelPanel(levelPanel === null ? 0 : null)} focused={cf('boost')}><span className="relative grid place-items-center"><AudioLines size={24} />{levelActive && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>}
             <Ctl label="Audio & subtitles" onClick={() => setPanel(panel ? null : { col: 0, idx: 0 })} focused={cf('subs')}><Captions size={26} /></Ctl>
             <Ctl label="Fullscreen" onClick={toggleFullscreen} focused={cf('full')}>{fullscreen ? <Minimize size={24} /> : <Maximize size={24} />}</Ctl>
