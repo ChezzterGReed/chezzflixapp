@@ -141,11 +141,17 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const level = useLevelEngine({ active: mode === 'native' && settings.guideLeveling && !!media, loaded: loadedTick, media: media ?? ({ ratingKey: 'none', type: 'movie', title: '' } as PlexMedia), autoLevel: true, dialogueBoost: false, fast: true, ask: true })
   const noteShown = useRef(level.note); if (level.note) noteShown.current = level.note   // keeps the last text while it fades out
   const pillIds = level.note?.kind === 'offer' ? ['yes', 'no'] : level.note?.kind === 'applied' ? ['dismiss', 'disable'] : []
+  // With the remote: Up / Down move onto the volume pill while it shows (then Left / Right choose, OK presses); Back closes it.
+  const [pill, setPill] = useState(-1)
+  const pillRef = useRef(-1); pillRef.current = pill
+  const pillIdsRef = useRef<string[]>([]); pillIdsRef.current = pillIds
+  useEffect(() => { setPill(-1) }, [level.note?.kind])
   const pillAct = (id: string) => {
     if (id === 'yes') level.acceptOffer()
     else if (id === 'no') level.declineOffer()
     else if (id === 'disable') { update({ guideLeveling: false }); level.closeNote() }
     else level.closeNote()
+    setPill(-1)
   }
 
   // Native engine events (loaded / ended / failed).
@@ -189,8 +195,14 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => setStatus('error')} />}
         {/* Receives the remote: Up / Down flip channels, OK shows the banner */}
         <Focusable focusKey="channel-surface" title="Channel"
-          onEnter={() => { if (level.note?.kind === 'offer') { level.acceptOffer(); return } if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}   // OK shows the info; OK again, with it showing, opens audio & subtitles
-          onArrow={(d) => { if (d === 'up') { flip(-1); return false } if (d === 'down') { flip(1); return false } flash(); return false }}   // Left / Right also bring the info up
+          onEnter={() => { if (pillRef.current >= 0 && pillIdsRef.current[pillRef.current]) { pillAct(pillIdsRef.current[pillRef.current]); return } if (level.note?.kind === 'offer') { level.acceptOffer(); return } if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}   // OK shows the info; OK again, with it showing, opens audio & subtitles
+          onArrow={(d) => {
+            const ids = pillIdsRef.current
+            if (ids.length) {
+              if (pillRef.current < 0 && (d === 'up' || d === 'down')) { setPill(0); level.holdNote(); return false }
+              if (pillRef.current >= 0) { if (d === 'left') setPill(Math.max(0, pillRef.current - 1)); else if (d === 'right') setPill(Math.min(ids.length - 1, pillRef.current + 1)); level.holdNote(); return false }
+            }
+            if (d === 'up') { flip(-1); return false } if (d === 'down') { flip(1); return false } flash(); return false }}   // Left / Right also bring the info up
           className="absolute inset-0">
           <div className="size-full" />
         </Focusable>
@@ -213,7 +225,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
 
         {/* Volume: the offer to adjust a loud or quiet program, the adjustment easing in, and "complete" */}
         <div aria-live="polite" className={`absolute bottom-52 left-1/2 z-40 -translate-x-1/2 transition-all duration-700 ${level.note ? 'pointer-events-auto opacity-100' : 'pointer-events-none translate-y-2 opacity-0'}`}>
-          {noteShown.current && <VolumePill note={noteShown.current} gain={level.gain} ids={pillIds} active={-1} hint="You can turn this off in Guide settings." onAct={(id) => pillAct(id)} />}
+          {noteShown.current && <VolumePill note={noteShown.current} gain={level.gain} ids={pillIds} active={pill} hint="You can turn this off in Guide settings." onAct={(id) => pillAct(id)} />}
         </div>
         {tracksOpen && (
           <Layer player z="z-[85]" onClose={() => setTracksOpen(false)} scrim="bg-transparent" className="absolute bottom-40 left-1/2 w-[min(640px,94vw)] -translate-x-1/2">
@@ -236,6 +248,12 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
                   </div>
                 </div>
               ))}
+              <div className="w-44 shrink-0">
+                <div className="px-3 pb-1 pt-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Volume</div>
+                <Focusable onEnter={() => { if (!settings.guideLeveling) level.rescan(); update({ guideLeveling: !settings.guideLeveling }); setTracksOpen(false); flash() }} title="Audio scan">
+                  <div className="rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><div className="flex items-center gap-2"><span className="flex-1">Audio scan</span><span className="text-xs font-bold">{settings.guideLeveling ? 'On' : 'Off'}</span></div><div className="mt-0.5 text-[0.7rem] font-medium opacity-60">{settings.guideLeveling ? 'OK turns it off' : 'OK scans this program'}</div></div>
+                </Focusable>
+              </div>
             </div>
           </Layer>
         )}

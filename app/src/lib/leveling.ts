@@ -194,7 +194,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   /** Listen to this title again and pick a fresh boost (the current one stays until the new one is ready). */
   const remeasure = useCallback(() => { writeMem(key, { locked: false }); rerun.current = true; setRerunTick((n) => n + 1) }, [key])
   // The "Boost applied" pill: nudge the amount by 1 dB (it stays put from then on), switch the boost off for this title, or keep the pill open.
-  const holdNote = useCallback(() => { if (noteKindRef.current === 'applied') armNote(NOTE_TOUCHED_MS) }, [armNote])
+  const holdNote = useCallback(() => { if (noteKindRef.current === 'applied') armNote(NOTE_TOUCHED_MS); else if (noteKindRef.current === 'offer') armNote(OFFER_MS * 2) }, [armNote])
   const adjustNote = useCallback((d: number) => {
     const s = g.current, v = limit(Math.round(s.gain + d))
     clearInterval(s.ramp); s.gain = v; setGain(v)
@@ -204,5 +204,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   }, [key, limit, armNote])
   const revertNote = useCallback(() => { clearTimeout(noteTimer.current); setNote(null); setBoost(0) }, [setBoost])
   const closeNote = useCallback(() => { clearTimeout(noteTimer.current); setNote(null) }, [])
-  return { boost, setBoost, gain, note, holdNote, adjustNote, revertNote, closeNote, acceptOffer, declineOffer, remeasure }
+  /** Forget that this title was already offered or declined, so switching the scan back on listens to it again. */
+  const rescan = useCallback(() => { declined.delete(key); offered.current = '' }, [key])
+  return { boost, setBoost, gain, note, holdNote, rescan, adjustNote, revertNote, closeNote, acceptOffer, declineOffer, remeasure }
 }

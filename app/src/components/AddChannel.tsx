@@ -21,9 +21,10 @@ export function Choice({ icon, label, hint, onEnter, focusKey }: { icon: ReactNo
   )
 }
 
-export function CheckRow({ label, sub, on, onEnter, below }: { label: string; sub?: string; on: boolean; onEnter: () => void; below?: boolean }) {
+/** `right`: the focus key Right jumps to (a Next button, so a long list needn't be scrolled to its end to carry on). */
+export function CheckRow({ label, sub, on, onEnter, below, right }: { label: string; sub?: string; on: boolean; onEnter: () => void; below?: boolean; right?: string }) {
   return (
-    <Focusable onEnter={onEnter} title={label}>
+    <Focusable onEnter={onEnter} title={label} onArrow={right ? (d) => { if (d === 'right') { setFocus(right); return false } } : undefined}>
       <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
         <span className={`grid size-6 shrink-0 place-items-center rounded-md ring-1 transition-colors ${on ? 'bg-accent text-black ring-accent' : 'ring-white/30'}`}>{on && <Check size={15} strokeWidth={3} />}</span>
         <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{label}</span>{sub && below && <span className="block truncate text-sm opacity-55">{sub}</span>}</span>
@@ -171,7 +172,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
               {shows && <LetterBar letters={letters} value={filter ? '' : letter} onPick={(l) => { setLetter(l); setFilter(''); setLimit(PAGE) }} />}
               {!shows ? <div className="grid place-items-center py-16"><Loader2 className="animate-spin text-white/50" size={30} /></div>
                 : <>
-                  {filtered.slice(0, limit).map((m) => <CheckRow key={m.ratingKey} label={m.title} sub={m.year ? String(m.year) : undefined} on={pickedShows.some((x) => x.ratingKey === m.ratingKey)} onEnter={() => toggleShow(m)} />)}
+                  {filtered.slice(0, limit).map((m) => <CheckRow key={m.ratingKey} label={m.title} sub={m.year ? String(m.year) : undefined} on={pickedShows.some((x) => x.ratingKey === m.ratingKey)} onEnter={() => toggleShow(m)} right="add-next" />)}
                   {filtered.length > limit && <div className="pt-2"><Btn onEnter={() => setLimit((l) => l + PAGE)}>Show more ({filtered.length - limit} left)</Btn></div>}
                   {filtered.length === 0 && <p className="py-10 text-center text-white/50">No shows match.</p>}
                 </>}
@@ -196,13 +197,13 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
               {!genres ? <div className="grid place-items-center py-16"><Loader2 className="animate-spin text-white/50" size={30} /></div>
                 : <>
                   <p className="px-2 pb-2 text-sm text-white/50">Pick one or two for a focused channel. With several, all their movies are mixed together.</p>
-                  {genres.map((g) => <CheckRow key={g} label={g} on={pickedGenres.includes(g)} onEnter={() => toggleGenre(g)} />)}
+                  {genres.map((g) => <CheckRow key={g} label={g} on={pickedGenres.includes(g)} onEnter={() => toggleGenre(g)} right="add-next" />)}
                   {genres.length === 0 && <p className="py-10 text-center text-white/50">No genres found in your movie libraries.</p>}
                 </>}
             </>
           )}
 
-          {step === 'ratings' && <RatingPicker value={ratings} onChange={setRatings} />}
+          {step === 'ratings' && <RatingPicker value={ratings} onChange={setRatings} right="add-next" />}
 
           {step === 'movieOpts' && (
             <div className="px-1 py-2"><div className="mb-2 font-bold">Movie order</div><div className="flex flex-wrap gap-2"><Pill active={movieOrder === 'release'} onEnter={() => setMovieOrder('release')}>Release date</Pill><Pill active={movieOrder === 'random'} onEnter={() => setMovieOrder('random')}>Random</Pill></div>
@@ -232,13 +233,13 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
 }
 
 /** Which content ratings a movie channel may play. Nothing ticked = every rating. */
-export function RatingPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+export function RatingPicker({ value, onChange, right }: { value: string[]; onChange: (v: string[]) => void; right?: string }) {
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
   return (
     <>
       <p className="px-2 pb-2 text-sm text-white/50">Only movies with the ratings you tick will play. Leave all unticked for every rating.</p>
-      <CheckRow label="All ratings" sub={value.length ? undefined : 'no filter'} on={value.length === 0} onEnter={() => onChange([])} />
-      {RATING_OPTIONS.map((r) => <CheckRow key={r.id} label={r.label} sub={r.hint} on={value.includes(r.id)} onEnter={() => toggle(r.id)} />)}
+      <CheckRow label="All ratings" sub={value.length ? undefined : 'no filter'} on={value.length === 0} onEnter={() => onChange([])} right={right} />
+      {RATING_OPTIONS.map((r) => <CheckRow key={r.id} label={r.label} sub={r.hint} on={value.includes(r.id)} onEnter={() => toggle(r.id)} right={right} />)}
     </>
   )
 }
