@@ -3,7 +3,7 @@ import { clientId, DEMO_URI, getMetadata, getSectionWithGuids, type PlexMedia, t
 
 const DISCOVER = 'https://discover.provider.plex.tv'
 
-export interface WatchItem { key: string; title: string; year?: number; type: 'movie' | 'show'; poster?: string; summary?: string }
+export interface WatchItem { key: string; title: string; year?: number; type: 'movie' | 'show'; poster?: string; summary?: string; genres?: string[]; released?: string }
 
 const headers = (token: string) => ({ Accept: 'application/json', 'X-Plex-Token': token, 'X-Plex-Client-Identifier': clientId(), 'X-Plex-Product': 'Chezzflix' })
 
@@ -16,9 +16,9 @@ export const watchItemOf = (key: string, m: PlexMedia): WatchItem => ({ key, tit
 
 let cache: { token: string; at: number; items: WatchItem[] } | undefined
 let demo: WatchItem[] = [
-  { key: 'demo-remote:1', title: 'The Last Frontier', year: 2024, type: 'show' },
-  { key: 'demo-remote:2', title: 'Echoes of Mars', year: 2023, type: 'movie' },
-  { key: 'demo-remote:3', title: 'Paper Lanterns', year: 2022, type: 'movie' },
+  { key: 'demo-remote:1', title: 'The Last Frontier', year: 2024, type: 'show', genres: ['Sci-Fi', 'Drama'], released: '2024-02-10' },
+  { key: 'demo-remote:2', title: 'Echoes of Mars', year: 2023, type: 'movie', genres: ['Sci-Fi'], released: '2023-06-01' },
+  { key: 'demo-remote:3', title: 'Paper Lanterns', year: 2022, type: 'movie', genres: ['Drama'], released: '2022-11-18' },
 ]
 
 export async function getWatchlist(token: string, fresh = false): Promise<WatchItem[]> {
@@ -32,6 +32,7 @@ export async function getWatchlist(token: string, fresh = false): Promise<WatchI
     const md = c.Metadata ?? []
     items.push(...md.filter((m) => m.type === 'movie' || m.type === 'show').map((m) => ({
       key: m.ratingKey, title: m.title, year: m.year, type: m.type as 'movie' | 'show', summary: m.summary,
+      genres: m.Genre?.map((g) => g.tag), released: m.originallyAvailableAt,
       poster: m.thumb?.startsWith('http') ? m.thumb : undefined,
     })))
     start += md.length

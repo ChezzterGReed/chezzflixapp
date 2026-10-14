@@ -6,10 +6,31 @@ use tauri::{AppHandle, Emitter, State};
 
 #[cfg(target_os = "macos")]
 mod native;
+#[cfg(target_os = "macos")]
+mod media;
+#[cfg(desktop)]
+mod channel_update;
 mod mobile;
 mod net;
 #[cfg(target_os = "macos")]
 use native::NativeState;
+#[cfg(target_os = "macos")]
+use media::MediaState;
+#[cfg(not(target_os = "macos"))]
+#[derive(Default)]
+struct MediaState;
+#[cfg(desktop)]
+use channel_update::{update_check, update_install, PendingUpdate};
+#[cfg(desktop)]
+type UpdateHolder = PendingUpdate;
+#[cfg(not(desktop))]
+#[derive(Default)]
+struct UpdateHolder;
+// (Android updates through its own plugin.)
+#[cfg(not(desktop))]
+#[tauri::command] async fn update_check(feed: String) -> Result<Option<Value>, String> { let _ = feed; Err("unavailable".into()) }
+#[cfg(not(desktop))]
+#[tauri::command] async fn update_install() -> Result<(), String> { Err("unavailable".into()) }
 #[cfg(not(target_os = "macos"))]
 #[derive(Default)]
 struct NativeState;
@@ -158,6 +179,16 @@ async fn mpv_tracks(state: State<'_, NativeState>) -> Result<Value, String> {
     { let _ = &state; Err("unavailable".into()) }
 }
 
+// Now Playing / media keys exist on the Mac; elsewhere these do nothing (Android has its own media session in the player plugin).
+#[cfg(not(target_os = "macos"))]
+#[tauri::command] fn media_init() -> Result<(), String> { Ok(()) }
+#[cfg(not(target_os = "macos"))]
+#[tauri::command] fn media_meta(title: String, subtitle: Option<String>, cover: Option<String>, duration_secs: Option<f64>) -> Result<(), String> { let _ = (title, subtitle, cover, duration_secs); Ok(()) }
+#[cfg(not(target_os = "macos"))]
+#[tauri::command] fn media_playback(status: String, position_secs: Option<f64>) -> Result<(), String> { let _ = (status, position_secs); Ok(()) }
+#[cfg(target_os = "macos")]
+use media::{media_init, media_meta, media_playback};
+
 #[tauri::command]
 fn stop(state: State<Player>) {
     stop_inner(&state);
@@ -178,8 +209,10 @@ pub fn run() {
         .manage(Player::default())
         .manage(Awake::default())
         .manage(NativeState::default())
+        .manage(MediaState::default())
+        .manage(UpdateHolder::default())
         .manage(net::NetState::default())
-        .invoke_handler(tauri::generate_handler![play, stop, keep_awake, mpv_start, mpv_cmd, mpv_set, mpv_get, mpv_tracks, net::requests_http])
+        .invoke_handler(tauri::generate_handler![play, stop, keep_awake, mpv_start, mpv_cmd, mpv_set, mpv_get, mpv_tracks, media_init, media_meta, media_playback, update_check, update_install, net::requests_http])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }

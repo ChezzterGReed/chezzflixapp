@@ -2,7 +2,7 @@
 //   direct    - the original file, byte for byte
 //   stream    - Plex copies the video and only converts audio / container (cheap; still no video re-encode)
 //   transcode - the video itself must be re-encoded (last resort)
-import { clientId, DEMO_URI, type PlexMedia, type PlexServer, type PlexStream } from './plex'
+import { clientId, DEMO_URI, resolutionFor, type PlexMedia, type PlexServer, type PlexStream } from './plex'
 
 export type PlaybackKind = 'direct' | 'stream' | 'transcode'
 export interface PlaybackPlan { kind: PlaybackKind; url: string; hls: boolean; reason: string; summary: string }
@@ -35,7 +35,8 @@ const label = (c?: string) => (c ?? '?').toUpperCase()
 const DEMO_WEBM = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm'
 const demoVideo = () => DEMO_WEBM
 
-export function planPlayback(server: PlexServer, m: PlexMedia, choice: TrackChoice = {}, force?: 'stream' | 'transcode'): PlaybackPlan {
+/** `maxKbps`: a lower quality picked for now (always a transcode, capped at that video bitrate). */
+export function planPlayback(server: PlexServer, m: PlexMedia, choice: TrackChoice = {}, force?: 'stream' | 'transcode', maxKbps?: number): PlaybackPlan {
   const info = m.Media?.[0]
   const audio = streamsOf(m, 2)
   const subs = streamsOf(m, 3)
@@ -48,7 +49,9 @@ export function planPlayback(server: PlexServer, m: PlexMedia, choice: TrackChoi
 
   let kind: PlaybackKind
   let reason: string
-  if (!force && !wantSub && !audioChanged && canDirectPlayFile(m)) {
+  if (maxKbps) {
+    kind = 'transcode'; reason = `Lower quality chosen for now (about ${maxKbps} kbps)`
+  } else if (!force && !wantSub && !audioChanged && canDirectPlayFile(m)) {
     kind = 'direct'; reason = `Original file, untouched (${label(info?.container)} · ${label(info?.videoCodec)} · ${label(info?.audioCodec)})`
   } else if (force !== 'transcode' && (canVideo(info?.videoCodec) || force === 'stream')) {
     kind = 'stream'
@@ -61,11 +64,12 @@ export function planPlayback(server: PlexServer, m: PlexMedia, choice: TrackChoi
     kind = 'transcode'; reason = `${label(info?.videoCodec)} video can't play in this app, so Plex re-encodes it`
   }
 
-  const summary = kind === 'direct' ? 'Direct Play' : kind === 'stream' ? 'Direct Stream' : 'Transcoding'
+  const summary = kind === 'direct' ? 'Direct Play' : kind === 'stream' ? 'Direct Stream' : maxKbps ? `Transcoding · ${resolutionFor(maxKbps).split('x')[1]}p` : 'Transcoding'
 
   if (server.uri === DEMO_URI) return { kind, url: demoVideo(), hls: false, reason, summary }
   if (kind === 'direct') {
-    return { kind, hls: false, reason, summary, url: `${server.uri}${info!.Part[0].key}?X-Plex-Token=${server.accessToken}` }
+    const k = info!.Part[0].key
+    return { kind, hls: false, reason, summary, url: k.startsWith('http') ? k : `${server.uri}${k}?X-Plex-Token=${server.accessToken}` }
   }
 
   const vCodecs = ['h264', ...(canVideo('hevc') ? ['hevc'] : []), ...(canVideo('av1') ? ['av1'] : [])]
@@ -76,6 +80,7 @@ export function planPlayback(server: PlexServer, m: PlexMedia, choice: TrackChoi
     session: crypto.randomUUID(), 'X-Plex-Client-Identifier': clientId(), 'X-Plex-Product': 'Chezzflix', 'X-Plex-Platform': 'Chrome', 'X-Plex-Token': server.accessToken,
     'X-Plex-Client-Profile-Extra': `append-transcode-target-codec(type=videoProfile&context=streaming&protocol=hls&videoCodec=${vCodecs.join(',')}&audioCodec=${aCodecs.join(',')})`,
   })
+  if (maxKbps) { q.set('maxVideoBitrate', String(maxKbps)); q.set('videoBitrate', String(maxKbps)); q.set('videoResolution', resolutionFor(maxKbps)) }
   if (wantAudio) q.set('audioStreamID', String(wantAudio.id))
   if (wantSub) { q.set('subtitleStreamID', String(wantSub.id)); q.set('subtitles', isImageSub(wantSub) ? 'burn' : 'auto') }
   else if (choice.subtitleId === null) q.set('subtitleStreamID', '0')

@@ -14,7 +14,7 @@ import { trendingIds } from '../lib/tmdb'
 import { SeasonIcon } from './SeasonIcon'
 import { RECAP_GAP_MAX, RECAP_GAP_MIN } from '../lib/recapNudge'
 import { UpdateDot, useUpdatePending } from './UpdateDot'
-import { checkForUpdate, fetchReleases, installUpdate, useUpdater, type ReleaseInfo } from '../lib/updater'
+import { checkForUpdate, fetchReleases, installUpdate, setChannel, useUpdater, type ReleaseInfo } from '../lib/updater'
 import { normalizeBase, testConnection } from '../lib/overseerr'
 
 const ring = 'group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white'
@@ -92,6 +92,13 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
       <Toggle label="Use my profile picture as the logo" hint="Shown at the top of the menu instead of the letter tile" on={settings.avatarLogo} onChange={(v) => update({ avatarLogo: v })} />
       <div className="flex items-center gap-3 px-4 pb-2 text-sm text-white/55"><Avatar name={profileName} thumb={profileThumb} size={28} />Preview of the logo style on the menu</div>
       <Toggle label="Navigation sounds" hint="A small blip as you move around the screen" on={settings.navSounds} onChange={(v) => update({ navSounds: v })} />
+      <Toggle label="Screensaver" hint="After a few quiet minutes (and nothing playing), drift through backgrounds and poster collages from your server. Any button brings the app back" on={settings.screensaver} onChange={(v) => update({ screensaver: v })} />
+      {settings.screensaver && (
+        <>
+          <div className="px-4 pt-2 text-sm font-semibold text-white/60">Start after</div>
+          <div className="flex flex-wrap gap-2 px-4 py-2">{[5, 10, 15, 30].map((n) => <Pill key={n} active={settings.screensaverMins === n} onEnter={() => update({ screensaverMins: n })}>{n} min</Pill>)}</div>
+        </>
+      )}
       <Toggle label="Lighter effects" hint="Turns off blur and drifting backgrounds. Uses much less of the graphics chip and battery" on={settings.lightEffects} onChange={(v) => update({ lightEffects: v })} />
       <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : currentSeason() === 'christmas' ? 'It\'s the holiday season: a seasonal look, holiday movie rows and TV Guide channels. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on. Season options appear here while the season is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
       {/* Options that belong to one season only show while that season is on (add future ones the same way). */}
@@ -175,6 +182,7 @@ function Playback() {
           <div className="flex flex-wrap gap-2 px-4 py-2">{[10, 5, 3, 0].map((n) => <Pill key={n} active={settings.nextCountdown === n} onEnter={() => update({ nextCountdown: n })}>{n === 0 ? 'Instant' : `${n} sec`}</Pill>)}</div>
         </>
       )}
+      <Toggle label="Wait for after-credits scenes" hint="When Plex shows a scene comes after the credits, Skip credits jumps to it, and the next episode waits until it has played. Needs credits markers from Plex" on={settings.waitForScenes} onChange={(v) => update({ waitForScenes: v })} />
       <Toggle label="Suggest what to watch after a movie" hint="When a movie ends (or you skip its credits), show sequels and similar movies to start next" on={settings.movieSuggestions} onChange={(v) => update({ movieSuggestions: v })} />
       <Toggle label="Skip intros automatically" hint="Jump past the intro whenever Plex has marked one" on={settings.autoSkipIntro} onChange={(v) => update({ autoSkipIntro: v })} />
       <SubtitleStyle />
@@ -500,6 +508,12 @@ function About({ server }: { server: PlexServer }) {
           )}
         </>
       )}
+      <Row label="Update channel" hint={u.channel === 'beta' ? 'This device gets beta builds first, before they go live. They may be rough. If you switch back, you stay on the beta until the live version catches up.' : 'Live updates only. Switch to Beta to get new features early; this is for this device only.'}>
+        <span className="flex gap-2">
+          <Pill active={u.channel === 'stable'} onEnter={() => u.channel !== 'stable' && setChannel('stable')}>Live</Pill>
+          <Pill active={u.channel === 'beta'} onEnter={() => u.channel !== 'beta' && setChannel('beta')}>Beta</Pill>
+        </span>
+      </Row>
       <Row label={<span className="flex items-center gap-2">Updates{u.status === 'available' && <UpdateDot />}</span>} hint={line}>
         {u.status === 'available'
           ? <Focusable onEnter={installUpdate} title="Update now"><div className="flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-black transition-transform group-hover/f:scale-105 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white"><Download size={16} />Update now</div></Focusable>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGridNav } from '../lib/gridNav'
-import { BookmarkMinus, CheckSquare, Info, Plus } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookmarkMinus, Check, CheckSquare, ChevronDown, Info, Plus, Tags } from 'lucide-react'
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from '../components/Focusable'
 import { Layer } from '../components/Layer'
 import { CheckMark, SelectionBar } from '../components/SelectionBar'
@@ -12,6 +13,13 @@ import { searchTmdb } from '../lib/tmdb'
 import { useSettings } from '../lib/settings'
 import { getWatchlist, matchLibrary, setOnWatchlist, type WatchItem } from '../lib/watchlist'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
+
+type SortKey = 'added' | 'name' | 'released'
+/** Each sort has a usual direction (dir 1) and its reverse (dir -1); choosing the active sort again flips it. */
+const SORTS: { id: SortKey; label: string; ways: [string, string] }[] = [
+  { id: 'added', label: 'Date added', ways: ['Newest', 'Oldest'] }, { id: 'name', label: 'Name', ways: ['A–Z', 'Z–A'] }, { id: 'released', label: 'Release date', ways: ['Newest', 'Oldest'] },
+]
+const sortName = (t: string) => t.replace(/^(the|a|an)\s+/i, '').toLowerCase()
 
 function MenuItem({ icon, label, onEnter, danger }: { icon: React.ReactNode; label: string; onEnter: () => void; danger?: boolean }) {
   return (
@@ -55,6 +63,11 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   const [menu, setMenu] = useState<WatchItem>()
   const [confirm, setConfirm] = useState<WatchItem[]>()
   const [tab, setTab] = useState<'all' | 'movie' | 'show'>('all')
+  const [matched, setMatched] = useState(false)   // the list has been compared with the library (sorting and genres wait for that)
+  const [sort, setSort] = useState<SortKey>('added')
+  const [dir, setDir] = useState<1 | -1>(1)
+  const [genre, setGenre] = useState<string>()
+  const [genreMenu, setGenreMenu] = useState(false)
   const page = useRef<HTMLDivElement>(null)
   useGridNav(page)
   const [selecting, setSelecting] = useState(false)
@@ -63,11 +76,12 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
 
   useEffect(() => {
     let alive = true
+    setMatched(false)
     getWatchlist(token, true).then(async (list) => {
       if (!alive) return
       setItems(list)
       const m = await matchLibrary(server, sections, list).catch(() => new Map<string, PlexMedia>())
-      if (alive) setLocal(m)
+      if (alive) { setLocal(m); setMatched(true) }
     }).catch(() => alive && (setError(true), setItems([])))
     return () => { alive = false }
   }, [server, token, sections])
@@ -87,6 +101,26 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
     if (hit) setRequesting(hit)
   }
 
+  // Genres and release date come from your library's copy when you have it, otherwise from Plex's own record of the title.
+  const genresOf = (i: WatchItem) => local.get(i.key)?.Genre?.map((g) => g.tag) ?? i.genres ?? []
+  const releasedOf = (i: WatchItem) => local.get(i.key)?.originallyAvailableAt ?? i.released ?? (i.year ? `${i.year}-01-01` : '')
+  const ofType = (items ?? []).filter((x) => tab === 'all' || x.type === tab)
+  const genreCounts = new Map<string, number>()
+  for (const i of ofType) for (const g of new Set(genresOf(i))) genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1)
+  const genreList = [...genreCounts].sort((a, b) => a[0].localeCompare(b[0]))
+  const activeGenre = genre && genreCounts.has(genre) ? genre : undefined
+  const shown = (() => {
+    type Row = { i: WatchItem; pos: number }
+    const rows: Row[] = ofType.map((i, pos) => ({ i, pos })).filter(({ i }) => !activeGenre || genresOf(i).includes(activeGenre))
+    const cmp: Record<SortKey, (a: Row, b: Row) => number> = {
+      added: (a, b) => a.pos - b.pos,   // (Plex lists the Watchlist newest first)
+      name: (a, b) => sortName(a.i.title).localeCompare(sortName(b.i.title)),
+      released: (a, b) => releasedOf(b.i).localeCompare(releasedOf(a.i)),
+    }
+    return rows.sort((a, b) => dir * cmp[sort](a, b) || a.pos - b.pos).map((x) => x.i)
+  })()
+  const pickSort = (id: SortKey) => { if (id === sort) setDir((d) => (d === 1 ? -1 : 1)); else { setSort(id); setDir(1) } }
+
   const onList = menu ? local.get(menu.key) : undefined
   return (
     <div ref={page} className="px-[var(--gutter)] pb-24 pt-14">
@@ -99,9 +133,25 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
           </Focusable>
         ))}
       </div>
+      {matched && items && items.length > 1 && (
+        <div className="mb-7 flex flex-wrap items-center gap-2">
+          {SORTS.map((o, n) => (
+            <Focusable key={o.id} leftToRail={n === 0} focusKey={`wl-sort-${o.id}`} onEnter={() => pickSort(o.id)} title={sort === o.id ? `${o.label}: ${o.ways[dir === 1 ? 0 : 1]}. Choose again to reverse.` : `Sort by ${o.label.toLowerCase()}`}>
+              <div className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${sort === o.id ? 'bg-white/90 text-black' : 'bg-white/10 text-white/70'}`}>
+                {o.label}{sort === o.id && <span className="flex items-center gap-0.5 opacity-70">{dir === 1 ? <ArrowDown size={14} /> : <ArrowUp size={14} />}<span className="text-xs">{o.ways[dir === 1 ? 0 : 1]}</span></span>}
+              </div>
+            </Focusable>
+          ))}
+          <span className="mx-1 h-5 w-px bg-white/15" />
+          <Focusable focusKey="wl-genre" onEnter={() => setGenreMenu(true)} title="Filter by genre">
+            <div className={`flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${activeGenre ? 'bg-accent text-black' : 'bg-white/10 text-white/70'}`}><Tags size={15} />{activeGenre ?? 'Genre'}<ChevronDown size={14} /></div>
+          </Focusable>
+          {activeGenre && <Focusable onEnter={() => setGenre(undefined)} title="Clear the genre filter"><div className="rounded-full bg-white/10 px-3.5 py-2 text-sm font-semibold text-white/70 transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Clear</div></Focusable>}
+        </div>
+      )}
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
         {!items ? Array.from({ length: 12 }, (_, i) => <div key={i} className="skeleton aspect-[2/3] rounded-xl" />)
-          : items.filter((x) => tab === 'all' || x.type === tab).map((i) => {
+          : shown.map((i) => {
             const m = local.get(i.key)
             return <div key={i.key} data-grid-cell className="[--card-w:100%]">
               {m ? <PosterCard m={m} server={server} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : onOpen(m))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} onFocus={(el) => reveal(el)} />
@@ -109,9 +159,24 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
             </div>
           })}
       </div>
+      {items && items.length > 0 && activeGenre && shown.length === 0 && <p className="py-16 text-white/55">Nothing with that genre here.</p>}
       {items && items.length > 0 && !items.some((x) => tab === 'all' || x.type === tab) && <p className="py-16 text-white/55">{tab === 'movie' ? 'No movies on your Watchlist.' : 'No TV shows on your Watchlist.'}</p>}
       {items && items.length === 0 && <p className="py-16 text-white/55">{error ? "Couldn't load your Watchlist right now." : 'Nothing here yet. Open a movie or show and choose Watchlist to save it.'}</p>}
 
+      {genreMenu && (
+        <Layer onClose={() => { setGenreMenu(false); setTimeout(() => setFocus('wl-genre'), 30) }} scrim="bg-black/55 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(380px,92vw)] -translate-x-1/2 -translate-y-1/2">
+          <div className="pop rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-2xl">
+            <div className="px-3.5 pb-2 pt-3 text-lg font-bold">Genre</div>
+            <div className="max-h-[56vh] overflow-y-auto overscroll-contain [scrollbar-width:none]">
+              {[['', ofType.length] as [string, number], ...genreList].map(([g, n]) => (
+                <Focusable key={g || 'all'} focusKey={`wl-g-${g || 'all'}`} onEnter={() => { setGenre(g || undefined); setGenreMenu(false); setTimeout(() => setFocus('wl-genre'), 30) }} title={g || 'All genres'}>
+                  <div className="flex h-12 items-center gap-3 rounded-xl px-3.5 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><span className="flex-1">{g || 'All genres'}</span><span className="text-sm opacity-50">{n}</span>{(g || undefined) === activeGenre && <Check size={18} />}</div>
+                </Focusable>
+              ))}
+            </div>
+          </div>
+        </Layer>
+      )}
       {menu && (
         <Layer onClose={() => setMenu(undefined)} scrim="bg-black/55 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(380px,92vw)] -translate-x-1/2 -translate-y-1/2">
           <div className="pop overflow-hidden rounded-3xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-2xl">

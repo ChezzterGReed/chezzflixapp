@@ -15,12 +15,15 @@ import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.session.MediaSession
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.audio.AudioSink
@@ -40,7 +43,7 @@ import org.json.JSONObject
 import kotlin.math.pow
 
 @InvokeArg class SubArg { var url: String = ""; var lang: String? = null; var name: String? = null }
-@InvokeArg class LoadArgs { var url: String = ""; var startMs: Long = 0; var pause: Boolean = true; var subs: Array<SubArg>? = null }
+@InvokeArg class LoadArgs { var url: String = ""; var startMs: Long = 0; var pause: Boolean = true; var subs: Array<SubArg>? = null; var title: String? = null; var subtitle: String? = null; var artwork: String? = null }
 @InvokeArg class BoolArg { var value: Boolean = false }
 @InvokeArg class SubStyleArg { var size: Double = 1.0; var font: String = "sans"; var color: String = "white"; var edge: String = "outline"; var background: Boolean = false }
 @InvokeArg class NumArg { var value: Double = 0.0 }
@@ -56,6 +59,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   private val ui = Handler(Looper.getMainLooper())
   private var web: WebView? = null
   private var player: ExoPlayer? = null
+  private var session: MediaSession? = null   // lets the system (media keys, Assistant, the now-playing card) see and control the player
   private var view: PlayerView? = null
   private val gain = GainProcessor()
   private var subStyle: SubStyleArg? = null
@@ -80,6 +84,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     p.addListener(listener)
     p.setSeekParameters(SeekParameters.CLOSEST_SYNC)   // jump to the nearest keyframe: avoids the picture freezing while the decoder catches up to an exact spot
     player = p
+    session = MediaSession.Builder(activity, p).build()
     val v = PlayerView(activity).apply {
       useController = false
       resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -192,7 +197,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       gain.resetMeasure()
       view?.visibility = View.VISIBLE
       activity.window.setBackgroundDrawable(ColorDrawable(Color.BLACK))   // anything the picture doesn't cover shows black while a video plays
-      val item = MediaItem.Builder().setUri(a.url).apply {
+      val item = MediaItem.Builder().setUri(a.url).setMediaMetadata(MediaMetadata.Builder().setTitle(a.title).setArtist(a.subtitle).setArtworkUri(a.artwork?.let { android.net.Uri.parse(it) }).build()).apply {
         val subs = a.subs?.map { s ->
           MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url)).setMimeType(guessSubMime(s.url)).setLanguage(s.lang).setLabel(s.name).build()
         }
@@ -215,6 +220,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   @Command fun setPause(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { player?.playWhenReady = !a.value; if (!a.value) armWatchdog() } }
   @Command fun seek(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.seekTo((a.value * 1000).toLong()) } }
   @Command fun setVolume(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { userVolume = a.value; applyVolume(); emit("volume", userVolume * 100) } }
+  @Command fun setSpeed(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.playbackParameters = PlaybackParameters(a.value.toFloat().coerceIn(0.25f, 4f), 1f) } }   // speed with the pitch kept
   @Command fun setMute(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { muted = a.value; applyVolume(); emit("mute", muted) } }
   // 0 dB is exactly off: the samples pass through untouched.
   @Command fun setGain(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { gainDb = a.value; gain.linear = if (kotlin.math.abs(gainDb) < 0.05) 1.0f else 10.0.pow(gainDb.coerceIn(-12.0, 15.0) / 20.0).toFloat() } }
@@ -311,5 +317,5 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   }
 
   override fun onPause() { activity.runOnUiThread { player?.playWhenReady = false } }
-  override fun onDestroy() { activity.runOnUiThread { ui.removeCallbacksAndMessages(null); player?.release(); player = null } }
+  override fun onDestroy() { activity.runOnUiThread { ui.removeCallbacksAndMessages(null); session?.release(); session = null; player?.release(); player = null } }
 }

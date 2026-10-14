@@ -17,6 +17,7 @@ import { Login } from './screens/Login'
 import { unseal, type Sealed } from './lib/sealed'
 import sealedKeys from './lib/sealed-keys.json'
 import { useStreamCount } from './lib/streams'
+import { Screensaver } from './components/Screensaver'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
 import { Home, clearHomeCache } from './screens/Home'
@@ -256,6 +257,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   return (
     <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs, onSelect: opts?.onSelect })}>
       <SeasonalAmbient />
+      <Screensaver server={server} sections={sections} enabled={settings.screensaver && !playing} minutes={settings.screensaverMins} />
       <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
         brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} streams={streams} onScan={scanLibrary} />
       <FocusContext.Provider value={mainKey}>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, AudioLines, Captions, SkipBack, Check, FastForward, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Volume2, VolumeX, Ellipsis } from 'lucide-react'
 import { pause as pauseNav, resume as resumeNav } from '@noriginmedia/norigin-spatial-navigation'
 import { findVersions, lighterThan, type Version } from '../lib/versions'
 import { Clock } from './Clock'
+import { setNowPlaying, setPlayback, startNowPlaying, type MediaKey } from '../lib/nowPlaying'
 import { StallOffer } from './StallOffer'
 import { VolumePill } from './VolumePill'
 import { queueNeighbors } from '../lib/shuffleQueue'
@@ -12,12 +13,19 @@ import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
-import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
+import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, transcodeUrl, type PlexMedia, type PlexServer } from '../lib/plex'
 import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { NextMovies } from './NextMovies'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
 import { clampBoost, dbLabel, MAX_BOOST, MIN_BOOST, useLevelEngine } from '../lib/leveling'
+
+const SPEEDS = [0.5, 0.75, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3]
+const SLEEPS: (number | 'episode' | null)[] = [null, 15, 30, 45, 60, 90, 'episode']   // minutes, or "when this episode ends"
+const QUALITIES: { kbps: number | null; label: string }[] = [   // each resolution is tied to a typical bitrate for that picture size
+  { kbps: null, label: 'Original' }, { kbps: 5000, label: '1080p' }, { kbps: 2500, label: '720p' }, { kbps: 800, label: '360p' }, { kbps: 400, label: '240p' },
+]
+const sleepLabel = (v: number | 'episode' | null) => (v === null ? 'Off' : v === 'episode' ? 'End of episode' : `${v} min`)
 
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0
@@ -28,6 +36,9 @@ const fmt = (s: number) => {
 const KIND_STYLE = { direct: 'bg-emerald-400/20 text-emerald-300 ring-emerald-300/30', stream: 'bg-sky-400/20 text-sky-300 ring-sky-300/30', transcode: 'bg-amber-400/20 text-amber-300 ring-amber-300/30' }
 
 interface Props { server: PlexServer; media: PlexMedia; /** `home`: closed because nobody answered "Are you still watching?" */ onClose: (home?: boolean) => void; onPlayNext: (m: PlexMedia) => void; /** Swap to another version of the same title (already positioned to resume). */ onSwitch: (m: PlexMedia) => void }
+
+/** A credits marker that ends at least this many seconds before the end of the file means something plays after the credits. */
+const SCENE_GAP = 12
 
 // Set when one episode hands over to the next, so the new player starts already black instead of flashing the app UI.
 let continuing = false
@@ -329,6 +340,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // ----- progress reporting -----
   useEffect(() => {
+    if (media.type === 'clip') return   // (a trailer or extra: nothing to remember)
     const t = setInterval(() => { if (timeRef.current > 0) reportProgress(server, media, (mode === 'native' ? pausedRef.current : video.current?.paused) ? 'paused' : 'playing', timeRef.current * 1000) }, 10_000)
     return () => { clearInterval(t); reportProgress(server, media, 'stopped', timeRef.current * 1000) }
   }, [server, media, mode])
@@ -382,7 +394,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // ----- keep spatial-nav out of the way; the player owns the keys -----
   useEffect(() => { pauseNav(); return () => resumeNav() }, [])
-  useBack(() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (stylePanel !== null) setStylePanel(null); else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
+  useBack(() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (stylePanel !== null) setStylePanel(null); else if (morePanel !== null) setMorePanel(null); else if (sleepDone) { setSleepDone(false); close() } else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
   useEffect(() => { poke(); return () => clearTimeout(idle.current) }, [poke])
 
   const seek = useCallback((t: number) => {
@@ -404,6 +416,60 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     } else if (document.fullscreenElement) { await document.exitFullscreen(); setFullscreen(false) }
     else { await document.documentElement.requestFullscreen().catch(() => {}); setFullscreen(true) }
   }, [])
+
+  // ----- the "more" menu: playback speed, a sleep timer, and a quality for right now (never remembered: the next title plays as the original again) -----
+  const [morePanel, setMorePanel] = useState<number | null>(null)
+  const [speed, setSpeedState] = useState(1)
+  const [sleepIdx, setSleepIdx] = useState(0)
+  const [sleepDone, setSleepDone] = useState(false)   // the timer ran out: paused, waiting to hear whether you are still there
+  const [qIdx, setQIdx] = useState(0)
+  const qLoaded = useRef(0)
+  const sleepTimer = useRef(0)
+  const volNow = useRef(1); volNow.current = volume
+  const sleepEp = SLEEPS[sleepIdx] === 'episode'
+  const cycle = (len: number, at: number, d: number) => (at + d + len) % len
+  const moreRows = [
+    { label: 'Playback speed', hint: 'The voices keep their pitch', value: `${speed}×`, step: (d: number) => setSpeedState(SPEEDS[cycle(SPEEDS.length, Math.max(0, SPEEDS.indexOf(speed)), d)]) },
+    { label: 'Sleep timer', hint: 'Fades the sound out, then pauses', value: sleepLabel(SLEEPS[sleepIdx]), step: (d: number) => setSleepIdx((i) => cycle(SLEEPS.length, i, d)) },
+    { label: 'Quality', hint: 'Just for now. The next title plays as the original again', value: QUALITIES[qIdx].label, step: (d: number) => setQIdx((i) => cycle(QUALITIES.length, i, d)) },
+  ]
+  useEffect(() => {
+    if (mode === 'native') mpvSet('speed', speed).catch(() => {})
+    else { const v = video.current; if (v) { v.defaultPlaybackRate = speed; v.playbackRate = speed } }
+  }, [speed, mode, plan, loadedTick])
+  const pauseNow = () => { if (mode === 'native') mpvSet('pause', true).catch(() => {}); else video.current?.pause(); setPaused(true) }
+  const sleepNow = useCallback(async () => {
+    const v0 = volNow.current
+    for (let i = 1; i <= 10; i++) { setVolume(v0 * (1 - i / 10)); await new Promise((r) => setTimeout(r, 450)) }
+    pauseNow(); setVolume(v0); setSleepIdx(0); setSleepDone(true); setCtlRow(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+  useEffect(() => {
+    clearTimeout(sleepTimer.current)
+    const s = SLEEPS[sleepIdx]
+    if (typeof s !== 'number') return
+    sleepTimer.current = window.setTimeout(() => { void sleepNow() }, s * 60_000)
+    return () => clearTimeout(sleepTimer.current)
+  }, [sleepIdx, sleepNow])
+  const wakeFromSleep = () => { setSleepDone(false); if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
+  // A different quality: reload the same spot (a transcode capped at that bitrate, or back to the original file). Waits a moment so stepping through the list doesn't reload at every step.
+  useEffect(() => {
+    if (mode === 'pending' || qIdx === qLoaded.current) return
+    const t = setTimeout(() => {
+      qLoaded.current = qIdx
+      const kbps = QUALITIES[qIdx].kbps, at = timeRef.current
+      fallbackStep.current = 'none'
+      if (mode === 'native') {
+        const url = kbps === null ? directPlayUrl(server, media) : transcodeUrl(server, media, 0, kbps)
+        if (!url) return
+        setPlan(kbps === null ? { kind: 'direct', url, hls: false, summary: 'Direct Play', reason: '' } : { kind: 'transcode', url, hls: true, summary: `Transcoding · ${QUALITIES[qIdx].label}`, reason: 'Lower quality chosen for now' })
+        setBuffering(true)
+        mpvCmd('loadfile', url, 'replace', '-1', `start=${at > 1 ? at : 0},pause=${pausedRef.current ? 'yes' : 'no'}`).catch((e) => setError(String(e)))
+      } else load(planPlayback(server, media, choice, undefined, kbps ?? undefined), at)
+    }, 1100)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qIdx, mode])
 
   // Subtitle look (plain-text subtitles; styled .ass ones keep their own).
   useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, loadedTick, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
@@ -434,10 +500,40 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   useEffect(() => { setPill(-1) }, [noteKind])
   const levelActive = (settings.autoLevel || (!isAndroid && settings.dialogueBoost)) || (typeof level.boost === 'number' && level.boost !== 0)
 
-  const showNext = !!next && !stayed && duration > 0 && time > (credits ? credits.startTimeOffset / 1000 + 3 : duration - 30)
+  // A scene after the credits: the credits marker ends well before the file does. Then the credits can be skipped to the scene,
+  // and "Up next" waits until the scene has played (otherwise the next episode would cut it off).
+  const scene = settings.waitForScenes && !!credits && duration > 0 && credits.endTimeOffset / 1000 < duration - SCENE_GAP
+  const showNext = !!next && !stayed && !sleepEp && duration > 0 && time > (scene ? duration - 15 : credits ? credits.startTimeOffset / 1000 + 3 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
   const goPrev = useCallback(() => { if (prev) fadeOut(() => { continuing = true; onPlayNext(prev) }) }, [prev, onPlayNext, fadeOut])
-  endedRef.current = () => (next && settings.autoplayNext && !stayed ? goNext() : finish())
+  endedRef.current = () => (sleepEp ? close() : next && settings.autoplayNext && !stayed ? goNext() : finish())
+
+  // Now Playing / media keys: what is on, and the keys, headphone buttons and lock-screen controls reaching this player.
+  const mediaKey = useRef<(k: MediaKey) => void>(() => {})
+  mediaKey.current = (k) => {
+    switch (k.key) {
+      case 'toggle': toggle(); break
+      case 'play': if (pausedRef.current) toggle(); break
+      case 'pause': if (!pausedRef.current) toggle(); break
+      case 'next': if (next) goNext(); break
+      case 'previous': if (prev) goPrev(); else seek(0); break
+      case 'seekBy': seek(timeRef.current + (k.secs ?? 0)); break
+      case 'seekTo': seek(k.secs ?? 0); break
+      case 'stop': close(); break
+    }
+  }
+  useEffect(() => {
+    let stop: (() => void) | undefined, dead = false
+    startNowPlaying((k) => mediaKey.current(k)).then((f) => { if (dead) f(); else stop = f })
+    return () => { dead = true; stop?.() }
+  }, [])
+  useEffect(() => {
+    const show = media.type === 'episode' ? media.grandparentTitle ?? media.title : media.title
+    const art = media.type === 'episode' ? media.grandparentThumb ?? media.thumb : media.thumb
+    setNowPlaying({ title: media.type === 'episode' ? media.title : show ?? media.title, subtitle: media.type === 'episode' ? `${show} · ${episodeLabel(media)}` : media.year?.toString(), artwork: art ? imageUrl(server, art, 512, 512) : undefined, duration: (media.duration ?? 0) / 1000 })
+  }, [media.ratingKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPlayback(paused ? 'paused' : 'playing', timeRef.current, duration) }, [paused, duration]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const t = setInterval(() => setPlayback(pausedRef.current ? 'paused' : 'playing', timeRef.current, duration), 5000); return () => clearInterval(t) }, [duration])
 
   // Up Next countdown (only if autoplay is on)
   useEffect(() => {
@@ -455,13 +551,13 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     const end = credits.endTimeOffset / 1000
     if (!duration || end >= duration - 5) finish(); else seek(end)
   }, [credits, duration, finish, seek])
-  const showSkipCredits = inCredits && !next
+  const showSkipCredits = inCredits && (!next || scene)
   // Skip intro
   const inIntro = !!intro && time >= intro.startTimeOffset / 1000 && time < intro.endTimeOffset / 1000
   useEffect(() => { if (inIntro && settings.autoSkipIntro && intro) seek(intro.endTimeOffset / 1000) }, [inIntro, settings.autoSkipIntro, intro, seek])
   const showSkipIntro = inIntro && !settings.autoSkipIntro && !!intro
   // What OK/Enter does when an on-screen button is showing (otherwise it pauses): Skip intro, Skip credits, or Play now on Up Next.
-  const primary: (() => void) | null = showSkipIntro ? () => seek(intro!.endTimeOffset / 1000) : showSkipCredits ? skipCredits : showNext && next ? goNext : null
+  const primary: (() => void) | null = sleepDone ? wakeFromSleep : showSkipIntro ? () => seek(intro!.endTimeOffset / 1000) : showSkipCredits ? skipCredits : showNext && next ? goNext : null
 
   // ----- tracks -----
   const choose = (col: 0 | 1, idx: number) => {
@@ -502,21 +598,22 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // ----- the control bar, in order, for remote navigation -----
   const hasBoost = mode === 'native' || location.search.includes('levels')
-  const order = ['play', ...(prev ? ['prev'] : []), 'back', 'fwd', 'mute', ...(next ? ['next'] : []), ...(hasBoost ? ['boost'] : []), 'subs', 'full']
+  const order = ['play', ...(prev ? ['prev'] : []), 'back', 'fwd', 'mute', ...(next ? ['next'] : []), ...(hasBoost ? ['boost'] : []), 'subs', 'more', 'full']
   const acts: Record<string, () => void> = {
     play: toggle, prev: goPrev, next: goNext, mute: () => setMuted((m) => !m), full: toggleFullscreen,
     back: () => seek(timeRef.current - settings.seekBack), fwd: () => seek(timeRef.current + settings.seekForward),
     boost: () => setLevelPanel(levelPanel === null ? 0 : null), subs: () => setPanel(panel ? null : { col: 0, idx: 0 }),
+    more: () => { setPanel(null); setLevelPanel(null); setStylePanel(null); setMorePanel(morePanel === null ? 0 : null) },
   }
   const cur = order[Math.min(ctlIdx, order.length - 1)]
   const cf = (id: string) => ctlRow === 'buttons' && cur === id
 
   // Menus (audio & subtitles, volume) close by themselves after a few idle seconds.
   useEffect(() => {
-    if (!panel && levelPanel === null && stylePanel === null) return
-    const t = setTimeout(() => { setPanel(null); setLevelPanel(null); setStylePanel(null) }, stylePanel !== null ? 12000 : 5000)   // longer while adjusting the style
+    if (!panel && levelPanel === null && stylePanel === null && morePanel === null) return
+    const t = setTimeout(() => { setPanel(null); setLevelPanel(null); setStylePanel(null); setMorePanel(null) }, stylePanel !== null || morePanel !== null ? 12000 : 5000)   // longer while adjusting
     return () => clearTimeout(t)
-  }, [panel, levelPanel, stylePanel, panelTick])
+  }, [panel, levelPanel, stylePanel, morePanel, panelTick])
   const menuLeave = useRef<number>(0)
 
   // ----- keyboard / remote -----
@@ -535,7 +632,15 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
           e.preventDefault(); e.stopPropagation(); return
         }
       }
-      if (panel || levelPanel !== null || stylePanel !== null) setPanelTick((n) => n + 1)
+      if (panel || levelPanel !== null || stylePanel !== null || morePanel !== null) setPanelTick((n) => n + 1)
+      if (morePanel !== null) {
+        if (e.key === 'ArrowDown') setMorePanel(Math.min(moreRows.length - 1, morePanel + 1))
+        else if (e.key === 'ArrowUp') setMorePanel(Math.max(0, morePanel - 1))
+        else if (e.key === 'ArrowLeft') moreRows[morePanel].step(-1)
+        else if (e.key === 'ArrowRight' || e.key === 'Enter') moreRows[morePanel].step(1)
+        else return
+        e.preventDefault(); e.stopPropagation(); return
+      }
       if (stylePanel !== null) {
         if (e.key === 'ArrowDown') setStylePanel(Math.min(styleRows.length - 1, stylePanel + 1))
         else if (e.key === 'ArrowUp') setStylePanel(Math.max(0, stylePanel - 1))
@@ -610,7 +715,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   return (
     <div data-player className={`fixed inset-0 z-[70] text-white transition-[opacity,transform] duration-700 ease-[cubic-bezier(.65,.05,.25,1)] ${mode === 'native' ? 'bg-transparent' : 'bg-black'} ${revealing ? 'scale-[1.08] opacity-0' : ''}`} onMouseMove={poke} style={{ cursor: controls ? 'default' : 'none' }}
       // The native (mpv) picture is behind the page, so clicks on the picture land here: click = pause/play, double-click = fullscreen.
-      onClick={(e) => { if ((panel || levelPanel !== null || stylePanel !== null) && !(e.target as HTMLElement).closest('[data-menu]')) { setPanel(null); setLevelPanel(null); setStylePanel(null); return }
+      onClick={(e) => { if ((panel || levelPanel !== null || stylePanel !== null || morePanel !== null) && !(e.target as HTMLElement).closest('[data-menu]')) { setPanel(null); setLevelPanel(null); setStylePanel(null); setMorePanel(null); return }
         if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggle() }}
       onDoubleClick={(e) => { if (mode !== 'native' || !lifted || closing || (e.target as HTMLElement).closest('button, input, [role=slider], [data-nopause]')) return; toggleFullscreen() }}>
       {mode !== 'native' && <video ref={video} loop={server.uri === DEMO_URI} className="absolute inset-0 size-full bg-black object-contain" playsInline
@@ -672,7 +777,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       )}
 
       {/* Chrome */}
-      <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel || levelPanel !== null || stylePanel !== null) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+      <div className={`absolute inset-0 transition-opacity duration-300 ${lifted && !closing && (controls || paused || panel || levelPanel !== null || stylePanel !== null || morePanel !== null) ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
         <div data-nopause className="absolute inset-x-0 top-0 flex items-start gap-4 bg-linear-to-b from-black/80 to-transparent px-8 pb-16 pt-6">
           <button onClick={close} aria-label="Back" className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/25"><ArrowLeft size={22} /></button>
           <div className="min-w-0 flex-1 pt-0.5"><div className="truncate text-xl font-bold">{title}</div><div className="truncate text-sm text-white/65">{subtitle}</div>
@@ -698,6 +803,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
             {next && <Ctl label={media.type === 'movie' ? 'Next movie' : 'Next episode'} onClick={goNext} focused={cf('next')}><SkipForward size={24} /></Ctl>}
             {hasBoost && <Ctl label="Volume boost" onClick={() => setLevelPanel(levelPanel === null ? 0 : null)} focused={cf('boost')}><span className="relative grid place-items-center"><AudioLines size={24} />{levelActive && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>}
             <Ctl label="Audio & subtitles" onClick={() => setPanel(panel ? null : { col: 0, idx: 0 })} focused={cf('subs')}><Captions size={26} /></Ctl>
+            <Ctl label="More: speed, sleep timer, quality" onClick={acts.more} focused={cf('more')}><span className="relative grid place-items-center"><Ellipsis size={26} />{(speed !== 1 || sleepIdx !== 0 || qIdx !== 0) && <i className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}</span></Ctl>
             <Ctl label="Fullscreen" onClick={toggleFullscreen} focused={cf('full')}>{fullscreen ? <Minimize size={24} /> : <Maximize size={24} />}</Ctl>
           </div>
         </div>
@@ -717,6 +823,23 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
                 ) : (
                   <button onClick={() => { setLevelPanel(i); r.act() }} className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${levelPanel === i ? 'bg-black/10' : 'bg-white/10'} ${r.value === 'On' ? 'text-accent' : ''}`}>{r.value}</button>
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {morePanel !== null && (
+          <div data-nopause data-menu className="pop absolute bottom-32 right-8 w-[24rem] max-w-[92vw] rounded-2xl bg-[#17171c]/95 p-2.5 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+            <div className="px-3 pb-1 pt-1.5 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">More</div>
+            {moreRows.map((r, i) => (
+              <div key={r.label} onMouseEnter={() => setMorePanel(i)} className={`rounded-xl px-3 py-2.5 transition-colors ${morePanel === i ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
+                <div className="flex items-center gap-3">
+                  <span className="flex-1 text-sm font-bold">{r.label}</span>
+                  <button aria-label={`${r.label}: previous`} onClick={() => r.step(-1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 ${morePanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>‹</button>
+                  <span className="min-w-[6.4rem] text-center text-xs font-bold tabular-nums">{r.value}</span>
+                  <button aria-label={`${r.label}: next`} onClick={() => r.step(1)} className={`grid size-8 place-items-center rounded-full text-lg font-bold transition active:scale-90 ${morePanel === i ? 'bg-black/10 hover:bg-black/20' : 'bg-white/10 hover:bg-white/25'}`}>›</button>
+                </div>
+                <div className={`mt-0.5 text-xs ${morePanel === i ? 'text-black/55' : 'text-white/40'}`}>{r.hint}</div>
               </div>
             ))}
           </div>
@@ -769,6 +892,13 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         onMouseEnter={() => { if (pillOpen) level.holdNote() }} onMouseMove={() => { if (pillOpen) level.holdNote() }}>
         {noteShown.current && <VolumePill note={noteShown.current} gain={level.gain} ids={pillIds} active={pill} hint="You can turn this off any time in the player controls." onAct={(id, i) => { setPill(i); pillAct(id) }} />}
       </div>
+      {sleepDone && !closing && (
+        <div data-nopause className="pop absolute left-1/2 top-1/2 z-[60] w-[min(420px,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-[#17171c]/95 p-7 text-center shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+          <div className="text-xl font-extrabold">Sleep timer</div>
+          <p className="mt-2 text-sm text-white/65">Playback was paused. Press OK to keep watching, or Back to leave.</p>
+          <button onClick={wakeFromSleep} className="mt-5 rounded-full bg-white px-8 py-2.5 font-bold text-black transition hover:scale-105">Keep watching</button>
+        </div>
+      )}
       {askingStill && !closing && <StillWatching onStay={stillHere} onTimeout={() => { homeRef.current = true; close() }} />}
       {suggest && <NextMovies server={server} media={media} onClose={close} onPlay={(m) => fadeOut(() => { continuing = true; onPlayNext(m) })} />}
     </div>

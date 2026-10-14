@@ -66,3 +66,18 @@ Sideload on a device (Shield, Onn, Fire TV, phones):
 
 Testing without a TV: `avdmanager create avd -n chezz_tv -k "system-images;android-36;android-tv;arm64-v8a" -d tv_1080p`, run the emulator,
 and build with `VITE_DEMO=1 npx tauri android build --debug --target aarch64 --apk` for a demo-mode app (no Plex account needed).
+
+## Beta channel (testing before it goes live)
+
+Two branches: **`main`** is what is live; **`beta`** is where new work is tried first.
+
+1. Work and commit on the `beta` branch (`git checkout beta`).
+2. Bump the version as usual (it is just the next number; betas need no special suffix), then `scripts/publish.sh --beta "Name" "Details"`.
+   It builds Mac and Android and publishes a GitHub **pre-release**. Live users never see it.
+3. Devices set to **Settings → About → Update channel → Beta** are offered it. The first time, a device has to get a beta-capable build
+   by hand (Mac: the .dmg on the release page; Android: the APK link on the release page, or the Downloader app with that address).
+   After that it updates itself, beta or live, whichever is further ahead.
+4. When the beta has been tested: `scripts/promote.sh <version>` turns that **same build** into the live release (no rebuild), then
+   `git checkout main && git merge beta && git push` to keep the branches in step.
+
+`scripts/publish.sh` without `--beta` refuses to run anywhere but `main`, so untested work cannot go live by accident.

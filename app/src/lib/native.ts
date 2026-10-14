@@ -16,6 +16,9 @@ async function droid<T = unknown>(command: string, args?: object): Promise<T> { 
 // ---- Android state the translation needs ----
 let paused = true
 let externalSubs: { url: string; lang?: string; name?: string }[] = []
+/** What the Android media session shows for the NEXT file loaded (title, subtitle, artwork). */
+let mediaInfo: { title: string; subtitle?: string; artwork?: string } | undefined
+export function setMediaInfo(i: { title: string; subtitle?: string; artwork?: string }) { mediaInfo = i }
 /** Sidecar subtitle files for the NEXT file loaded (Android needs them at load time; mpv adds them afterwards). */
 export function setExternalSubs(subs: { url: string; lang?: string; name?: string }[]) { externalSubs = subs }
 
@@ -38,7 +41,7 @@ export async function mpvCmd(...args: (string | number)[]) {
       const opts = Object.fromEntries((a[4] ?? '').split(',').filter(Boolean).map((kv) => kv.split('=') as [string, string]))
       const startMs = Math.round((parseFloat(opts.start ?? '0') || 0) * 1000)
       const subs = externalSubs; externalSubs = []
-      return droid('loadMedia', { url: a[1], startMs, pause: opts.pause !== 'no', subs })
+      return droid('loadMedia', { url: a[1], startMs, pause: opts.pause !== 'no', subs, title: mediaInfo?.title, subtitle: mediaInfo?.subtitle, artwork: mediaInfo?.artwork })
     }
     case 'seek': return droid('seek', { value: parseFloat(a[1]) })
     case 'cycle': if (a[1] === 'pause') return droid('setPause', { value: !paused }); return
@@ -56,6 +59,7 @@ export async function mpvSet(name: string, value: string | number | boolean) {
     case 'mute': return droid('setMute', { value: yes(value) })
     case 'aid': return droid('selectAudio', { value: Number(value) })
     case 'sid': return droid('selectSubtitle', { value: value === 'no' ? 0 : Number(value) })
+    case 'speed': return droid('setSpeed', { value: Number(value) })
     case 'gain-db': return droid('setGain', { value: Number(value) })
     case 'af': { const m = /volume=(-?[\d.]+)dB/.exec(String(value)); return droid('setGain', { value: m ? parseFloat(m[1]) : 0 }) }   // the engine's filter list: only its volume part applies here
     default: return   // video-zoom, brightness...

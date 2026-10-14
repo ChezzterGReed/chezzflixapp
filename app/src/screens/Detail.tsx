@@ -16,10 +16,11 @@ import { Focusable } from '../components/Focusable'
 import { Avatar } from '../components/Avatar'
 import { Row } from '../components/Row'
 import { moreLikeThis } from '../lib/similar'
+import { ExtrasRow } from '../components/ExtrasRow'
 import { ClipPopup } from '../components/ClipPopup'
 import { firstEpisode, previewSegments, recapSegments, withFile, type Segment } from '../lib/clips'
 import {
-  backdropPath, posterPath, episodeLabel, formatLeft, formatRuntime, getAllLeaves, getChildren, getMetadata, getRelated, getSections, imageUrl, isSpoilerRisk, isWatched, logoPath,
+  backdropPath, posterPath, episodeLabel, getExtras, formatLeft, formatRuntime, getAllLeaves, getChildren, getMetadata, getRelated, getSections, imageUrl, isSpoilerRisk, isWatched, logoPath,
   progressOf, setWatched, type PlexMedia, type PlexServer,
   resolvePlayable,
 } from '../lib/plex'
@@ -147,6 +148,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
     if (vs.length > 1) { setPicker({ anchor, versions: vs, title: target?.title ?? item.title }); if (anchor === 'button') focusFirstVersion('ver') }
     else onPlay(item)
   }
+  const [extras, setExtras] = useState<PlexMedia[]>([])   // trailers and extras
   const [editing, setEditing] = useState<PlexMedia>()   // the title (or episode) whose details are being edited
   const [shuffleBusy, setShuffleBusy] = useState(false)
   // Every episode of the show (not the specials), in a random order.
@@ -200,6 +202,12 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
     setTimeout(() => setFocus(`ep-${focusEpisode.ep}`), 150)
   }, [episodes, focusEpisode])
 
+  useEffect(() => {
+    if (!m || (m.type !== 'movie' && m.type !== 'show')) { setExtras([]); return }
+    let alive = true
+    getExtras(server, m.ratingKey).then((x) => alive && setExtras(x)).catch(() => alive && setExtras([]))
+    return () => { alive = false }
+  }, [m?.ratingKey, server]) // eslint-disable-line react-hooks/exhaustive-deps
   // Pin to Continue Watching: stays there, started or not, until unpinned.
   const pinned = !!(m && settings.pinned[m.ratingKey])
   const togglePin = () => {
@@ -404,6 +412,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
             </section>
           )}
 
+          {extras.length > 0 && <div className="relative mt-14"><ExtrasRow items={extras} server={server} onPlay={onPlay} /></div>}
           {related.length > 0 && <div className="relative mt-14"><Row title="More like this" items={related} server={server} onSelect={onOpen} /></div>}
         </div>
       )}

@@ -167,6 +167,10 @@ export function mockGet(rawPath: string): unknown {
         User: { title: 'Jordan', thumb: 'demo:avatar:Jordan' }, Player: { title: 'Fire TV', product: 'Plex for Fire TV', platform: 'Android', state: 'playing', local: false }, Session: { id: 's3', bandwidth: 8800, location: 'wan' }, TranscodeSession: { videoDecision: 'copy', audioDecision: 'transcode' }, Media: [{ videoResolution: '1080', bitrate: 8800 }] },
     ] }
   }
+  if (/^\/library\/metadata\/[^/]+\/extras$/.test(path)) return { Metadata: [
+    { ratingKey: 'x-1', type: 'clip', subtype: 'behindTheScenes', title: 'Making of', thumb: 'demo:still:Making of', duration: 312000, Media: [{ Part: [{ key: '/demo/extra-2.mp4' }] }] },
+    { ratingKey: 'x-2', type: 'clip', subtype: 'trailer', title: 'Official Trailer', thumb: 'demo:still:Official Trailer', duration: 148000, Media: [{ Part: [{ key: '/demo/extra-1.mp4' }] }] },
+  ] }
   const im = path.match(/^\/library\/metadata\/([^/]+)\/(posters|arts)$/)
   if (im) return { Metadata: ['A', 'B', 'C', 'D', 'E'].map((x, i) => ({ ratingKey: `demo-${im[2]}-${x}`, thumb: `demo:${im[2] === 'posters' ? 'poster' : 'art'}:Choice ${x}`, selected: i === 0, provider: i === 0 ? 'local' : 'tmdb' })) }
   if (path === '/accounts') return { Account: [{ id: 1, name: 'Chezz' }, { id: 2, name: 'Alex' }, { id: 3, name: 'Mom' }, { id: 4, name: 'Jordan' }] }

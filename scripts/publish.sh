@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # Builds BOTH the Mac and Android apps and publishes them as one GitHub release (so the update feed covers both).
-# Usage: scripts/publish.sh "Short name of the update" "What's included: a sentence or a few lines"
+# Usage: scripts/publish.sh [--beta] "Short name of the update" "What's included: a sentence or a few lines"
+#        Without --beta this is a LIVE release and must be run from the main branch. With --beta it is published as a GitHub pre-release:
+#        only devices set to the Beta channel (Settings > About) are offered it. Run it from the beta branch. When it has been tested,
+#        scripts/promote.sh <version> makes that same build the live one.
 #        (bump "version" in app/src-tauri/tauri.conf.json + Cargo.toml first)
 #        The name is all the update popup shows; the details appear under Settings > About > the version.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+BETA=0; if [ "${1:-}" = "--beta" ]; then BETA=1; shift; fi
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ -z "${ALLOW_ANY_BRANCH:-}" ]; then
+  [ "$BETA" = 0 ] && [ "$BRANCH" != main ] && { echo "Live releases are published from main (you are on '$BRANCH'). Use --beta to publish a beta from this branch."; exit 1; }
+  [ "$BETA" = 1 ] && [ "$BRANCH" = main ] && { echo "Betas are published from the beta branch (you are on main)."; exit 1; }
+fi
 REPO="ChezzterGReed/chezzflixapp"
+PRE=""; LABEL=""; if [ "$BETA" = 1 ]; then PRE="--prerelease --latest=false"; LABEL=" (beta)"; fi
 VER="$(python3 -c "import json;print(json.load(open('app/src-tauri/tauri.conf.json'))['version'])")"
 NAME="${1:-}"; DETAILS="${2:-}"
 NOTES="$NAME"; [ -n "$DETAILS" ] && NOTES="$NAME"$'\n\n'"$DETAILS"
@@ -15,7 +25,7 @@ scripts/release-mac.sh
 scripts/release-android.sh
 cp "releases/$VER/Chezzflix_${VER}_universal.dmg" "releases/$VER/Chezzflix.dmg"   # fixed-name copy for ".../releases/latest/download/Chezzflix.dmg"
 scripts/make-feed.py "$VER" "https://github.com/$REPO/releases/download/v$VER"
-gh release create "v$VER" --repo "$REPO" --title "Chezzflix $VER${NAME:+ · $NAME}" --notes "${NOTES:-Chezzflix $VER}" \
+gh release create "v$VER" --repo "$REPO" $PRE --title "Chezzflix $VER$LABEL${NAME:+ · $NAME}" --notes "${NOTES:-Chezzflix $VER}" \
   "releases/$VER/Chezzflix_${VER}_universal.dmg" "releases/$VER/Chezzflix.app.tar.gz" "releases/$VER/Chezzflix.app.tar.gz.sig" \
   "releases/$VER/Chezzflix_${VER}_android.apk" "releases/$VER/Chezzflix.apk" "releases/$VER/Chezzflix.dmg" "releases/latest.json"
-echo "✔ Published v$VER (Mac + Android). Installed apps will offer it; new Android installs: .../releases/latest/download/Chezzflix.apk"
+if [ "$BETA" = 1 ]; then echo "✔ Published v$VER as a BETA (Mac + Android). Devices on the Beta channel will offer it. To install it by hand: https://github.com/$REPO/releases/tag/v$VER"; else echo "✔ Published v$VER (Mac + Android). Installed apps will offer it; new Android installs: .../releases/latest/download/Chezzflix.apk"; fi

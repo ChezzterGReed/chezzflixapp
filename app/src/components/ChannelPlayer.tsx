@@ -11,6 +11,7 @@ import { planPlayback } from '../lib/playback'
 import { applySubStyle, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
 import { hexA } from '../lib/seasonal'
+import { setNowPlaying, setPlayback, startNowPlaying } from '../lib/nowPlaying'
 import { dbLabel, useLevelEngine } from '../lib/leveling'
 import { VolumePill } from './VolumePill'
 import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
@@ -186,6 +187,18 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   }, [idx, mode, tune, start, flash])
 
   const flip = (d: 1 | -1) => setIdx((i) => (i + d + channels.length) % channels.length)
+  // Now Playing / media keys: the channel and program show in the system's controls; Next / Previous change channel.
+  const flipRef = useRef(flip); flipRef.current = flip
+  useEffect(() => {
+    let stop: (() => void) | undefined, dead = false
+    startNowPlaying((k) => { if (k.key === 'next') flipRef.current(1); else if (k.key === 'previous') flipRef.current(-1) }).then((f) => { if (dead) f(); else stop = f })
+    return () => { dead = true; stop?.() }
+  }, [])
+  useEffect(() => {
+    if (!slot) return
+    setNowPlaying({ title: slot.title, subtitle: [channels[idx]?.name, slot.sub].filter(Boolean).join(' · ') })
+    setPlayback('playing')
+  }, [slot?.key, idx]) // eslint-disable-line react-hooks/exhaustive-deps
   const close = (idle = false) => { if (leaving) return; setLeaving(true); setTimeout(idle && onIdle ? onIdle : onClose, 300) }
   const { asking: askingStill, confirm: stillHere } = useStillWatching(status === 'playing' && !leaving)
 

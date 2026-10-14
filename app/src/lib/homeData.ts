@@ -255,6 +255,26 @@ export function layoutFor(tab: Tab, settings: Settings, season: Season): HomeRow
   return layout
 }
 
+const SPREAD_MIN = 8   // a genre row keeps at least this many titles, even if that means repeating one from another genre row
+
+/**
+ * A title shows in only one genre row on a tab (so a new Sci-Fi / Drama / Thriller movie isn't first in all three). Rows with the fewest
+ * candidates choose first, so small genres aren't left empty; a row that would end up with fewer than SPREAD_MIN keeps its repeats, after the new ones.
+ * Recently added / released, trending, Continue Watching, seasonal lists and your own playlists and collections are left alone.
+ */
+function spreadGenres(rows: HomeRow[], pool: Map<string, PlexMedia[]>) {
+  const used = new Set<string>()
+  const byFewest = rows.filter((r) => pool.has(r.id)).sort((a, b) => (pool.get(a.id)?.length ?? 0) - (pool.get(b.id)?.length ?? 0))
+  for (const row of byFewest) {
+    const all = pool.get(row.id) ?? row.items
+    const fresh = all.filter((m) => !used.has(showKey(m)))
+    const isFresh = new Set(fresh)
+    const next = (fresh.length >= SPREAD_MIN ? fresh : [...fresh, ...all.filter((m) => used.has(showKey(m)))]).slice(0, 30)
+    row.items = next
+    for (const m of next) if (isFresh.has(m)) used.add(showKey(m))
+  }
+}
+
 export async function loadRows(server: PlexServer, sections: PlexSection[], tab: Tab, settings: Settings, anime: AnimeInfo | undefined, season: Season, token = '', profileName = ''): Promise<{ rows: HomeRow[]; notices: HomeNotice[] }> {
   const hidden = new Set(settings.hiddenLibraries)
   const visible = sections.filter((s) => !hidden.has(s.key))
@@ -272,6 +292,7 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
   // The default genre rows (Action, Comedy, Horror...) follow the tab: movies on Home/Movies, shows on Shows. Rows you add yourself search everything.
   const defaults = new Set(defaultRows(tab, settings.genres).map((r) => r.id))
 
+  const pool = new Map<string, PlexMedia[]>()   // every candidate for each genre row (before it is cut to 30)
   const rows = await Promise.all(layout.filter((r) => r.enabled).map(async (cfg): Promise<HomeRow | null> => {
     let items: PlexMedia[] = []
     let cont = false
@@ -282,9 +303,11 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
     } catch { return null }
     items = items.filter(keep)
     if (!cont) { items = dedupe(items); if (hidesWatched(settings, tab)) items = items.filter((m) => !isWatched(m)) }
+    if (cfg.kind === 'genre') pool.set(cfg.id, items)
     return items.length ? { id: cfg.id, title: cfg.title, items: items.slice(0, 30), continue: cont } : null
   }))
   const out = rows.filter((r): r is HomeRow => !!r)
+  spreadGenres(out, pool)
   // Seasonal lists (in season, on the movie-led tabs): the list's movies that this server has, right under Continue Watching.
   if ((tab === 'all' || tab === 'movie') && season) {
     for (const list of listsFor(season)) {

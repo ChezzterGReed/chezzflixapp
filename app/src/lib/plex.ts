@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.3.28',
+    'X-Plex-Version': '0.3.29',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -93,6 +93,8 @@ export interface PlexMedia {
   Role?: PlexTag[]
   Director?: PlexTag[]
   Label?: PlexTag[]
+  /** Extras (trailers, behind the scenes...): what kind. */
+  subtype?: string
   titleSort?: string
   userRating?: number
   Image?: { type: string; url: string }[]
@@ -547,6 +549,7 @@ export function episodeLabel(m: PlexMedia): string {
 
 /** Resolve what "Play" should actually start for any item (show -> next up episode). */
 export async function resolvePlayable(server: PlexServer, item: PlexMedia): Promise<PlexMedia | null> {
+  if (item.type === 'clip') return item.Media?.[0]?.Part?.[0]?.key ? item : getMetadata(server, item.ratingKey)   // a trailer or extra
   if (item.type === 'movie' || item.type === 'episode') return getMetadata(server, item.ratingKey)
   if (item.type === 'show') {
     const full = await getMetadata(server, item.ratingKey)
@@ -565,23 +568,38 @@ export async function resolvePlayable(server: PlexServer, item: PlexMedia): Prom
   return null
 }
 
+/** Trailers and extras for a movie or show: the ones saved with it on the server, and the online ones Plex adds. */
+export async function getExtras(server: PlexServer, ratingKey: string): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/metadata/${ratingKey}/extras`, 300_000)
+  const rank = (m: PlexMedia) => (m.subtype === 'trailer' ? 0 : 1)
+  return (c.Metadata ?? []).filter((m) => m.Media?.[0]?.Part?.[0]?.key).map((m) => ({ ...m, type: 'clip' })).sort((a, b) => rank(a) - rank(b))
+}
+
 // ---------- Playback ----------
 /** Original file, untouched. This is true direct play — no server work. */
 export const DEMO_VIDEO: string = import.meta.env.VITE_DEMO_VIDEO || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
 export function directPlayUrl(server: PlexServer, media: PlexMedia): string | null {
   if (server.uri === DEMO_URI) return DEMO_VIDEO // (the in-app player picks its own demo clip)
   const key = media.Media?.[0]?.Part?.[0]?.key
+  if (key?.startsWith('http')) return key   // (an online extra is hosted elsewhere)
   return key ? `${server.uri}${key}?X-Plex-Token=${server.accessToken}` : null
 }
 
-/** Last-resort HLS transcode. Only used when the user opts in or the native player can't cope. */
-export function transcodeUrl(server: PlexServer, media: PlexMedia, offsetSec = 0): string {
+/** The picture size that goes with a bitrate cap: 5000 kbps is 1080p, 2500 is 720p, 800 is 360p, 400 is 240p. */
+export const resolutionFor = (kbps: number) => (kbps >= 4500 ? '1920x1080' : kbps >= 2000 ? '1280x720' : kbps >= 600 ? '640x360' : '426x240')
+
+/** An HLS transcode (a lower quality picked on purpose, or a last resort). `maxKbps` caps the video bitrate (and picks a matching size). */
+export function transcodeUrl(server: PlexServer, media: PlexMedia, offsetSec = 0, maxKbps?: number): string {
   const p = new URLSearchParams({
-    path: `/library/metadata/${media.ratingKey}`,
-    protocol: 'hls', directPlay: '0', directStream: '1',
+    path: `/library/metadata/${media.ratingKey}`, mediaIndex: String(media.versionIndex ?? 0), partIndex: '0', fastSeek: '1',
+    protocol: 'hls', directPlay: '0', directStream: maxKbps ? '0' : '1', directStreamAudio: '1',
     offset: String(offsetSec), session: crypto.randomUUID(),
     'X-Plex-Client-Identifier': clientId(), 'X-Plex-Product': PRODUCT, 'X-Plex-Token': server.accessToken,
   })
+  if (maxKbps) {
+    p.set('maxVideoBitrate', String(maxKbps)); p.set('videoBitrate', String(maxKbps))
+    p.set('videoResolution', resolutionFor(maxKbps))
+  }
   return `${server.uri}/video/:/transcode/universal/start.m3u8?${p}`
 }
 

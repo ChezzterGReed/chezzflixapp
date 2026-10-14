@@ -12,16 +12,42 @@ async function droidUpdate<T>(command: string, args?: object): Promise<T> { retu
 let androidPending: AndroidRelease | undefined
 
 export type UpdateStatus = 'idle' | 'checking' | 'uptodate' | 'available' | 'downloading' | 'installing' | 'error'
-interface State { status: UpdateStatus; current: string; version?: string; notes?: string; progress: number; error?: string }
+export type Channel = 'stable' | 'beta'
+interface State { status: UpdateStatus; current: string; version?: string; notes?: string; progress: number; error?: string; channel: Channel }
+
+// Which updates this device follows. Kept on the device (not with the profile's synced settings): a TV can test betas while a phone stays on stable.
+const CHANNEL_KEY = 'chezzflix_update_channel'
+export const getChannel = (): Channel => { try { return localStorage.getItem(CHANNEL_KEY) === 'beta' ? 'beta' : 'stable' } catch { return 'stable' } }
+const REPO = 'ChezzterGReed/chezzflixapp'
+interface GhRelease { tag_name: string; prerelease?: boolean; draft?: boolean; body?: string; assets?: { name: string; browser_download_url: string }[] }
+const ghVersion = (r: GhRelease) => r.tag_name.replace(/^v/, '')
+/** The newest beta (a GitHub pre-release) and the newest live release, so the Beta channel can follow whichever is further ahead. */
+async function channelHeads(): Promise<{ beta?: { version: string; feed: string }; stable?: string }> {
+  const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=15`, { headers: { Accept: 'application/vnd.github+json' } })
+  if (!r.ok) throw new Error(`GitHub answered ${r.status}`)
+  const list = ((await r.json()) as GhRelease[]).filter((x) => !x.draft)
+  const beta = list.find((x) => x.prerelease)
+  const feed = beta?.assets?.find((a) => a.name === 'latest.json')?.browser_download_url
+  const stable = list.find((x) => !x.prerelease)
+  return { beta: beta && feed ? { version: ghVersion(beta), feed } : undefined, stable: stable ? ghVersion(stable) : undefined }
+}
+let betaFeed: string | undefined   // set when the newest update was found in the beta feed (the Mac installs it through its own commands)
 
 const fake = !inTauri && new URLSearchParams(location.search).has('update')
-let state: State = { status: 'idle', current: fake ? '0.1.0' : '', progress: 0 }
+let state: State = { status: 'idle', current: fake ? '0.1.0' : '', progress: 0, channel: getChannel() }
 const listeners = new Set<() => void>()
 const set = (p: Partial<State>) => { state = { ...state, ...p }; listeners.forEach((l) => l()) }
 export const useUpdater = () => useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l) } }, () => state)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pending: any
+
+export function setChannel(c: Channel) {
+  try { localStorage.setItem(CHANNEL_KEY, c) } catch { /* ignore */ }
+  betaFeed = undefined; androidPending = undefined; pending = undefined
+  set({ channel: c, status: 'idle', version: undefined, notes: undefined, error: undefined })
+  void checkForUpdate()
+}
 
 export async function checkForUpdate(): Promise<void> {
   if (state.status === 'checking' || state.status === 'downloading' || state.status === 'installing') return
@@ -33,7 +59,9 @@ export async function checkForUpdate(): Promise<void> {
       const { getVersion } = await import('@tauri-apps/api/app')
       const current = await getVersion()
       set({ current })
-      const r = await droidUpdate<{ status: number; body: string }>('fetchText', { url: `${FEED_URL}${FEED_URL.includes('?') ? '&' : '?'}t=${Date.now()}` })
+      let feedUrl = FEED_URL
+      if (getChannel() === 'beta') { const h = await channelHeads().catch(() => ({} as Awaited<ReturnType<typeof channelHeads>>)); if (h.beta && (!h.stable || newer(h.beta.version, h.stable))) feedUrl = h.beta.feed }
+      const r = await droidUpdate<{ status: number; body: string }>('fetchText', { url: `${feedUrl}${feedUrl.includes('?') ? '&' : '?'}t=${Date.now()}` })
       if (r.status !== 200) throw new Error(`The update server answered ${r.status}`)
       const feed = JSON.parse(r.body) as { notes?: string; android?: AndroidRelease }
       if (!feed.android || !newer(feed.android.version, current)) return set({ status: 'uptodate' })
@@ -43,7 +71,20 @@ export async function checkForUpdate(): Promise<void> {
   }
   try {
     const { getVersion } = await import('@tauri-apps/api/app')
-    set({ current: await getVersion() })
+    const current = await getVersion()
+    set({ current })
+    betaFeed = undefined
+    if (getChannel() === 'beta') {
+      // Beta channel: the newest pre-release, unless a live release has already caught up with it.
+      const h = await channelHeads().catch(() => ({} as Awaited<ReturnType<typeof channelHeads>>))
+      if (h.beta && (!h.stable || newer(h.beta.version, h.stable))) {
+        if (!newer(h.beta.version, current)) return set({ status: 'uptodate' })
+        const found = await (await import('@tauri-apps/api/core')).invoke<{ version: string; notes?: string } | null>('update_check', { feed: h.beta.feed })
+        if (!found) return set({ status: 'uptodate' })
+        betaFeed = h.beta.feed
+        return set({ status: 'available', version: found.version, notes: found.notes ?? undefined })
+      }
+    }
     const { check } = await import('@tauri-apps/plugin-updater')
     const update = await check()
     if (!update) return set({ status: 'uptodate' })
@@ -71,6 +112,19 @@ export async function installUpdate(): Promise<void> {
       set({ status: 'available', progress: 0, error: undefined, notes: r.needsPermission
         ? 'Android needs your OK first: allow installs from Chezzflix on the screen that opened (Settings → Apps → Special access → Install unknown apps), then choose Update again.'
         : 'The Android installer is open. Confirm there to finish updating (choose Update again if you cancelled).' })
+    } catch (e) { set({ status: 'error', error: String(e) }) }
+    return
+  }
+  if (betaFeed) {
+    try {
+      set({ status: 'downloading', progress: 0 })
+      const { invoke } = await import('@tauri-apps/api/core')
+      const { listen } = await import('@tauri-apps/api/event')
+      const off = await listen<{ got: number; total?: number }>('update-progress', (e) => { if (e.payload.total) set({ progress: Math.min(1, e.payload.got / e.payload.total) }) })
+      try { await invoke('update_install') } finally { off() }
+      set({ status: 'installing', progress: 1 })
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
     } catch (e) { set({ status: 'error', error: String(e) }) }
     return
   }
