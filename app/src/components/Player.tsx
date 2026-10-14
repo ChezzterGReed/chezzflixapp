@@ -13,7 +13,7 @@ import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
-import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, transcodeUrl, type PlexMedia, type PlexServer } from '../lib/plex'
+import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { NextMovies } from './NextMovies'
 import { useBack } from '../lib/back'
@@ -115,6 +115,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const reloadTracks = useCallback(() => { mpvTracks().then(setNTracks).catch(() => {}) }, [])
   const endedRef = useRef<() => void>(() => {})
   const pausedRef = useRef(false)
+  // A transcode started part-way in (Plex starts the stream at an offset): mpv's clock counts from there, so this is added back to show the real time.
+  const tBase = useRef(0)
 
   const plexAudio = streamsOf(media, 2)
   const plexSubs = streamsOf(media, 3)
@@ -214,8 +216,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     onMpv((p) => {
       const n = typeof p.value === 'number' ? p.value : undefined
       switch (p.name) {
-        case 'time-pos': if (n !== undefined) { timeRef.current = n; setTime(n); setReady(true) } break
-        case 'duration': if (n) setDuration(n); break
+        case 'time-pos': if (n !== undefined) { const t = n + tBase.current; timeRef.current = t; setTime(t); setReady(true) } break
+        case 'duration': if (n) setDuration(n + tBase.current); break
         case 'pause': setPaused(!!p.value); break
         case 'volume': if (n !== undefined) setVolume(n / 100); break
         case 'mute': setMuted(!!p.value); break
@@ -400,10 +402,13 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const seek = useCallback((t: number) => {
     lastSeek.current = Date.now()
     const target = Math.max(0, Math.min(duration || t, t))
-    if (mode === 'native') mpvCmd('seek', target, 'absolute').catch(() => {})
-    else { const v = video.current; if (v) v.currentTime = target }
+    if (mode === 'native') {
+      // (a transcode that started part-way in can't seek before its start: that restarts it from the new spot)
+      if (qLoaded.current !== 0 && target < tBase.current) restartStream(target)
+      else mpvCmd('seek', target - tBase.current, 'absolute').catch(() => {})
+    } else { const v = video.current; if (v) v.currentTime = target }
     poke()
-  }, [duration, poke, mode])
+  }, [duration, poke, mode]) // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = useCallback(() => {
     if (mode === 'native') mpvCmd('cycle', 'pause').catch(() => {})
     else { const v = video.current; if (!v) return; v.paused ? v.play() : v.pause() }
@@ -453,20 +458,31 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   }, [sleepIdx, sleepNow])
   const wakeFromSleep = () => { setSleepDone(false); if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
   // A different quality: reload the same spot (a transcode capped at that bitrate, or back to the original file). Waits a moment so stepping through the list doesn't reload at every step.
-  useEffect(() => {
-    if (mode === 'pending' || qIdx === qLoaded.current) return
-    const t = setTimeout(() => {
-      qLoaded.current = qIdx
-      const kbps = QUALITIES[qIdx].kbps, at = timeRef.current
-      fallbackStep.current = 'none'
-      if (mode === 'native') {
-        const url = kbps === null ? directPlayUrl(server, media) : transcodeUrl(server, media, 0, kbps)
+  const startStream = (kbps: number | null, at: number) => {
+    fallbackStep.current = 'none'
+    if (mode === 'native') {
+      if (kbps === null) {
+        const url = directPlayUrl(server, media)
         if (!url) return
-        setPlan(kbps === null ? { kind: 'direct', url, hls: false, summary: 'Direct Play', reason: '' } : { kind: 'transcode', url, hls: true, summary: `Transcoding · ${QUALITIES[qIdx].label}`, reason: 'Lower quality chosen for now' })
+        tBase.current = 0
+        setPlan({ kind: 'direct', url, hls: false, summary: 'Direct Play', reason: '' })
         setBuffering(true)
         mpvCmd('loadfile', url, 'replace', '-1', `start=${at > 1 ? at : 0},pause=${pausedRef.current ? 'yes' : 'no'}`).catch((e) => setError(String(e)))
-      } else load(planPlayback(server, media, choice, undefined, kbps ?? undefined), at)
-    }, 1100)
+      } else {
+        // The same kind of request the in-app (web) player makes, starting the stream at the right spot.
+        const p = planPlayback(server, media, choice, undefined, kbps)
+        const u = new URL(p.url); u.searchParams.set('offset', String(Math.floor(at))); u.searchParams.set('session', crypto.randomUUID())
+        tBase.current = Math.floor(at)
+        setPlan({ ...p, url: u.toString() })
+        setBuffering(true)
+        mpvCmd('loadfile', u.toString(), 'replace', '-1', `pause=${pausedRef.current ? 'yes' : 'no'}`).catch((e) => setError(String(e)))
+      }
+    } else load(planPlayback(server, media, choice, undefined, kbps ?? undefined), at)
+  }
+  const restartStream = (at: number) => startStream(QUALITIES[qLoaded.current].kbps, at)
+  useEffect(() => {
+    if (mode === 'pending' || qIdx === qLoaded.current) return
+    const t = setTimeout(() => { qLoaded.current = qIdx; startStream(QUALITIES[qIdx].kbps, timeRef.current) }, 1100)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qIdx, mode])
