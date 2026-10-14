@@ -3,6 +3,8 @@ import { Aurora } from './Aurora'
 import { Logo } from './Logo'
 import { useSeason } from '../lib/settings'
 import { shuffled } from '../lib/session'
+import { useLastBrand } from '../lib/brand'
+import { SwapText } from './SwapText'
 
 const PLAIN_MESSAGES = ['Connecting to your server…', 'Gathering your libraries…', 'Dimming the lights…', 'Cueing up something good…']
 
@@ -36,7 +38,7 @@ export function LoadingScreen({ visible }: { visible: boolean }) {
   }, [visible])
   useEffect(() => { if (!visible) return; const t = setInterval(() => setI((x) => (x + 1) % MESSAGES.length), 2300); return () => clearInterval(t) }, [visible])
 
-  const brand = (() => { try { return localStorage.getItem('chezzflix_last_brand') || 'CHEZZFLIX' } catch { return 'CHEZZFLIX' } })()
+  const brand = useLastBrand()
 
   if (!mounted) return null
   return (
@@ -50,7 +52,7 @@ export function LoadingScreen({ visible }: { visible: boolean }) {
             <span className="logo-breathe relative grid place-items-center drop-shadow-[0_0_28px_var(--accent)]"><Logo size={86} /></span>
           </div>
           <div className="mb-3 flex justify-center font-display text-[1.7rem] leading-none tracking-[0.26em]">
-            {[...brand].map((ch, n) => <span key={n} className="letter-in" style={{ animationDelay: `${n * 70}ms` }}>{ch}</span>)}
+            <SwapText text={brand} id="loading" intro stagger={70} />
           </div>
           <div key={i} className="fade-in h-5 text-sm tracking-wide text-white/50">{MESSAGES[i]}</div>
           <div className="mx-auto mt-5 h-[3px] w-44 overflow-hidden rounded-full bg-white/10"><span className="load-bar block h-full w-1/3 rounded-full bg-accent" /></div>

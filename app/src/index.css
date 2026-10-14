@@ -86,6 +86,9 @@ html[data-season=festive] .orb-c { background: radial-gradient(closest-side, #9f
 .logo-breathe { animation: breathe 3.2s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.07) } }
 .letter-in { opacity: 0; animation: letter-in .7s var(--ease-out-expo) forwards; }
+/* The name leaving: letters drift up and fade, then the new name eases in. */
+.letter-out { animation: letter-out .4s ease-in forwards; }
+@keyframes letter-out { from { opacity: 1; transform: none; filter: none } to { opacity: 0; transform: translateY(-8px); filter: blur(4px) } }
 @keyframes letter-in { from { opacity: 0; transform: translateY(10px); filter: blur(4px) } to { opacity: 1; transform: none; filter: none } }
 .load-bar { animation: load-bar 1.7s ease-in-out infinite; }
 @keyframes load-bar { 0% { transform: translateX(-120%) } 100% { transform: translateX(380%) } }
@@ -126,7 +129,7 @@ html[data-perf="low"] .orb, html[data-perf="low"] .banner-sheen, html[data-perf=
 html[data-perf="low"] .mote, html[data-perf="low"] .fog, html[data-perf="low"] .flake { display: none !important; }
 html[data-perf="low"] .twinkle { animation: none; }
 html[data-perf="low"] .skeleton { animation: none; background: #1a1a20; }
-html[data-perf="low"] .letter-in { filter: none; }
+html[data-perf="low"] .letter-in, html[data-perf="low"] .letter-out { filter: none; }
 
 /* Fixed overlays get their own compositor layer on weak devices, so scrolling the page behind them doesn't repaint them every frame. */
 html[data-perf="low"] nav.fixed { transform: translateZ(0); }

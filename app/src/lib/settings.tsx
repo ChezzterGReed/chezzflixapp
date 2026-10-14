@@ -1,3 +1,4 @@
+import { setLastBrand } from './brand'
 import { LOW_POWER } from './perf'
 import { setNavSounds } from './sfx'
 import { setActiveProfile } from './profile'
@@ -236,8 +237,8 @@ export function SettingsProvider({ profileKey, shared: sharedValues, syncAuth, c
     document.documentElement.dataset.perf = LOW_POWER || settings.lightEffects ? 'low' : 'high'
     setNavSounds(settings.navSounds)
     document.title = brandName(settings)
+    setLastBrand(brandName(settings))
     try {
-      localStorage.setItem('chezzflix_last_brand', brandName(settings))
       localStorage.setItem('chezzflix_last_accent', tint ?? settings.accent)
       localStorage.setItem('chezzflix_last_season', season ? '1' : '0')
       localStorage.setItem('chezzflix_last_theme', themeKey(season, style))

@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { reveal } from '../lib/scroll'
 import { UpdateDot, useUpdatePending } from './UpdateDot'
+import { SwapText } from './SwapText'
+import { useBooted } from '../lib/boot'
 import { Bookmark, Film, Radio, RefreshCw, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
@@ -59,6 +61,7 @@ interface Props {
 export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, streams, tvGuide, onScan }: Props) {
   const mode = useInputMode()
   const update = useUpdatePending()
+  const booted = useBooted()
   const typing = useTyping()
   const season = useSeason()
   const [hover, setHover] = useState(false)
@@ -91,7 +94,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
               {season && avatarLogo && <SeasonIcon size={21} className="absolute right-0.5 top-0 drop-shadow" />}
             </span>
           </span>
-          <span className={`whitespace-nowrap font-display text-[1.4rem] leading-none tracking-[0.14em] transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>{brand}</span>
+          <span className={`whitespace-nowrap font-display text-[1.4rem] leading-none tracking-[0.14em] transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}><SwapText text={brand} id="sidebar" hold={!booted} /></span>
         </div>
 
         <div className="space-y-1">
