@@ -68,10 +68,14 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const [tracks, setTracks] = useState<MpvTrack[]>([])
   const tracksOpenRef = useRef(false); tracksOpenRef.current = tracksOpen
   const inputMode = useInputMode()
+  // Up / Down bring up the controls (the info banner, with its Audio & subtitles button highlighted, and the volume pill above it); Left / Right change channel.
+  const [ctl, setCtl] = useState(false)
+  const ctlRef = useRef(false); ctlRef.current = ctl
   // The info banner (channel, title, episode, and the audio & subtitles button): it stays up while the track menu is open.
-  const flash = useCallback(() => { setBanner(true); clearTimeout(bannerTimer.current); bannerTimer.current = window.setTimeout(() => { if (!tracksOpenRef.current) setBanner(false) }, 5000) }, [])
+  const flash = useCallback(() => { setBanner(true); clearTimeout(bannerTimer.current); bannerTimer.current = window.setTimeout(() => { if (!tracksOpenRef.current) { setBanner(false); setCtl(false) } }, 5000) }, [])
   const lastMove = useRef(0)
   const openTracks = useCallback(() => {
+    setCtl(false)
     flash()
     mpvTracks().then((t) => { setTracks(t.filter((x) => x.type === 'audio' || x.type === 'sub')); setTracksOpen(true) }).catch(() => {})
   }, [flash])
@@ -205,7 +209,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const ch = channels[idx]
   const now = Date.now()
   return (
-    <Layer player onClose={() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else close() }} scrim="bg-transparent">
+    <Layer player onClose={() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (ctlRef.current) { setCtl(false); setBanner(false) } else close() }} scrim="bg-transparent">
       <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
         {askingStill && !leaving && <StillWatching onStay={stillHere} onTimeout={() => close(true)} />}
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => setStatus('error')} />}
@@ -214,11 +218,19 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
           onEnter={() => { if (pillRef.current >= 0 && pillIdsRef.current[pillRef.current]) { pillAct(pillIdsRef.current[pillRef.current]); return } if (level.note?.kind === 'offer') { level.acceptOffer(); return } if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}   // OK shows the info; OK again, with it showing, opens audio & subtitles
           onArrow={(d) => {
             const ids = pillIdsRef.current
-            if (ids.length) {
-              if (pillRef.current < 0 && (d === 'up' || d === 'down')) { setPill(0); level.holdNote(); return false }
-              if (pillRef.current >= 0) { if (d === 'left') setPill(Math.max(0, pillRef.current - 1)); else if (d === 'right') setPill(Math.min(ids.length - 1, pillRef.current + 1)); level.holdNote(); return false }
+            if (pillRef.current >= 0) {   // on the volume pill: Left / Right choose, Down goes back to the controls
+              if (d === 'left') setPill(Math.max(0, pillRef.current - 1)); else if (d === 'right') setPill(Math.min(ids.length - 1, pillRef.current + 1)); else if (d === 'down') { setPill(-1); setCtl(true) }
+              level.holdNote(); flash(); return false
             }
-            if (d === 'up') { flip(-1); return false } if (d === 'down') { flip(1); return false } flash(); return false }}   // Left / Right also bring the info up
+            if (d === 'up' || d === 'down') {
+              flash()
+              if (ctlRef.current) { if (d === 'up' && ids.length) { setPill(0); level.holdNote() } else if (d === 'down') setCtl(false) }   // controls up: Up reaches the pill (when one is showing), Down puts them away
+              else if (ids.length) { setPill(0); level.holdNote() }   // a volume question is waiting: straight to it
+              else setCtl(true)
+              return false
+            }
+            setCtl(false); flip(d === 'left' ? -1 : 1); return false   // Left / Right: the previous / next channel
+          }}
           className="absolute inset-0">
           <div className="size-full" />
         </Focusable>
@@ -233,7 +245,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
               {slot?.sub && <div className="truncate text-lg text-white/70">{slot.sub}</div>}
             </div>
             {mode === 'native' && status === 'playing' && (
-              <button onClick={openTracks} className={`${banner ? 'pointer-events-auto' : 'pointer-events-none'} flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition ${inputMode === 'key' ? 'bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}><Captions size={18} />Audio & subtitles{inputMode === 'key' && <span className="rounded bg-black/10 px-1.5 text-xs font-bold">OK</span>}</button>
+              <button onClick={openTracks} className={`${banner ? 'pointer-events-auto' : 'pointer-events-none'} flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition ${inputMode === 'key' && ctl ? 'scale-105 bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}><Captions size={18} />Audio & subtitles{inputMode === 'key' && ctl && <span className="rounded bg-black/10 px-1.5 text-xs font-bold">OK</span>}</button>
             )}
             {slot && <div className="shrink-0 text-right text-sm text-white/60">{clock(slot.start)} – {clock(slot.end)}<div className="text-xs">{Math.max(0, Math.round((slot.end - now) / 60000))} min left</div></div>}
           </div>
@@ -295,7 +307,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
           {status === 'error' && !leaving && (
             <div className="max-w-md text-center"><TriangleAlert className="mx-auto text-amber-300" size={44} />
               <div className="mt-4 text-2xl font-extrabold">{ch.seasonal ? '' : `${ch.number} · `}{ch.name}</div>
-              <p className="mt-2 text-white/70">This channel isn’t working. Try another channel (Up or Down).</p></div>
+              <p className="mt-2 text-white/70">This channel isn’t working. Try another channel (Left or Right).</p></div>
           )}
         </div>
       </div>

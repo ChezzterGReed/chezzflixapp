@@ -286,7 +286,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
             </div>
           </div>
         </Focusable>
-        <p className="mt-2 shrink-0 px-1 text-xs text-white/40">OK tunes a channel · hold OK for channel options · Up and Down flip channels while watching</p>
+        <p className="mt-2 shrink-0 px-1 text-xs text-white/40">OK tunes a channel · hold OK for channel options · Left and Right change channels while watching · Up or Down for audio and volume</p>
       </>
     )
   }
