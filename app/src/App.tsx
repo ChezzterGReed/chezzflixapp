@@ -17,6 +17,7 @@ import { Login } from './screens/Login'
 import { unseal, type Sealed } from './lib/sealed'
 import sealedKeys from './lib/sealed-keys.json'
 import { useStreamCount } from './lib/streams'
+import { ResumePrompt } from './components/ResumePrompt'
 import { Screensaver } from './components/Screensaver'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
@@ -166,11 +167,14 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
   // After a long break between episodes: offer a recap first (see lib/recapNudge.ts).
   const [nudge, setNudge] = useState<{ target: PlexMedia; info: NudgeInfo }>()
-  const play = async (m: PlexMedia) => {
+  // Something partly watched, started from anywhere except Continue Watching: ask whether to continue or start over.
+  const [resumeAsk, setResumeAsk] = useState<PlexMedia>()
+  const play = async (m: PlexMedia, fromContinue?: boolean) => {
     if (!inQueue(m)) clearQueue()   // playing something on its own ends any shuffle
     try {
       const target = m.versionIndex !== undefined ? m : await resolvePlayable(server, m)   // a version picked from the list is already complete
       if (!target) return say('No playable file found for ' + m.title)
+      if (settings.resumePrompt && fromContinue !== true && !inQueue(m) && (target.type === 'movie' || target.type === 'episode') && (target.viewOffset ?? 0) >= 30_000) { setResumeAsk(target); return }
       const info = inQueue(m) ? null : await recapNudgeFor(server, target, settings).catch(() => null)   // (no "welcome back" recap in a shuffle: the order is random)
       if (info) { setNudge({ target, info }); return }
       await startNow(target)
@@ -285,9 +289,12 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
       {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
-        onPlay={() => play(menu.item)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)}
+        onPlay={() => play(menu.item, !!menu.fromContinue)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)}
         onEdit={canEdit(server) && ['movie', 'show', 'episode'].includes(menu.item.type) ? () => setEditing(menu.item) : undefined} />}
       {editing && <EditInfo server={server} item={editing} onClose={() => setEditing(undefined)} onSaved={edited} />}
+      {resumeAsk && <ResumePrompt server={server} item={resumeAsk} onClose={() => setResumeAsk(undefined)}
+        onContinue={() => { const t = resumeAsk; setResumeAsk(undefined); void startNow(t) }}
+        onRestart={() => { const t = { ...resumeAsk, viewOffset: 0 }; setResumeAsk(undefined); void startNow(t) }} />}
       {nudge && <RecapNudge server={server} target={nudge.target} prev={nudge.info.prev} days={nudge.info.days}
         onSkip={() => update({ recapNudgeSkipped: { ...settings.recapNudgeSkipped, [nudge.target.grandparentRatingKey!]: nudge.info.prev.lastViewedAt! } })}
         onNever={() => update({ recapNudgeOff: { ...settings.recapNudgeOff, [nudge.target.grandparentRatingKey!]: true } })}

@@ -182,6 +182,7 @@ function Playback() {
           <div className="flex flex-wrap gap-2 px-4 py-2">{[10, 5, 3, 0].map((n) => <Pill key={n} active={settings.nextCountdown === n} onEnter={() => update({ nextCountdown: n })}>{n === 0 ? 'Instant' : `${n} sec`}</Pill>)}</div>
         </>
       )}
+      <Toggle label="Ask where to resume" hint="When you play something you have partly watched (from anywhere except Continue Watching), ask whether to continue from where you stopped or start from the beginning" on={settings.resumePrompt} onChange={(v) => update({ resumePrompt: v })} />
       <Toggle label="Wait for after-credits scenes" hint="When Plex shows a scene comes after the credits, Skip credits jumps to it, and the next episode waits until it has played. Needs credits markers from Plex" on={settings.waitForScenes} onChange={(v) => update({ waitForScenes: v })} />
       <Toggle label="Suggest what to watch after a movie" hint="When a movie ends (or you skip its credits), show sequels and similar movies to start next" on={settings.movieSuggestions} onChange={(v) => update({ movieSuggestions: v })} />
       <Toggle label="Skip intros automatically" hint="Jump past the intro whenever Plex has marked one" on={settings.autoSkipIntro} onChange={(v) => update({ autoSkipIntro: v })} />
