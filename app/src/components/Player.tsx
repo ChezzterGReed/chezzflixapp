@@ -412,6 +412,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     poke()
   }, [duration, poke, mode]) // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = useCallback(() => {
+    if (trick.current) { stopTrickRef.current(true); return }   // Play while gliding: back to normal speed
     if (mode === 'native') mpvCmd('cycle', 'pause').catch(() => {})
     else { const v = video.current; if (!v) return; v.paused ? v.play() : v.pause() }
     poke()
@@ -459,53 +460,58 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     return () => clearTimeout(sleepTimer.current)
   }, [sleepIdx, sleepNow])
   const wakeFromSleep = () => { setSleepDone(false); if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
-  // ----- hold to fast-forward / rewind: the playhead glides along, and the longer the key is held the faster it goes -----
+  // ----- fast-forward / rewind, like a TV: holding the key starts a smooth glide at one speed (a fast-forward icon); each further press of the same
+  // direction goes faster (one more triangle each time, up to three steps); the opposite direction slows it a step at a time, back to normal playing; Play ends it -----
   const scrubbing = useRef(false)
-  const scrub = useRef<{ dir: 1 | -1; pos: number; start: number; last: number; keyAt: number; applied: number; wasPlaying: boolean } | null>(null)
-  const scrubTimer = useRef(0)
+  const trick = useRef<{ dir: 1 | -1; level: number; pos: number; last: number; applied: number; wasPlaying: boolean } | null>(null)
+  const [trickUi, setTrickUi] = useState<{ dir: 1 | -1; level: number; speed: number } | null>(null)
+  const trickTimer = useRef(0)
   const seekRef = useRef(seek); seekRef.current = seek
   const durRef = useRef(duration); durRef.current = duration
+  /** Seconds of video per second at each step. The top step is a little beyond what holding a key used to reach. */
+  const trickSpeed = (level: number) => { const total = durRef.current || 3600; return level <= 1 ? 10 : level === 2 ? Math.round(Math.max(30, Math.min(70, total / 110))) : Math.round(Math.max(120, Math.min(400, total / 20))) }
   const resumePlay = () => { if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
-  const endScrub = () => {
-    const s = scrub.current
-    if (!s) return
-    clearInterval(scrubTimer.current); scrub.current = null
-    seekRef.current(s.pos)
+  const stopTrick = (resume: boolean) => {
+    const c = trick.current
+    if (!c) return
+    clearInterval(trickTimer.current); trick.current = null; setTrickUi(null)
+    seekRef.current(c.pos)
     scrubbing.current = false
-    if (s.wasPlaying) resumePlay()
+    if (resume || c.wasPlaying) resumePlay()
     poke()
   }
-  const holdSeek = (dir: 1 | -1) => {
-    const now = performance.now()
-    let s = scrub.current
-    if (s && s.dir !== dir) { endScrub(); s = null }
-    if (!s) {
-      s = scrub.current = { dir, pos: timeRef.current, start: now, last: now, keyAt: now, applied: 0, wasPlaying: !pausedRef.current }
-      scrubbing.current = true
-      if (s.wasPlaying) pauseNow()   // (the picture follows the playhead while it moves, without the sound chopping)
-      scrubTimer.current = window.setInterval(() => {
-        const c = scrub.current
-        if (!c) return
-        const t = performance.now(), dt = (t - c.last) / 1000
-        c.last = t
-        const held = (t - c.start) / 1000
-        const total = durRef.current || 3600
-        const cap = Math.max(60, Math.min(300, total / 25))   // never faster than a 25th of the whole thing each second
-        const speed = Math.min(cap, 8 + 7 * held * held)       // seconds of video per second held: gentle at first, then quicker and quicker
-        c.pos = Math.max(0, Math.min(Math.max(0, total - 2), c.pos + c.dir * speed * dt))
-        timeRef.current = c.pos; setTime(c.pos); poke()
-        if (t - c.applied > 240) { c.applied = t; seekRef.current(c.pos) }
-        if (t - c.keyAt > 280) endScrub()   // the key was let go without the remote saying so
-      }, 60)
-    }
-    s.keyAt = now
+  const stopTrickRef = useRef(stopTrick); stopTrickRef.current = stopTrick
+  const startTrick = (dir: 1 | -1) => {
+    const c = trick.current = { dir, level: 1, pos: timeRef.current, last: performance.now(), applied: 0, wasPlaying: !pausedRef.current }
+    scrubbing.current = true
+    if (c.wasPlaying) pauseNow()   // (the picture follows the playhead while it moves, without the sound chopping)
+    setTrickUi({ dir, level: 1, speed: trickSpeed(1) })
+    trickTimer.current = window.setInterval(() => {
+      const t = trick.current
+      if (!t) return
+      const now = performance.now(), dt = (now - t.last) / 1000
+      t.last = now
+      const total = durRef.current || 3600
+      t.pos = Math.max(0, Math.min(Math.max(0, total - 2), t.pos + t.dir * trickSpeed(t.level) * dt))
+      timeRef.current = t.pos; setTime(t.pos); poke()
+      if (now - t.applied > 240) { t.applied = now; seekRef.current(t.pos) }
+      if ((t.dir > 0 && t.pos >= total - 2) || (t.dir < 0 && t.pos <= 0)) stopTrick(true)   // reached an end: carry on playing from there
+    }, 60)
   }
-  useEffect(() => () => clearInterval(scrubTimer.current), [])
-  useEffect(() => {
-    const up = (e: KeyboardEvent) => { if (['ArrowLeft', 'ArrowRight', 'MediaFastForward', 'MediaRewind', 'j', 'l'].includes(e.key)) endScrub() }
-    window.addEventListener('keyup', up, true)
-    return () => window.removeEventListener('keyup', up, true)
-  })
+  /** One press of a direction key (or the remote's fast-forward / rewind button). */
+  const press = (dir: 1 | -1, e: KeyboardEvent) => {
+    const t = trick.current
+    if (t) {
+      if (e.repeat) return   // holding a key while gliding changes nothing
+      const level = dir === t.dir ? Math.min(3, t.level + 1) : t.level - 1
+      if (level <= 0) { stopTrick(true); return }   // slowed all the way: back to normal playing
+      t.level = level; setTrickUi({ dir: t.dir, level, speed: trickSpeed(level) })
+      return
+    }
+    if (!e.repeat) seek(timeRef.current + (dir > 0 ? settings.seekForward : -settings.seekBack))   // a tap: step
+    else startTrick(dir)                                                                          // holding: glide
+  }
+  useEffect(() => () => clearInterval(trickTimer.current), [])
 
   // A different quality: reload the same spot (a transcode capped at that bitrate, or back to the original file). Waits a moment so stepping through the list doesn't reload at every step.
   const startStream = (kbps: number | null, at: number) => {
@@ -689,7 +695,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       if (e.target instanceof HTMLInputElement || suggestRef.current || modalRef.current) return   // (the "what next" screen has its own navigation)
       // The remote's fast-forward / rewind buttons: a tap steps, holding glides (and speeds up).
       const mk = e.key === 'MediaFastForward' ? 1 : e.key === 'MediaRewind' ? -1 : 0
-      if (mk) { if (e.repeat) holdSeek(mk); else seek(timeRef.current + (mk > 0 ? settings.seekForward : -settings.seekBack)); poke(); e.preventDefault(); e.stopPropagation(); return }
+      if (mk) { press(mk, e); poke(); e.preventDefault(); e.stopPropagation(); return }
       // The "Boost applied" pill: OK starts adjusting it, then Left/Right pick Revert / − / +, OK presses, Back closes (see useBack).
       if (noteKind === 'offer' && e.key === 'Enter') { pillAct('yes'); e.preventDefault(); e.stopPropagation(); return }   // the offer: OK = Yes (Back = No)
       if (pillOpen) {
@@ -745,7 +751,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         const last = order.length - 1
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           const d = e.key === 'ArrowLeft' ? -1 : 1
-          if (ctlRow === 'seek') { if (e.repeat) holdSeek(d as 1 | -1); else seek(timeRef.current + (d < 0 ? -settings.seekBack : settings.seekForward)) }
+          if (ctlRow === 'seek') press(d as 1 | -1, e)
           else setCtlIdx((i) => Math.max(0, Math.min(last, Math.min(i, last) + d)))
           poke()
         } else if (e.key === 'ArrowUp') { if (ctlRow === 'buttons') setCtlRow('seek'); poke() }
@@ -761,8 +767,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       switch (e.key) {
         case 'Enter': toggle(); break
         case ' ': case 'k': case 'MediaPlayPause': toggle(); break
-        case 'ArrowLeft': case 'j': if (e.repeat) holdSeek(-1); else seek(timeRef.current - settings.seekBack); break
-        case 'ArrowRight': case 'l': if (e.repeat) holdSeek(1); else seek(timeRef.current + settings.seekForward); break
+        case 'ArrowLeft': case 'j': press(-1, e); break
+        case 'ArrowRight': case 'l': press(1, e); break
         case 'ArrowUp': case 'ArrowDown': setCtlIdx(0); setCtlRow('buttons'); poke(); break   // bring up the controls and put the remote on them
         case 'm': setMuted((x) => !x); break
         case 'v': if (hasBoost) { setLevelPanel(0); poke() } break
@@ -813,8 +819,18 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         </div>
       )}
 
+      {/* Fast-forward / rewind: triangles for the step (two, three, four), and how fast */}
+      {trickUi && (
+        <div aria-live="polite" className="pointer-events-none absolute left-1/2 top-[42%] z-[22] flex -translate-x-1/2 flex-col items-center gap-2 rounded-3xl bg-black/60 px-9 py-5 shadow-2xl backdrop-blur">
+          <div className="flex items-center">
+            {Array.from({ length: trickUi.level + 1 }, (_, i) => <Play key={i} size={34} fill="currentColor" className={`-mx-1 ${trickUi.dir < 0 ? '-scale-x-100' : ''}`} />)}
+          </div>
+          <div className="text-sm font-bold tabular-nums tracking-wide text-white/80">{trickUi.speed}×</div>
+        </div>
+      )}
+
       {/* Paused: the picture dims and says so */}
-      <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black/55 transition-opacity duration-300 ${paused && lifted && !closing && !error ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black/55 transition-opacity duration-300 ${paused && !trickUi && lifted && !closing && !error ? 'opacity-100' : 'opacity-0'}`}>
         <div className="flex flex-col items-center gap-3">
           <Pause size={64} fill="currentColor" className="drop-shadow-lg" />
           <span className="text-sm font-bold uppercase tracking-[0.3em] text-white/70">Paused</span>
