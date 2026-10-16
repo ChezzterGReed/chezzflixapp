@@ -20,6 +20,7 @@ import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
 import { clampBoost, dbLabel, MAX_BOOST, MIN_BOOST, useLevelEngine } from '../lib/leveling'
 
+const HOLD_STEP_MS = 2000   // holding a fast-forward / rewind key: how long at each speed before the next
 const SPEEDS = [0.5, 0.75, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3]
 const SLEEPS: (number | 'episode' | null)[] = [null, 15, 30, 45, 60, 90, 'episode']   // minutes, or "when this episode ends"
 const QUALITIES: { kbps: number | null; label: string }[] = [   // each resolution is tied to a typical bitrate for that picture size
@@ -463,7 +464,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   // ----- fast-forward / rewind, like a TV: holding the key starts a smooth glide at one speed (a fast-forward icon); each further press of the same
   // direction goes faster (one more triangle each time, up to three steps); the opposite direction slows it a step at a time, back to normal playing; Play ends it -----
   const scrubbing = useRef(false)
-  const trick = useRef<{ dir: 1 | -1; level: number; pos: number; last: number; applied: number; wasPlaying: boolean } | null>(null)
+  const trick = useRef<{ dir: 1 | -1; level: number; pos: number; last: number; applied: number; wasPlaying: boolean; hold?: { stepAt: number; last: number } } | null>(null)
   const [trickUi, setTrickUi] = useState<{ dir: 1 | -1; level: number; speed: number } | null>(null)
   const trickTimer = useRef(0)
   const seekRef = useRef(seek); seekRef.current = seek
@@ -482,7 +483,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   }
   const stopTrickRef = useRef(stopTrick); stopTrickRef.current = stopTrick
   const startTrick = (dir: 1 | -1) => {
-    const c = trick.current = { dir, level: 1, pos: timeRef.current, last: performance.now(), applied: 0, wasPlaying: !pausedRef.current }
+    const c = trick.current = { dir, level: 1, pos: timeRef.current, last: performance.now(), applied: 0, wasPlaying: !pausedRef.current, hold: { stepAt: performance.now(), last: performance.now() } }
     scrubbing.current = true
     if (c.wasPlaying) pauseNow()   // (the picture follows the playhead while it moves, without the sound chopping)
     setTrickUi({ dir, level: 1, speed: trickSpeed(1) })
@@ -502,10 +503,18 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const press = (dir: 1 | -1, e: KeyboardEvent) => {
     const t = trick.current
     if (t) {
-      if (e.repeat) return   // holding a key while gliding changes nothing
+      const now = performance.now()
+      if (e.repeat) {
+        // Keeping the key held in the direction of travel moves up a step every couple of seconds, up to the top.
+        if (dir !== t.dir) return
+        if (!t.hold || now - t.hold.last > 500) t.hold = { stepAt: now, last: now }
+        t.hold.last = now
+        if (now - t.hold.stepAt >= HOLD_STEP_MS && t.level < 3) { t.level++; t.hold.stepAt = now; setTrickUi({ dir: t.dir, level: t.level, speed: trickSpeed(t.level) }) }
+        return
+      }
       const level = dir === t.dir ? Math.min(3, t.level + 1) : t.level - 1
       if (level <= 0) { stopTrick(true); return }   // slowed all the way: back to normal playing
-      t.level = level; setTrickUi({ dir: t.dir, level, speed: trickSpeed(level) })
+      t.level = level; t.hold = { stepAt: now, last: now }; setTrickUi({ dir: t.dir, level, speed: trickSpeed(level) })
       return
     }
     if (!e.repeat) seek(timeRef.current + (dir > 0 ? settings.seekForward : -settings.seekBack))   // a tap: step
