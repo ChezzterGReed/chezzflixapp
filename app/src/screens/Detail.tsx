@@ -11,6 +11,7 @@ import { getWatchlist, setOnWatchlist, watchItemOf, watchKey } from '../lib/watc
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from '../components/Layer'
 import { EditInfo } from '../components/EditInfo'
+import { EpisodeMenu } from '../components/EpisodeMenu'
 import { canEdit } from '../lib/edit'
 import { Focusable } from '../components/Focusable'
 import { Avatar } from '../components/Avatar'
@@ -67,12 +68,12 @@ function SeasonSelect({ seasons, season, onPick, onArrow }: { seasons: PlexMedia
   )
 }
 
-function Episode({ ep, server, spoiler, onReveal, onRevealShow, onPlay, onRecap, onEdit, upTo }: { ep: PlexMedia; server: PlexServer; spoiler: boolean; onReveal: () => void; /** Set once this episode has been revealed by hand: offers to unblur the whole show. */ onRevealShow?: () => void; onPlay: (m: PlexMedia) => void; onRecap: (m: PlexMedia) => void; /** Desktop owner only: open the edit window. */ onEdit?: (m: PlexMedia) => void; /** First episode only: where Up goes (the season buttons). */ upTo?: string }) {
+function Episode({ ep, server, spoiler, onReveal, onRevealShow, onPlay, onRecap, onEdit, onMenu, upTo }: { ep: PlexMedia; server: PlexServer; spoiler: boolean; onReveal: () => void; /** Set once this episode has been revealed by hand: offers to unblur the whole show. */ onRevealShow?: () => void; onPlay: (m: PlexMedia) => void; onRecap: (m: PlexMedia) => void; /** Desktop owner only: open the edit window. */ onEdit?: (m: PlexMedia) => void; /** Hold OK / right-click: the episode's menu. */ onMenu: (m: PlexMedia) => void; /** First episode only: where Up goes (the season buttons). */ upTo?: string }) {
   const p = progressOf(ep)
   return (
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
-        <Focusable focusKey={`ep-${ep.ratingKey}`} onEnter={() => onPlay(ep)} onFocus={(el) => reveal(el)} onArrow={(d) => { if (d === 'up' && upTo) { setFocus(upTo); return false } }}>
+        <Focusable focusKey={`ep-${ep.ratingKey}`} onEnter={() => onPlay(ep)} onLongPress={() => onMenu(ep)} onFocus={(el) => reveal(el)} onArrow={(d) => { if (d === 'up' && upTo) { setFocus(upTo); return false } }}>
           <div className="flex gap-5 rounded-2xl p-3 transition-all duration-200 group-hover/f:bg-white/6 group-data-[hl=true]/f:bg-white/12 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white">
             <div className="relative aspect-video w-[min(280px,32vw)] shrink-0 overflow-hidden rounded-xl bg-surface-2">
               <img src={imageUrl(server, ep.thumb, 560, 315)} alt="" loading="lazy" draggable={false} className={`h-full w-full object-cover transition-all duration-500 ${spoiler ? 'scale-110 blur-lg brightness-90' : ''}`} />
@@ -115,7 +116,7 @@ function Episode({ ep, server, spoiler, onReveal, onRevealShow, onPlay, onRecap,
   )
 }
 
-interface Props { ratingKey: string; server: PlexServer; token: string; /** Land on this episode (its season selected) instead of the Play button. */ focusEpisode?: { season?: string; ep: string }; onClose: () => void; onPlay: (m: PlexMedia) => void; /** Play a show's episodes in a random order. */ onShuffle: (items: PlexMedia[]) => void; /** Something was edited on the server: reload. */ onEdited: () => void; onOpen: (m: PlexMedia) => void; /** Opens everything on the server with this person. */ onActor: (a: { name: string; id?: string }) => void; onCollection: (title: string, sectionId?: string | number) => void }
+interface Props { ratingKey: string; server: PlexServer; token: string; /** Land on this episode (its season selected) instead of the Play button. */ focusEpisode?: { season?: string; ep: string }; onClose: () => void; onPlay: (m: PlexMedia, how?: boolean | 'beginning') => void; /** Play a show's episodes in a random order. */ onShuffle: (items: PlexMedia[]) => void; /** Something was edited on the server: reload. */ onEdited: () => void; onOpen: (m: PlexMedia) => void; /** Opens everything on the server with this person. */ onActor: (a: { name: string; id?: string }) => void; onCollection: (title: string, sectionId?: string | number) => void }
 
 export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay, onShuffle, onEdited, onOpen, onActor, onCollection }: Props) {
   const [m, setM] = useState<PlexMedia>()
@@ -142,11 +143,21 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
   const [picker, setPicker] = useState<{ anchor: 'button' | 'modal'; versions: Version[]; title: string }>()
   const closePicker = () => { const a = picker?.anchor; setPicker(undefined); if (a === 'button') setTimeout(() => setFocus('detail-play'), 30) }
   useBack(closePicker, picker?.anchor === 'button')
-  const requestPlay = async (item: PlexMedia, anchor: 'button' | 'modal') => {
+  // `how`: undefined = the usual (asks about continuing if it is partly watched); true = continue; 'beginning' = start over.
+  const pickHow = useRef<boolean | 'beginning' | undefined>(undefined)
+  const requestPlay = async (item: PlexMedia, anchor: 'button' | 'modal', how?: boolean | 'beginning') => {
+    pickHow.current = how
     const target = await resolvePlayable(server, item).catch(() => null)
     const vs = target ? await findVersions(server, target) : []
     if (vs.length > 1) { setPicker({ anchor, versions: vs, title: target?.title ?? item.title }); if (anchor === 'button') focusFirstVersion('ver') }
-    else onPlay(item)
+    else onPlay(item, how)
+  }
+  const [epMenu, setEpMenu] = useState<PlexMedia>()   // the episode whose menu is open
+  const markEpisode = async (ep: PlexMedia) => {
+    const next = !isWatched(ep)
+    setEpisodes((l) => l.map((e) => (e.ratingKey === ep.ratingKey ? { ...e, viewCount: next ? Math.max(1, e.viewCount ?? 0) : 0, viewOffset: undefined } : e)))
+    await setWatched(server, ep.ratingKey, next).catch(() => {})
+    flash(next ? `Marked ${ep.title} as watched` : `Marked ${ep.title} as unwatched`)
   }
   const [extras, setExtras] = useState<PlexMedia[]>([])   // trailers and extras
   const [editing, setEditing] = useState<PlexMedia>()   // the title (or episode) whose details are being edited
@@ -157,7 +168,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
     setShuffleBusy(true)
     try { onShuffle((await getAllLeaves(server, ratingKey)).filter((e) => e.parentIndex !== 0)) } catch { onShuffle([]) } finally { setShuffleBusy(false) }
   }
-  const pickVersion = (v: Version) => { setPicker(undefined); onPlay(v.media) }
+  const pickVersion = (v: Version) => { setPicker(undefined); onPlay(v.media, pickHow.current) }
 
   useEffect(() => {
     let alive = true
@@ -384,7 +395,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
               </div>
               <div className="space-y-1.5">
                 {episodes.length === 0 ? Array.from({ length: 4 }, (_, i) => <div key={i} className="skeleton h-[130px] rounded-2xl" />)
-                  : episodes.map((ep, n) => <Episode key={ep.ratingKey} ep={ep} server={server} onPlay={(e) => requestPlay(e, 'modal')} onRecap={recap} onEdit={canEdit(server) ? setEditing : undefined} upTo={n === 0 && season ? (seasons.length > MANY_SEASONS ? 'season-select' : `season-${season}`) : undefined}
+                  : episodes.map((ep, n) => <Episode key={ep.ratingKey} ep={ep} server={server} onPlay={(e) => requestPlay(e, 'modal')} onRecap={recap} onMenu={setEpMenu} onEdit={canEdit(server) ? setEditing : undefined} upTo={n === 0 && season ? (seasons.length > MANY_SEASONS ? 'season-select' : `season-${season}`) : undefined}
                     spoiler={settings.hideSpoilers && !showUnblurred && isSpoilerRisk(ep) && !revealed.has(ep.ratingKey)}
                     onReveal={() => setRevealed((r) => new Set(r).add(ep.ratingKey))}
                     onRevealShow={settings.hideSpoilers && !showUnblurred && isSpoilerRisk(ep) && revealed.has(ep.ratingKey) ? () => setConfirmShow(true) : undefined} />)}
@@ -466,6 +477,7 @@ export function Detail({ ratingKey, server, token, focusEpisode, onClose, onPlay
           </div>
         </Layer>
       )}
+      {epMenu && <EpisodeMenu server={server} ep={epMenu} onClose={() => { const k = epMenu.ratingKey; setEpMenu(undefined); setTimeout(() => setFocus(`ep-${k}`), 60) }} onContinue={() => requestPlay(epMenu, 'modal', true)} onPlay={() => requestPlay(epMenu, 'modal', (epMenu.viewOffset ?? 0) >= 15_000 ? 'beginning' : undefined)} onToggleWatched={() => markEpisode(epMenu)} />}
       {editing && <EditInfo server={server} item={editing} onClose={() => { setEditing(undefined); setTimeout(() => setFocus(editing.type === 'episode' ? `edit-${editing.ratingKey}` : 'detail-edit'), 60) }} onSaved={onEdited} />}
       {addToChannel && m && <AddToChannel server={server} items={[m]} channels={settings.channels} onSave={(channels) => update({ channels })} onClose={() => setAddToChannel(false)} />}
       {clip && <ClipPopup key={clip.media.ratingKey + clip.segments.length} server={server} media={clip.media} segments={clip.segments} heading={clip.heading} subheading={clip.subheading} onClose={() => setClip(undefined)} />}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Radio, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
-import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { FocusContext, getCurrentFocusKey, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { resetGuide } from '../lib/tvguide'
 import { Focusable } from './Focusable'
@@ -541,15 +541,52 @@ const PANELS = [
 ] as const
 
 /** The settings page itself: the cursor stays inside it going up and down (only Left goes back to the list of sections). */
-function PanelBox({ children }: { children: ReactNode }) {
+function PanelBox({ children, elRef }: { children: ReactNode; elRef: React.MutableRefObject<HTMLElement | null> }) {
   const { ref, focusKey } = useFocusable({ isFocusBoundary: true, focusBoundaryDirections: ['up', 'down', 'right'] })
-  return <FocusContext.Provider value={focusKey}><section ref={ref} className="min-w-0 flex-1 overflow-y-auto p-6">{children}</section></FocusContext.Provider>
+  return <FocusContext.Provider value={focusKey}><section ref={(el) => { (ref as React.MutableRefObject<HTMLElement | null>).current = el; elRef.current = el }} className="min-w-0 flex-1 overflow-y-auto p-6">{children}</section></FocusContext.Provider>
 }
 
 interface Props { server: PlexServer; token: string; sections: PlexSection[]; profileName: string; profileThumb?: string; onClose: () => void }
 
 export function SettingsModal({ server, token, sections, profileName, profileThumb, onClose }: Props) {
   const [panel, setPanel] = useState<(typeof PANELS)[number]['id']>('appearance')
+  const panelEl = useRef<HTMLElement | null>(null)
+  const panelRef = useRef(panel); panelRef.current = panel
+  // Remote navigation inside the settings, row by row (the default picks by distance, which could skip a short row of buttons under a long row, or land
+  // on the wrong section tab): Down / Up go to the next row, Right from the section list lands at the top of the page, and Left from the page goes back to the
+  // section you are in.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      const section = panelEl.current, key = getCurrentFocusKey()
+      const cur = section && key ? document.querySelector<HTMLElement>(`[data-fk="${key}"]`) : null
+      if (!section || !cur) return
+      const stop = () => { e.preventDefault(); e.stopPropagation() }
+      if (cur.closest('aside')) {
+        if (e.key === 'ArrowRight') { stop(); section.scrollTop = 0; const first = section.querySelector<HTMLElement>('[data-fk]')?.getAttribute('data-fk'); if (first) setFocus(first) }
+        return
+      }
+      if (!section.contains(cur)) return   // (a pop-up on top of the settings handles its own keys)
+      const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2
+      const others = [...section.querySelectorAll<HTMLElement>('[data-fk]')].filter((el) => el !== cur).map((el) => ({ el, r: el.getBoundingClientRect() })).filter((o) => o.r.width > 0)
+      if (e.key === 'ArrowLeft') {
+        const toTheLeft = others.some((o) => Math.abs(o.r.top - r.top) < 10 && o.r.left + o.r.width / 2 < cx - 1)
+        if (!toTheLeft) { stop(); setFocus(`set-${panelRef.current}`) }
+        return
+      }
+      if (e.key === 'ArrowRight') return
+      const down = e.key === 'ArrowDown'
+      const next = others.filter((o) => (down ? o.r.top > r.top + 10 : o.r.top < r.top - 10))
+      if (!next.length) return
+      const rowTop = down ? Math.min(...next.map((o) => o.r.top)) : Math.max(...next.map((o) => o.r.top))
+      const row = next.filter((o) => Math.abs(o.r.top - rowTop) < 10)
+      const best = row.reduce((a, b) => (Math.abs(a.r.left + a.r.width / 2 - cx) <= Math.abs(b.r.left + b.r.width / 2 - cx) ? a : b))
+      const fk = best.el.getAttribute('data-fk')
+      if (fk) { stop(); setFocus(fk) }
+    }
+    window.addEventListener('keydown', h, true)
+    return () => window.removeEventListener('keydown', h, true)
+  }, [])
   const updatePending = useUpdatePending()
   return (
     <Layer onClose={onClose} className="absolute left-1/2 top-1/2 h-[min(680px,90vh)] w-[min(980px,95vw)] -translate-x-1/2 -translate-y-1/2">
@@ -565,7 +602,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           </div>
           <div className="mt-auto max-sm:hidden"><Focusable onEnter={onClose} title="Close"><div className="flex items-center gap-3 rounded-xl px-3.5 py-3 text-[0.95rem] font-semibold text-white/60 transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><X size={20} />Close</div></Focusable></div>
         </aside>
-        <PanelBox>
+        <PanelBox key={panel} elRef={panelEl}>
           <h2 className="mb-5 flex items-center gap-2.5 px-4 text-2xl font-extrabold tracking-tight"><Type className="hidden" />{PANELS.find((p) => p.id === panel)!.label}</h2>
           {panel === 'appearance' && <Appearance profileName={profileName} profileThumb={profileThumb} />}
           {panel === 'playback' && <Playback />}

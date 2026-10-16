@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './lib/perf'
 import { ensureRemoteLists } from './lib/lists/remote'
-import { ACCENTS, FESTIVE_RED, PUMPKIN, currentSeason } from './lib/settings'
+import { ACCENTS, FESTIVE_RED, PUMPKIN, currentSeason, textOnAccent } from './lib/settings'
 import './index.css'
 
 void ensureRemoteLists()   // fetch the hosted seasonal lists in the background, so they're ready by the time Home asks for them
@@ -14,7 +14,9 @@ try {
   const season = localStorage.getItem('chezzflix_last_season') === '0' && !new URLSearchParams(location.search).get('season') ? null : currentSeason()
   const last = localStorage.getItem('chezzflix_last_theme')
   document.documentElement.dataset.season = season === 'christmas' ? (last === 'frost' || last === 'festive' ? last : 'festive') : season ?? ''
-  document.documentElement.style.setProperty('--accent', localStorage.getItem('chezzflix_last_accent') || (season === 'halloween' ? PUMPKIN : season === 'christmas' ? FESTIVE_RED : ACCENTS[0].value))
+  const accent = localStorage.getItem('chezzflix_last_accent') || (season === 'halloween' ? PUMPKIN : season === 'christmas' ? FESTIVE_RED : ACCENTS[0].value)
+  document.documentElement.style.setProperty('--accent', accent)
+  document.documentElement.dataset.onAccent = textOnAccent(accent)
 } catch { /* storage unavailable: defaults apply */ }
 
 // Android (TV and tablets): lay the page out on a wider virtual canvas so the whole UI fits a 10-foot screen.

@@ -172,13 +172,16 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const [nudge, setNudge] = useState<{ target: PlexMedia; info: NudgeInfo }>()
   // Something partly watched, started from anywhere except Continue Watching: ask whether to continue or start over.
   const [resumeAsk, setResumeAsk] = useState<PlexMedia>()
-  const play = async (m: PlexMedia, fromContinue?: boolean) => {
+  /** `how`: true = from Continue Watching (just resume, no question); 'beginning' = start over. */
+  const play = async (m: PlexMedia, how?: boolean | 'beginning') => {
+    const fromContinue = how === true || how === 'beginning'
     if (!inQueue(m)) clearQueue()   // playing something on its own ends any shuffle
     try {
-      const target = m.versionIndex !== undefined ? m : await resolvePlayable(server, m)   // a version picked from the list is already complete
-      if (!target) return say('No playable file found for ' + m.title)
-      if (settings.resumePrompt && fromContinue !== true && !inQueue(m) && (target.type === 'movie' || target.type === 'episode') && (target.viewOffset ?? 0) >= RESUME_MIN_MS) { setResumeAsk(target); return }
-      const info = inQueue(m) ? null : await recapNudgeFor(server, target, settings).catch(() => null)   // (no "welcome back" recap in a shuffle: the order is random)
+      const resolved = m.versionIndex !== undefined ? m : await resolvePlayable(server, m)   // a version picked from the list is already complete
+      if (!resolved) return say('No playable file found for ' + m.title)
+      const target = how === 'beginning' ? { ...resolved, viewOffset: 0 } : resolved
+      if (settings.resumePrompt && !fromContinue && !inQueue(m) && (target.type === 'movie' || target.type === 'episode') && (target.viewOffset ?? 0) >= RESUME_MIN_MS) { setResumeAsk(target); return }
+      const info = inQueue(m) || how === 'beginning' ? null : await recapNudgeFor(server, target, settings).catch(() => null)   // (no "welcome back" recap in a shuffle: the order is random)
       if (info) { setNudge({ target, info }); return }
       await startNow(target)
     } catch (e) { say('Could not start playback: ' + (e as Error).message) }
@@ -215,7 +218,12 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   // Something was changed on the server (details, tags, artwork): forget what we had and reload what's on screen.
   const [editing, setEditing] = useState<PlexMedia>()
   const edited = () => { invalidateCache(); setRefreshKey((k) => k + 1) }
-  const closePlayer = (home?: boolean) => { clearResume(); setPlaying(undefined); invalidateWatchState(); resetNewSeason(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' }) }
+  const closePlayer = (home?: boolean) => {
+    // Played from a show's page (a season's episode list)? Coming back lands on the episode you got to, which may be further along than the one you started.
+    const last = playing
+    if (home !== true && last?.type === 'episode' && last.grandparentRatingKey && details[details.length - 1] === last.grandparentRatingKey) setEpFocus({ show: last.grandparentRatingKey, season: last.parentRatingKey, ep: last.ratingKey })
+    clearResume(); setPlaying(undefined); invalidateWatchState(); resetNewSeason(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' })
+  }
   const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying(full) }
 
   const open = (m: PlexMedia) => {

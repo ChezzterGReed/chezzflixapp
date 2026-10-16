@@ -9,8 +9,16 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 export const ACCENTS: { name: string; value: string }[] = [
   { name: 'Ember', value: '#ff4b3e' }, { name: 'Amber', value: '#ffa21f' }, { name: 'Lime', value: '#9be15d' },
   { name: 'Teal', value: '#2ed1b4' }, { name: 'Sky', value: '#43a8ff' }, { name: 'Indigo', value: '#7a7bff' },
-  { name: 'Violet', value: '#b06bff' }, { name: 'Rose', value: '#ff5c99' },
+  { name: 'Violet', value: '#b06bff' }, { name: 'Rose', value: '#ff5c99' }, { name: 'Forest', value: '#2e7d52' },
 ]
+
+/** Whether text on top of this colour should be white (a dark colour like Forest) or black (the light ones). */
+export function textOnAccent(hex: string): 'light' | 'dark' {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return 'dark'
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.18 ? 'light' : 'dark'
+}
 
 export type HomeTab = 'all' | 'foryou' | 'trending' | 'movie' | 'show' | 'anime'
 
@@ -235,6 +243,7 @@ export function SettingsProvider({ profileKey, shared: sharedValues, syncAuth, c
     const style = forcedHoliday() ?? settings.holidayStyle
     const tint = seasonAccent(season, style)
     document.documentElement.style.setProperty('--accent', tint ?? settings.accent)
+    document.documentElement.dataset.onAccent = textOnAccent(tint ?? settings.accent) === 'light' ? 'light' : 'dark'
     document.documentElement.dataset.season = themeKey(season, style)
     document.documentElement.dataset.perf = LOW_POWER || settings.lightEffects ? 'low' : 'high'
     setNavSounds(settings.navSounds)
