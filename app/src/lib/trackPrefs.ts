@@ -39,18 +39,14 @@ const srtFirst = <T extends { codec?: string }>(l: T[]) => [...l.filter((t) => i
 /** Which tracks to switch to for this episode (undefined = leave it alone). */
 export function pickTracks(tracks: Track[], pref: TrackPref | undefined): { aid?: number; sid?: number | 'no' } {
   const out: { aid?: number; sid?: number | 'no' } = {}
-  if (!pref) {
-    // Nothing remembered: if a subtitle is already on and an .srt of the same language (and kind) exists, use that one instead.
-    const on = tracks.find((t) => t.type === 'sub' && t.selected)
-    if (on && !isSrt(on.codec)) { const alt = tracks.find((t) => t.type === 'sub' && isSrt(t.codec) && sameLang(t.lang, on.lang) && !!t.forced === !!on.forced); if (alt) out.sid = alt.id }
-    return out
-  }
+  // Subtitles stay off unless the person has turned them on (and for a show, that choice is remembered for its episodes).
+  if (!pref) { out.sid = 'no'; return out }
   if (pref.audio?.lang) {
     const c = tracks.filter((t) => t.type === 'audio' && sameLang(t.lang, pref.audio!.lang))
     out.aid = (c.find((t) => pref.audio!.title && t.title === pref.audio!.title) ?? c[0])?.id
   }
   const sp = pref.sub
-  if (sp === 'off') out.sid = 'no'
+  if (!sp || sp === 'off') out.sid = 'no'
   else if (sp?.lang) {
     const c = srtFirst(tracks.filter((t) => t.type === 'sub' && sameLang(t.lang, sp.lang)))
     const want = sp.forced ?? false
@@ -63,14 +59,10 @@ export function pickTracks(tracks: Track[], pref: TrackPref | undefined): { aid?
 const lang = (s: PlexStream) => s.languageCode ?? s.language
 export function webChoice(m: PlexMedia, audio: PlexStream[], subs: PlexStream[]): { audioId?: number; subtitleId?: number | null } {
   const pref = getTrackPref(m)
-  if (!pref) {
-    const on = subs.find((s) => s.selected)
-    const alt = on && !isSrt(on.codec) ? subs.find((s) => isSrt(s.codec) && sameLang(lang(s), lang(on)) && !!s.forced === !!on.forced) : undefined
-    return alt ? { subtitleId: alt.id } : {}
-  }
+  if (!pref) return { subtitleId: null }   // subtitles off unless the person turns them on
   const ch: { audioId?: number; subtitleId?: number | null } = {}
   if (pref.audio?.lang) ch.audioId = audio.find((s) => sameLang(lang(s), pref.audio!.lang))?.id
-  if (pref.sub === 'off') ch.subtitleId = null
+  if (!pref.sub || pref.sub === 'off') ch.subtitleId = null
   else if (pref.sub?.lang) { const want = pref.sub.forced ?? false; const same = srtFirst(subs.filter((s) => sameLang(lang(s), (pref.sub as TrackRef).lang))); ch.subtitleId = (same.find((s) => !!s.forced === want) ?? same[0])?.id }
   return ch
 }

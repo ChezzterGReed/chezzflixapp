@@ -10,6 +10,13 @@ type MpvEvent = { event: string; reason?: number; error?: number; message?: stri
 
 export const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
 
+// The Android shell passes the remote's fast-forward / rewind buttons in through here (the web view doesn't turn them into key events itself).
+if (isAndroid && typeof window !== 'undefined') {
+  (window as unknown as { __chezzMediaKey?: (key: 'ff' | 'rw', down: boolean, repeat: boolean) => void }).__chezzMediaKey = (key, down, repeat) => {
+    window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { key: key === 'ff' ? 'MediaFastForward' : 'MediaRewind', repeat, bubbles: true, cancelable: true }))
+  }
+}
+
 async function core() { return import('@tauri-apps/api/core') }
 async function droid<T = unknown>(command: string, args?: object): Promise<T> { return (await core()).invoke<T>('plugin:player|call', { command, args }) }
 

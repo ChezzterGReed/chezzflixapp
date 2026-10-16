@@ -218,7 +218,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     onMpv((p) => {
       const n = typeof p.value === 'number' ? p.value : undefined
       switch (p.name) {
-        case 'time-pos': if (n !== undefined) { const t = n + tBase.current; timeRef.current = t; setTime(t); setReady(true) } break
+        case 'time-pos': if (n !== undefined && !scrubbing.current) { const t = n + tBase.current; timeRef.current = t; setTime(t); setReady(true) } break
         case 'duration': if (n) setDuration(n + tBase.current); break
         case 'pause': setPaused(!!p.value); break
         case 'volume': if (n !== undefined) setVolume(n / 100); break
@@ -459,6 +459,54 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     return () => clearTimeout(sleepTimer.current)
   }, [sleepIdx, sleepNow])
   const wakeFromSleep = () => { setSleepDone(false); if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
+  // ----- hold to fast-forward / rewind: the playhead glides along, and the longer the key is held the faster it goes -----
+  const scrubbing = useRef(false)
+  const scrub = useRef<{ dir: 1 | -1; pos: number; start: number; last: number; keyAt: number; applied: number; wasPlaying: boolean } | null>(null)
+  const scrubTimer = useRef(0)
+  const seekRef = useRef(seek); seekRef.current = seek
+  const durRef = useRef(duration); durRef.current = duration
+  const resumePlay = () => { if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
+  const endScrub = () => {
+    const s = scrub.current
+    if (!s) return
+    clearInterval(scrubTimer.current); scrub.current = null
+    seekRef.current(s.pos)
+    scrubbing.current = false
+    if (s.wasPlaying) resumePlay()
+    poke()
+  }
+  const holdSeek = (dir: 1 | -1) => {
+    const now = performance.now()
+    let s = scrub.current
+    if (s && s.dir !== dir) { endScrub(); s = null }
+    if (!s) {
+      s = scrub.current = { dir, pos: timeRef.current, start: now, last: now, keyAt: now, applied: 0, wasPlaying: !pausedRef.current }
+      scrubbing.current = true
+      if (s.wasPlaying) pauseNow()   // (the picture follows the playhead while it moves, without the sound chopping)
+      scrubTimer.current = window.setInterval(() => {
+        const c = scrub.current
+        if (!c) return
+        const t = performance.now(), dt = (t - c.last) / 1000
+        c.last = t
+        const held = (t - c.start) / 1000
+        const total = durRef.current || 3600
+        const cap = Math.max(60, Math.min(300, total / 25))   // never faster than a 25th of the whole thing each second
+        const speed = Math.min(cap, 8 + 7 * held * held)       // seconds of video per second held: gentle at first, then quicker and quicker
+        c.pos = Math.max(0, Math.min(Math.max(0, total - 2), c.pos + c.dir * speed * dt))
+        timeRef.current = c.pos; setTime(c.pos); poke()
+        if (t - c.applied > 240) { c.applied = t; seekRef.current(c.pos) }
+        if (t - c.keyAt > 280) endScrub()   // the key was let go without the remote saying so
+      }, 60)
+    }
+    s.keyAt = now
+  }
+  useEffect(() => () => clearInterval(scrubTimer.current), [])
+  useEffect(() => {
+    const up = (e: KeyboardEvent) => { if (['ArrowLeft', 'ArrowRight', 'MediaFastForward', 'MediaRewind', 'j', 'l'].includes(e.key)) endScrub() }
+    window.addEventListener('keyup', up, true)
+    return () => window.removeEventListener('keyup', up, true)
+  })
+
   // A different quality: reload the same spot (a transcode capped at that bitrate, or back to the original file). Waits a moment so stepping through the list doesn't reload at every step.
   const startStream = (kbps: number | null, at: number) => {
     fallbackStep.current = 'none'
@@ -639,6 +687,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || suggestRef.current || modalRef.current) return   // (the "what next" screen has its own navigation)
+      // The remote's fast-forward / rewind buttons: a tap steps, holding glides (and speeds up).
+      const mk = e.key === 'MediaFastForward' ? 1 : e.key === 'MediaRewind' ? -1 : 0
+      if (mk) { if (e.repeat) holdSeek(mk); else seek(timeRef.current + (mk > 0 ? settings.seekForward : -settings.seekBack)); poke(); e.preventDefault(); e.stopPropagation(); return }
       // The "Boost applied" pill: OK starts adjusting it, then Left/Right pick Revert / − / +, OK presses, Back closes (see useBack).
       if (noteKind === 'offer' && e.key === 'Enter') { pillAct('yes'); e.preventDefault(); e.stopPropagation(); return }   // the offer: OK = Yes (Back = No)
       if (pillOpen) {
@@ -694,7 +745,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         const last = order.length - 1
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           const d = e.key === 'ArrowLeft' ? -1 : 1
-          if (ctlRow === 'seek') seek(timeRef.current + (d < 0 ? -settings.seekBack : settings.seekForward))
+          if (ctlRow === 'seek') { if (e.repeat) holdSeek(d as 1 | -1); else seek(timeRef.current + (d < 0 ? -settings.seekBack : settings.seekForward)) }
           else setCtlIdx((i) => Math.max(0, Math.min(last, Math.min(i, last) + d)))
           poke()
         } else if (e.key === 'ArrowUp') { if (ctlRow === 'buttons') setCtlRow('seek'); poke() }
@@ -710,8 +761,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       switch (e.key) {
         case 'Enter': toggle(); break
         case ' ': case 'k': case 'MediaPlayPause': toggle(); break
-        case 'ArrowLeft': case 'j': seek(timeRef.current - settings.seekBack); break
-        case 'ArrowRight': case 'l': seek(timeRef.current + settings.seekForward); break
+        case 'ArrowLeft': case 'j': if (e.repeat) holdSeek(-1); else seek(timeRef.current - settings.seekBack); break
+        case 'ArrowRight': case 'l': if (e.repeat) holdSeek(1); else seek(timeRef.current + settings.seekForward); break
         case 'ArrowUp': case 'ArrowDown': setCtlIdx(0); setCtlRow('buttons'); poke(); break   // bring up the controls and put the remote on them
         case 'm': setMuted((x) => !x); break
         case 'v': if (hasBoost) { setLevelPanel(0); poke() } break
@@ -741,7 +792,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         onClick={toggle} onDoubleClick={toggleFullscreen}
         onPlay={() => setPaused(false)} onPause={() => setPaused(true)}
         onWaiting={() => setBuffering(true)} onPlaying={() => setBuffering(false)} onCanPlay={() => { setBuffering(false); setReady(true) }}
-        onTimeUpdate={(e) => { const v = e.currentTarget; timeRef.current = v.currentTime; setTime(v.currentTime); if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1)) }}
+        onTimeUpdate={(e) => { if (scrubbing.current) return; const v = e.currentTarget; timeRef.current = v.currentTime; setTime(v.currentTime); if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1)) }}
         onDurationChange={(e) => isFinite(e.currentTarget.duration) && setDuration(e.currentTarget.duration)}
         onVolumeChange={(e) => { setVolume(e.currentTarget.volume); setMuted(e.currentTarget.muted) }}
         onEnded={() => endedRef.current()}

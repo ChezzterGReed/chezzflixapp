@@ -2,12 +2,25 @@ package app.chezzflix.client
 
 import android.graphics.Color
 import android.os.Bundle
+import android.view.KeyEvent
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
   private var web: WebView? = null
+
+  // The remote's fast-forward and rewind buttons: the web view doesn't turn them into key events, so hand them to the page (it steps on a tap and glides when held).
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    val k = when (event.keyCode) { KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> "ff"; KeyEvent.KEYCODE_MEDIA_REWIND -> "rw"; else -> null }
+    val w = web
+    if (k != null && w != null) {
+      val down = event.action == KeyEvent.ACTION_DOWN
+      w.evaluateJavascript("window.__chezzMediaKey&&window.__chezzMediaKey('$k',$down,${event.repeatCount > 0})", null)
+      return true
+    }
+    return super.dispatchKeyEvent(event)
+  }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {
     super.onWindowFocusChanged(hasFocus)
