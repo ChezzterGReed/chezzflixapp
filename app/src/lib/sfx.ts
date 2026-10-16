@@ -55,6 +55,30 @@ export function synthThock(c: BaseAudioContext, dest: AudioNode, t: number, p: T
 
 const AC = (): typeof AudioContext => window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
 
+const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
+let keeper: AudioBufferSourceNode | null = null
+/** Android: an inaudible, never-ending sound keeps the phone or TV's audio output awake, so the first blip after a pause isn't late (waking the output takes a moment). */
+function keepWarm(c: AudioContext) {
+  try {
+    keeper?.stop()
+    const n = c.sampleRate, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0)
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * 0.00008   // (just above digital silence, which the system would switch the output off for)
+    const s = c.createBufferSource(); s.buffer = b; s.loop = true; s.connect(c.destination); s.start()
+    keeper = s
+  } catch { /* ignore */ }
+}
+/** Get the sound ready on the first key press or touch (and after any pause), instead of on the first blip. */
+function warm() {
+  if (!enabled || !ANDROID) return
+  try {
+    if (!ctx || ctx.state === 'closed') { freshContext(); keepWarm(ctx!) }
+    else if (ctx.state === 'suspended') void ctx.resume()
+  } catch { /* no audio */ }
+}
+if (typeof window !== 'undefined' && ANDROID) {
+  for (const ev of ['keydown', 'pointerdown', 'touchstart'] as const) window.addEventListener(ev, warm, { capture: true, passive: true })
+}
+
 let born = 0
 function freshContext() {
   try { void ctx?.close() } catch { /* already closed */ }
@@ -83,7 +107,9 @@ export function navBlip() {
   if (document.documentElement.dataset.nativeVideo || document.querySelector('[data-player]')) return   // never over a video's sound
   try {
     // A new context after a long pause, after a few minutes of use, or the moment the output is running behind.
-    if (!ctx || ctx.state === 'closed' || idle > 45_000 || now - born > 180_000 || outputDelayMs(ctx) > 200) freshContext()
+    // (On Android the context is kept alive and warm instead: replacing it is what made a blip late.)
+    const replace = !ctx || ctx.state === 'closed' || (ANDROID ? outputDelayMs(ctx) > 250 : idle > 45_000 || now - born > 180_000 || outputDelayMs(ctx) > 200)
+    if (replace) { freshContext(); if (ANDROID) keepWarm(ctx!) }
     const c = ctx!
     if (c.state === 'suspended') void c.resume()
     if (navBuf) {

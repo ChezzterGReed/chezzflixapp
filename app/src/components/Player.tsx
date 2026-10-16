@@ -21,7 +21,7 @@ import { useSettings } from '../lib/settings'
 import { clampBoost, dbLabel, MAX_BOOST, MIN_BOOST, useLevelEngine } from '../lib/leveling'
 
 const HOLD_START_MS = 450   // a fast-forward / rewind key held this long starts gliding
-const HOLD_STEP_MS = 2000   // holding a fast-forward / rewind key: how long at each speed before the next
+const HOLD_STEP_MS = 1500   // holding a fast-forward / rewind key: how long at each speed before the next
 const SPEEDS = [0.5, 0.75, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3]
 const SLEEPS: (number | 'episode' | null)[] = [null, 15, 30, 45, 60, 90, 'episode']   // minutes, or "when this episode ends"
 const QUALITIES: { kbps: number | null; label: string }[] = [   // each resolution is tied to a typical bitrate for that picture size
@@ -470,8 +470,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const trickTimer = useRef(0)
   const seekRef = useRef(seek); seekRef.current = seek
   const durRef = useRef(duration); durRef.current = duration
-  /** Seconds of video per second at each step. The top step is a little beyond what holding a key used to reach. */
-  const trickSpeed = (level: number) => { const total = durRef.current || 3600; return level <= 1 ? 10 : level === 2 ? Math.round(Math.max(30, Math.min(70, total / 110))) : Math.round(Math.max(120, Math.min(400, total / 20))) }
+  /** Seconds of video per second at each step. The top two are fast: scaled to the length, so a whole film can be crossed in under a minute at the top. */
+  const trickSpeed = (level: number) => { const total = durRef.current || 3600; return level <= 1 ? 10 : level === 2 ? Math.round(Math.max(60, Math.min(140, total / 60))) : Math.round(Math.max(240, Math.min(800, total / 10))) }
   const resumePlay = () => { if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
   const stopTrick = (resume: boolean) => {
     const c = trick.current
@@ -511,9 +511,13 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const clearHeld = () => { if (heldKey.current) { clearTimeout(heldKey.current.timer); heldKey.current = null } }
   const releaseKey = (dir: 1 | -1) => { if (heldKey.current?.dir === dir) clearHeld() }
   /** One press of a direction key (or the remote's fast-forward / rewind button). Holding it past a moment starts the glide. */
+  const lastDown = useRef<{ dir: 1 | -1; at: number } | null>(null)
   const press = (dir: 1 | -1, e: KeyboardEvent) => {
     const now = performance.now()
-    if (e.repeat) {   // (a remote that sends repeats while held)
+    // Some remotes (Fire TV) send a held key as a stream of fresh presses instead of repeats: presses this close together are one hold, not many taps.
+    const rapid = lastDown.current?.dir === dir && now - lastDown.current.at < 200
+    lastDown.current = { dir, at: now }
+    if (e.repeat || rapid) {   // (a remote that sends repeats while held)
       const h = heldKey.current
       if (h && h.dir === dir) { h.last = now; h.sawRepeat = true }
       else if (!h) { heldKey.current = { dir, last: now, sawRepeat: true, timer: 0 }; if (!trick.current) startTrick(dir) }
@@ -522,6 +526,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     clearHeld()
     const t = trick.current
     if (t) {
+      if (now - t.levelAt < 300) return   // a slight beat between steps
       const level = dir === t.dir ? Math.min(3, t.level + 1) : t.level - 1
       if (level <= 0) { stopTrick(true); return }   // slowed all the way: back to normal playing
       t.level = level; t.levelAt = now; setTrickUi({ dir: t.dir, level, speed: trickSpeed(level) })
@@ -534,7 +539,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   useEffect(() => {
     const up = (e: KeyboardEvent) => {
       const d = e.key === 'ArrowRight' || e.key === 'l' || e.key === 'MediaFastForward' ? 1 : e.key === 'ArrowLeft' || e.key === 'j' || e.key === 'MediaRewind' ? -1 : 0
-      if (d) releaseKey(d as 1 | -1)
+      if (d) { lastDown.current = null; releaseKey(d as 1 | -1) }
     }
     window.addEventListener('keyup', up, true)
     return () => window.removeEventListener('keyup', up, true)
@@ -848,11 +853,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
       {/* Fast-forward / rewind: triangles for the step (two, three, four), and how fast */}
       {trickUi && (
-        <div aria-live="polite" className="pointer-events-none absolute left-1/2 top-[42%] z-[22] flex -translate-x-1/2 flex-col items-center gap-2 rounded-3xl bg-black/60 px-9 py-5 shadow-2xl backdrop-blur">
+        <div aria-live="polite" aria-label={`${trickUi.dir > 0 ? 'Fast forward' : 'Rewind'}, step ${trickUi.level}`} className="pointer-events-none absolute left-1/2 top-[42%] z-[22] flex -translate-x-1/2 flex-col items-center gap-2 rounded-3xl bg-black/60 px-9 py-5 shadow-2xl backdrop-blur">
           <div className="flex items-center">
             {Array.from({ length: trickUi.level + 1 }, (_, i) => <Play key={i} size={34} fill="currentColor" className={`-mx-1 ${trickUi.dir < 0 ? '-scale-x-100' : ''}`} />)}
           </div>
-          <div className="text-sm font-bold tabular-nums tracking-wide text-white/80">{trickUi.speed}×</div>
         </div>
       )}
 
