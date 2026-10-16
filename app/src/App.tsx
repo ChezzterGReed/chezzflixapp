@@ -69,6 +69,9 @@ if (DEMO && new URLSearchParams(location.search).has('fresh') && !sessionStorage
 
 interface Me { name: string; thumb?: string; key: string }
 
+/** Progress shorter than this isn't worth asking about (an accidental start). */
+const RESUME_MIN_MS = 15_000
+
 function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }: {
   token: string; server: PlexServer; allSections: PlexSection[]; profiles: PlexProfile[]; me: Me
   onSwitch: (p: PlexProfile, pin?: string) => Promise<void>; onSignOut: () => void
@@ -174,7 +177,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     try {
       const target = m.versionIndex !== undefined ? m : await resolvePlayable(server, m)   // a version picked from the list is already complete
       if (!target) return say('No playable file found for ' + m.title)
-      if (settings.resumePrompt && fromContinue !== true && !inQueue(m) && (target.type === 'movie' || target.type === 'episode') && (target.viewOffset ?? 0) >= 30_000) { setResumeAsk(target); return }
+      if (settings.resumePrompt && fromContinue !== true && !inQueue(m) && (target.type === 'movie' || target.type === 'episode') && (target.viewOffset ?? 0) >= RESUME_MIN_MS) { setResumeAsk(target); return }
       const info = inQueue(m) ? null : await recapNudgeFor(server, target, settings).catch(() => null)   // (no "welcome back" recap in a shuffle: the order is random)
       if (info) { setNudge({ target, info }); return }
       await startNow(target)
