@@ -1,6 +1,6 @@
 import {
   getAllSectionItems, getCollectionItems, getCollections, getGenreItems, getGenreRandom, getGenres, getHubs, getMetadata, getOnDeck, getPlaylistItems,
-  getRandomItems, getRecentShows, getSectionItems, isOtherSection, isWatched, serverTrending, type PlexMedia, type PlexSection, type PlexServer,
+  getNextEpisode, getRandomItems, getRecentlyViewedEpisodes, getRecentShows, getSectionItems, isOtherSection, isWatched, serverTrending, type PlexMedia, type PlexSection, type PlexServer,
 } from './plex'
 import { hidesWatched, type HomeRowCfg, type HomeTab, type Season, type Settings } from './settings'
 import { trendingInLibrary } from './tmdb'
@@ -200,28 +200,52 @@ async function custom(c: Ctx, cfg: HomeRowCfg): Promise<PlexMedia[]> {
   return []
 }
 
-/** Continue Watching and On Deck as one list, limited to the chosen look-back, minus anything you removed, with pinned titles always first. */
-async function continueItems(server: PlexServer, settings: Settings): Promise<PlexMedia[]> {
-  const [hubs, deck] = await Promise.all([getHubs(server).catch(() => []), getOnDeck(server).catch(() => [])])
+/**
+ * Continue Watching: what Plex lists (so anything you removed there stays out), put in the order you actually watched, and pointing at where you really left off.
+ * Plex hands over the next unwatched episode for a show you finished an episode of, which has no "watched at" time of its own, so by itself it can't be
+ * ranked; and it can keep offering an old half-watched episode after you went on to watch later ones. So for each show the latest thing you watched is looked
+ * up: if you stopped part-way through it, that is the one to resume; if you finished it, the next episode is. Most recent first; pinned titles lead.
+ */
+async function continueItems(server: PlexServer, settings: Settings, sections: PlexSection[]): Promise<PlexMedia[]> {
+  const tv = sections.filter((x) => x.type === 'show' && !isOtherSection(x))
+  const [hubs, deck, viewed] = await Promise.all([
+    getHubs(server).catch(() => []), getOnDeck(server).catch(() => []),
+    Promise.all(tv.map((x) => getRecentlyViewedEpisodes(server, x.key).catch(() => [] as PlexMedia[]))),
+  ])
   const fromHub = hubs.find(isContinueHub)?.Metadata ?? []
   const merged = dedupe([...fromHub, ...deck])
+  // The latest episode watched for each show.
+  const latestEp = new Map<string, PlexMedia>()
+  for (const e of viewed.flat().sort((x, y) => (y.lastViewedAt ?? 0) - (x.lastViewedAt ?? 0))) if (e.grandparentRatingKey && !latestEp.has(e.grandparentRatingKey)) latestEp.set(e.grandparentRatingKey, e)
+
   const now = Date.now() / 1000
-  const recent = merged.filter((m) => {
-    const removedAt = settings.dismissedContinue[m.ratingKey]
-    if (removedAt != null && (m.lastViewedAt ?? 0) <= removedAt) return false // removed, and not watched since
-    return !(m.lastViewedAt && now - m.lastViewedAt > settings.continueDays * 86400)
-  })
+  type Pick = { item: PlexMedia; at: number }
+  const picks = (await Promise.all(merged.map(async (m): Promise<Pick | null> => {
+    const showId = m.type === 'episode' ? m.grandparentRatingKey : m.type === 'show' ? m.ratingKey : undefined
+    const last = showId ? latestEp.get(showId) : undefined
+    let item = m, at = m.lastViewedAt ?? 0
+    if (last) {
+      at = last.lastViewedAt ?? at
+      if ((last.viewOffset ?? 0) > 0) item = last                         // stopped part-way through the latest one: resume that
+      else {                                                              // finished it: carry on with the next episode
+        const next = await getNextEpisode(server, last).catch(() => null)
+        if (!next) return null                                            // nothing left to watch
+        item = next
+      }
+    }
+    const removedAt = [m.ratingKey, item.ratingKey, showId].reduce<number | undefined>((v, k) => (k && settings.dismissedContinue[k] != null ? Math.max(v ?? 0, settings.dismissedContinue[k]) : v), undefined)
+    if (removedAt != null && at <= removedAt) return null                 // removed, and not watched since
+    if (at && now - at > settings.continueDays * 86400) return null
+    return { item, at }
+  }))).filter((x): x is Pick => !!x)
+
   const pins = settings.pinned
   const isPinned = (m: PlexMedia) => !!pins[m.ratingKey] || (!!m.grandparentRatingKey && !!pins[m.grandparentRatingKey])
   // Pinned titles that have nothing in progress still appear, as the show / movie itself.
   const have = new Set(merged.flatMap((m) => [m.ratingKey, m.grandparentRatingKey ?? '']))
   const extras = (await Promise.all(Object.keys(pins).filter((k) => !have.has(k)).sort((x, y) => pins[y] - pins[x]).map((k) => getMetadata(server, k).catch(() => null)))).filter((m): m is PlexMedia => !!m)
-  // Your latest movie and your latest show/episode lead; pinned titles come next, then everything else (in progress first).
-  const latest = (pick: (m: PlexMedia) => boolean) => recent.filter((m) => pick(m) && m.lastViewedAt).sort((x, y) => (y.lastViewedAt ?? 0) - (x.lastViewedAt ?? 0))[0]
-  const lead = [latest((m) => m.type === 'movie'), latest((m) => m.type !== 'movie')].filter((m): m is PlexMedia => !!m).sort((x, y) => (y.lastViewedAt ?? 0) - (x.lastViewedAt ?? 0))
-  const led = new Set(lead.map((m) => m.ratingKey))
-  const rest = recent.filter((m) => !led.has(m.ratingKey) && !isPinned(m))
-  return [...lead, ...merged.filter((m) => isPinned(m) && !led.has(m.ratingKey)), ...extras, ...rest.filter((m) => m.viewOffset), ...rest.filter((m) => !m.viewOffset)]
+  const byRecent = (list: Pick[]) => [...list].sort((x, y) => y.at - x.at).map((p) => p.item)
+  return [...byRecent(picks.filter((p) => isPinned(p.item))), ...extras, ...byRecent(picks.filter((p) => !isPinned(p.item)))]
 }
 
 /** The New Season Available shows that belong on this tab. */
@@ -236,7 +260,7 @@ export async function refreshContinue(server: PlexServer, visible: PlexSection[]
   if (at < 0) return null
   const hidden = new Set(settings.hiddenLibraries)
   const keep = (m: PlexMedia) => tabOk(tab, m, anime) && (m.librarySectionID == null || !hidden.has(String(m.librarySectionID)))
-  const items = (await continueItems(server, settings)).filter(keep)
+  const items = (await continueItems(server, settings, visible)).filter(keep)
   let out = items.length ? rows.map((r, i) => (i === at ? { ...r, items: items.slice(0, 30) } : r)) : rows.filter((_, i) => i !== at)
   // Watching the new season takes a show off the New Season Available row.
   if (out.some((r) => r.newSeason)) {
@@ -297,7 +321,7 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
     let items: PlexMedia[] = []
     let cont = false
     try {
-      if (cfg.kind === 'builtin' && cfg.ref === 'continue') { items = await continueItems(server, settings); cont = true }
+      if (cfg.kind === 'builtin' && cfg.ref === 'continue') { items = await continueItems(server, settings, visible); cont = true }
       else if (cfg.kind === 'builtin') items = await builtin(bctx, cfg.ref)
       else items = await custom(cfg.kind === 'genre' && defaults.has(cfg.id) ? bctx : cctx, cfg)
     } catch { return null }

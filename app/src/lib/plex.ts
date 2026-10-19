@@ -264,6 +264,12 @@ export async function getRecentEpisodes(server: PlexServer, sectionKey: string, 
   return c.Metadata ?? []
 }
 
+/** The episodes this profile watched most recently (newest first), for working out where each show was left off. */
+export async function getRecentlyViewedEpisodes(server: PlexServer, sectionKey: string, size = 80): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/sections/${sectionKey}/all?type=4&sort=lastViewedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=${size}`, 20_000)
+  return (c.Metadata ?? []).filter((m) => m.lastViewedAt)
+}
+
 /** Asks the server to scan a library for new, changed or removed files (what "Scan Library Files" does in Plex). Needs a server admin account. */
 export async function scanSection(server: PlexServer, sectionKey: string): Promise<'started' | 'denied' | 'failed'> {
   if (server.uri === DEMO_URI) return 'started'
