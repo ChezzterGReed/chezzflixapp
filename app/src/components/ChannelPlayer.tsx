@@ -213,23 +213,28 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
         {askingStill && !leaving && <StillWatching onStay={stillHere} onTimeout={() => close(true)} />}
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => setStatus('error')} />}
-        {/* Receives the remote: Up / Down flip channels, OK shows the banner */}
+        {/* Receives the remote: Up / Down (or Left / Right, per the Guide setting) flip channels, OK shows the banner */}
         <Focusable focusKey="channel-surface" title="Channel"
           onEnter={() => { if (pillRef.current >= 0 && pillIdsRef.current[pillRef.current]) { pillAct(pillIdsRef.current[pillRef.current]); return } if (level.note?.kind === 'offer') { level.acceptOffer(); return } if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}   // OK shows the info; OK again, with it showing, opens audio & subtitles
-          onArrow={(d) => {
+          onArrow={(raw) => {
+            // Two of the arrows flip channels and the other two work the controls: which pair is which is a Guide setting (Up / Down by default).
+            const vert = settings.guideZap !== 'sides'
             const ids = pillIdsRef.current
-            if (pillRef.current >= 0) {   // on the volume pill: Left / Right choose, Down goes back to the controls
-              if (d === 'left') setPill(Math.max(0, pillRef.current - 1)); else if (d === 'right') setPill(Math.min(ids.length - 1, pillRef.current + 1)); else if (d === 'down') { setPill(-1); setCtl(true) }
+            const ctlAxis = vert ? raw === 'left' || raw === 'right' : raw === 'up' || raw === 'down'
+            const toward = vert ? raw === 'left' : raw === 'up'
+            const prev = vert ? raw === 'up' : raw === 'left'
+            if (pillRef.current >= 0) {   // on the volume pill: one pair of arrows chooses, the other goes back to the controls
+              if (!ctlAxis) { if (prev) setPill(Math.max(0, pillRef.current - 1)); else setPill(Math.min(ids.length - 1, pillRef.current + 1)) } else if (!toward) { setPill(-1); setCtl(true) }
               level.holdNote(); flash(); return false
             }
-            if (d === 'up' || d === 'down') {
+            if (ctlAxis) {
               flash()
-              if (ctlRef.current) { if (d === 'up' && ids.length) { setPill(0); level.holdNote() } else if (d === 'down') setCtl(false) }   // controls up: Up reaches the pill (when one is showing), Down puts them away
+              if (ctlRef.current) { if (toward && ids.length) { setPill(0); level.holdNote() } else if (!toward) setCtl(false) }   // controls up: toward reaches the pill (when one is showing), away puts them away
               else if (ids.length) { setPill(0); level.holdNote() }   // a volume question is waiting: straight to it
               else setCtl(true)
               return false
             }
-            setCtl(false); flip(d === 'left' ? -1 : 1); return false   // Left / Right: the previous / next channel
+            setCtl(false); flip(prev ? -1 : 1); return false   // the other pair: the previous / next channel
           }}
           className="absolute inset-0">
           <div className="size-full" />
