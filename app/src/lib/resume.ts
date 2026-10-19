@@ -6,7 +6,7 @@ import type { PlexProfile, PlexSection, PlexServer } from './plex'
 const RESUME_KEY = 'chezzflix_resume'
 const BOOT_KEY = 'chezzflix_boot'
 export const RESUME_MAX_AGE_MS = 30 * 60_000    // a movie is picked up again if you come back within half an hour
-export const BOOT_MAX_AGE_MS = 2 * 3600_000     // the app opens instantly if it was last used within two hours
+export const BOOT_MAX_AGE_MS = 7 * 24 * 3600_000 // the app opens instantly if it was last used within a week (a stale route falls back to a normal connect)
 
 export interface Resume { ratingKey: string; versionIndex?: number; offsetMs: number; paused: boolean; at: number; profile: string }
 export interface BootSnap { token: string; server: PlexServer; sections: PlexSection[]; profiles: PlexProfile[]; me: { name: string; thumb?: string; key: string }; at: number }

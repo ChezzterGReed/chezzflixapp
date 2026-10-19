@@ -24,7 +24,21 @@ interface Cached { rows: HomeRow[]; notices: HomeNotice[]; rowsAnime?: AnimeInfo
 const homeCache = new Map<string, Cached>()
 const FRESH_MS = 10 * 60_000
 /** Forget what Home last showed (switching profile or signing out: the next Home is read fresh, never the previous person's). */
-export const clearHomeCache = () => homeCache.clear()
+export const clearHomeCache = () => { homeCache.clear(); try { localStorage.removeItem(SNAP_KEY) } catch { /* ignore */ } }
+
+// The last fully loaded Home also survives closing the app: the next launch paints it at once (rows, banner) and brings it up to date behind it.
+const SNAP_KEY = 'chezzflix_home_snap'
+const SNAP_MAX_AGE_MS = 7 * 24 * 3600_000
+const readSnap = (sig: string): Cached | undefined => {
+  try {
+    const v = JSON.parse(localStorage.getItem(SNAP_KEY) || 'null') as { sig: string; saved: number; c: Cached } | null
+    return v && v.sig === sig && Date.now() - v.saved < SNAP_MAX_AGE_MS ? { ...v.c, at: 0 } : undefined   // at: 0 = old enough to be read again straight away
+  } catch { return undefined }
+}
+const writeSnap = (sig: string, c: Cached) => {
+  const cut = (rs: HomeRow[]) => rs.map((r) => ({ ...r, items: r.items.slice(0, 24) }))
+  try { localStorage.setItem(SNAP_KEY, JSON.stringify({ sig, saved: Date.now(), c: { ...c, rows: cut(c.rows), recRows: cut(c.recRows) as Cached['recRows'] } })) } catch { /* full or private mode */ }
+}
 
 export function Home({ server, sections, token, profileName, refreshKey, watchKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
   const { settings } = useSettings()
@@ -60,7 +74,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   useEffect(() => {
     let alive = true
     setError(undefined)
-    const hit = homeCache.get(cacheSig)
+    const hit = homeCache.get(cacheSig) ?? readSnap(cacheSig)
     if (hit) {   // back at a place we've already been: show what was there at once
       rowsRef.current = hit.rows
       setRows(hit.rows); setNotices(hit.notices); setRowsAnime(hit.rowsAnime); setAnime(hit.anime); setRecRows(hit.recRows); setRecsReady(true); setHero(hit.hero)
@@ -95,7 +109,10 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
 
   // Remember what's on screen (the time stamp is when it was fully loaded, not when it last changed).
   useEffect(() => {
-    if (rows) homeCache.set(cacheSig, { rows, notices, rowsAnime, anime, hero, recRows, heroSig: heroFor.current, at: meta.current.at, refreshKey: meta.current.refreshKey, watchKey: meta.current.watchKey })
+    if (!rows) return
+    const c: Cached = { rows, notices, rowsAnime, anime, hero, recRows, heroSig: heroFor.current, at: meta.current.at, refreshKey: meta.current.refreshKey, watchKey: meta.current.watchKey }
+    homeCache.set(cacheSig, c)
+    if (c.at > 0) { const t = setTimeout(() => writeSnap(cacheSig, c), 1500); return () => clearTimeout(t) }
   }, [rows, notices, rowsAnime, anime, hero, recRows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Personalized rows: built on this device from the profile's watch history (shown after Continue Watching).

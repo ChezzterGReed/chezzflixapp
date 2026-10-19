@@ -196,7 +196,7 @@ async function probe(uri: string, token: string, machineId: string | undefined, 
  * direct remote address, otherwise Plex's relay (slow, capped). All connections are tried at once.
  */
 async function pickConnection(conns: PlexConnection[], token: string, machineId?: string): Promise<PlexConnection | null> {
-  const probes = conns.map((c) => ({ c, ok: probe(c.uri, token, machineId, c.local ? 1800 : c.relay ? 6000 : 4500) }))
+  const probes = conns.map((c) => ({ c, ok: probe(c.uri, token, machineId, c.local ? 1200 : c.relay ? 6000 : 4500) }))
   const firstOf = (pred: (c: PlexConnection) => boolean) =>
     Promise.any(probes.filter((p) => pred(p.c)).map((p) => p.ok.then((ok) => (ok ? p.c : Promise.reject(new Error('unreachable'))))))
   for (const tier of [(c: PlexConnection) => c.local, (c: PlexConnection) => !c.local && !c.relay, (c: PlexConnection) => c.relay]) {

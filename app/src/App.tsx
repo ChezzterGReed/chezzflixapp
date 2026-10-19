@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FocusContext, GetBoundingClientRectAdapter, doesFocusableExist, getCurrentFocusKey, init, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import {
   directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getMetadata, getProfiles, getSections, getServers, invalidateCache, invalidateWatchState,
@@ -32,17 +32,17 @@ import { Library } from './screens/Library'
 import { clearQueue, inQueue, startQueue } from './lib/shuffleQueue'
 import { Search } from './screens/Search'
 import { Watchlist } from './screens/Watchlist'
-import { TVGuide } from './screens/TVGuide'
+const TVGuide = lazy(() => import('./screens/TVGuide').then((m) => ({ default: m.TVGuide })))
 import { Dashboard } from './screens/Dashboard'
 import { BrowseIndex } from './screens/BrowseIndex'
 import { ListView } from './screens/ListView'
 import { Detail } from './screens/Detail'
 import { Sidebar, type View } from './components/Sidebar'
 import { ProfileMenu } from './components/ProfileMenu'
-import { SettingsModal } from './components/SettingsModal'
-import { Player } from './components/Player'
+const SettingsModal = lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })))
+const Player = lazy(() => import('./components/Player').then((m) => ({ default: m.Player })))
 import { ItemMenu } from './components/ItemMenu'
-import { EditInfo } from './components/EditInfo'
+const EditInfo = lazy(() => import('./components/EditInfo').then((m) => ({ default: m.EditInfo })))
 import { canEdit } from './lib/edit'
 import { ItemMenuContext } from './lib/itemMenu'
 import { LoadingScreen } from './components/LoadingScreen'
@@ -365,10 +365,14 @@ function Session({ token, onToken, onSignOut }: { token: string; onToken: (t: st
     try {
       // First sign-in on this device with more than one profile: ask who's watching before anything else.
       const known = hint.current; hint.current = undefined
+      // (The server and the account are looked up alongside the profile list rather than after it; it only costs a wasted call when the profile picker comes first.)
+      const serversP = getServers(token, known?.server)
+      const userP = token === 'demo' && demoPick.current ? Promise.resolve({ title: demoPick.current.title, thumb: demoPick.current.thumb, uuid: demoPick.current.uuid }) : known?.user ? Promise.resolve(known.user) : getCurrentUser(token)
+      serversP.catch(() => {}); userP.catch(() => {})
       const ps = known ? known.profiles : await getProfiles(token)
       if (ps.length > 1 && !isChosen()) { setProfiles(ps); setNeedsPick(true); setBooted(true); return }
       setNeedsPick(false)
-      const [servers, user] = await Promise.all([getServers(token, known?.server), token === 'demo' && demoPick.current ? Promise.resolve({ title: demoPick.current.title, thumb: demoPick.current.thumb, uuid: demoPick.current.uuid }) : known?.user ?? getCurrentUser(token)])
+      const [servers, user] = await Promise.all([serversP, userP])
       if (!servers[0]) return setError('No Plex servers found on this account.')
       const secs = await getSections(servers[0])
       const next = servers[0], who = { name: user.title, thumb: user.thumb, key: user.uuid ?? user.title }
@@ -439,7 +443,7 @@ export default function App() {
   const booted = useBooted()
   return (
     <>
-      {token ? <Session token={token} onToken={onToken} onSignOut={signOut} /> : <Login onToken={onToken} />}
+      <Suspense fallback={null}>{token ? <Session token={token} onToken={onToken} onSignOut={signOut} /> : <Login onToken={onToken} />}</Suspense>
       <LoadingScreen visible={!!token && !booted} />
       <UpdatePrompt />
     </>
