@@ -68,7 +68,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const [tracks, setTracks] = useState<MpvTrack[]>([])
   const tracksOpenRef = useRef(false); tracksOpenRef.current = tracksOpen
   const inputMode = useInputMode()
-  // Up / Down bring up the controls (the info banner, with its Audio & subtitles button highlighted, and the volume pill above it); Left / Right change channel.
+  // The controls pair of arrows (Left / Right or Up / Down, per the Guide setting) brings up the controls (the info banner, with its Audio & subtitles button highlighted, and the volume pill above it); the other pair changes channel.
   const [ctl, setCtl] = useState(false)
   const ctlRef = useRef(false); ctlRef.current = ctl
   // The info banner (channel, title, episode, and the audio & subtitles button): it stays up while the track menu is open.
