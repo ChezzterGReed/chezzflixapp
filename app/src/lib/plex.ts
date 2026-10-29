@@ -430,6 +430,16 @@ export async function getChildren(server: PlexServer, ratingKey: string): Promis
   return c.Metadata ?? []
 }
 
+/** Rests on a title for a moment? Its details are read ahead, so opening it shows them at once. (Only after a pause, never while scrolling past.) */
+let prefetchTimer = 0
+export function prefetchDetail(server: PlexServer, m: PlexMedia) {
+  clearTimeout(prefetchTimer)
+  if (server.uri === DEMO_URI) return
+  const id = m.type === 'episode' ? m.grandparentRatingKey : m.type === 'movie' || m.type === 'show' ? m.ratingKey : undefined
+  if (!id) return
+  prefetchTimer = window.setTimeout(() => { getMetadata(server, id).catch(() => {}); if (m.type !== 'movie') getChildren(server, id).catch(() => {}) }, 350)
+}
+
 export async function getRelated(server: PlexServer, ratingKey: string): Promise<PlexMedia[]> {
   try {
     const c = await get<{ Hub?: PlexHub[] }>(server, `/hubs/metadata/${ratingKey}/related`)

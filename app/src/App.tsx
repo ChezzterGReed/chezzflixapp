@@ -86,6 +86,17 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const [playing, setPlaying] = useState<PlexMedia>()
   const streams = useStreamCount(server, !!server.owned)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [returnKey, setReturnKey] = useState(0)   // bumped when you come back to the app (or it sits open a while): only the Continue Watching row is read again
+  useEffect(() => {
+    if (token === 'demo') return
+    let away = 0, lastRead = Date.now()
+    const bump = () => { lastRead = Date.now(); invalidateWatchState(); setReturnKey((k) => k + 1) }
+    const onHide = () => { if (document.hidden) away = Date.now() }
+    const onBack = () => { if (!document.hidden && (!away || Date.now() - away > 15_000) && Date.now() - lastRead > 15_000) { away = 0; bump() } }
+    const tick = setInterval(() => { if (!document.hidden && Date.now() - lastRead > 5 * 60_000) bump() }, 60_000)
+    document.addEventListener('visibilitychange', onHide); document.addEventListener('visibilitychange', onBack); window.addEventListener('focus', onBack)
+    return () => { clearInterval(tick); document.removeEventListener('visibilitychange', onHide); document.removeEventListener('visibilitychange', onBack); window.removeEventListener('focus', onBack) }
+  }, [token])
   const [watchKey, setWatchKey] = useState(0)   // bumped after playback: Continue Watching and open detail pages re-read, nothing else
   const [toast, setToast] = useState<string>()
   const toastTimer = useRef<number>(0)
@@ -278,7 +289,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       <FocusContext.Provider value={mainKey}>
         <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
           style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
-          {view.type === 'home' && <Home server={server} sections={allSections} token={token} profileName={me.name} refreshKey={refreshKey} watchKey={watchKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
+          {view.type === 'home' && <Home server={server} sections={allSections} token={token} profileName={me.name} refreshKey={refreshKey} watchKey={watchKey} returnKey={returnKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}

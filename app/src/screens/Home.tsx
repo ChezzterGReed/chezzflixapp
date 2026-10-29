@@ -13,7 +13,7 @@ import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
 import { hidesWatched, useSeason, useSettings } from '../lib/settings'
 
-interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; onPlay: (m: PlexMedia, fromContinue?: boolean) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
+interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; /** Bumped when you come back to the app: Continue Watching is read again. */ returnKey: number; onPlay: (m: PlexMedia, fromContinue?: boolean) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
 
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'foryou', label: 'For You' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
 const TAB_KEY = 'chezzflix_home_tab'
@@ -40,7 +40,7 @@ const writeSnap = (sig: string, c: Cached) => {
   try { localStorage.setItem(SNAP_KEY, JSON.stringify({ sig, saved: Date.now(), c: { ...c, rows: cut(c.rows), recRows: cut(c.recRows) as Cached['recRows'] } })) } catch { /* full or private mode */ }
 }
 
-export function Home({ server, sections, token, profileName, refreshKey, watchKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
+export function Home({ server, sections, token, profileName, refreshKey, watchKey, returnKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
   const { settings } = useSettings()
   const season = useSeason()
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(TAB_KEY) as Tab) || 'all')
@@ -93,7 +93,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   }, [cacheSig, server, sections, refreshKey, season, fullTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Continue Watching is the one row that changes as you watch: re-read just that when something was watched or its settings changed.
-  const contSig = `${watchKey}|${JSON.stringify(settings.dismissedContinue)}|${JSON.stringify(settings.pinned)}|${settings.continueDays}`
+  const contSig = `${watchKey}|${returnKey}|${cacheSig}|${JSON.stringify(settings.dismissedContinue)}|${JSON.stringify(settings.pinned)}|${settings.continueDays}`
   const contSeen = useRef('')
   useEffect(() => {
     const base = rowsRef.current
@@ -172,6 +172,15 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   const shownRecs = wantsRecs ? recRows.slice(0, activeTab === 'foryou' ? 12 : 2) : []
   const ci = (rows ?? []).findIndex((r) => r.continue)
   const after = ci + 1 + ((rows ?? [])[ci + 1]?.seasonal ? 1 : 0)   // a seasonal list sits right under Continue Watching, ahead of the recommendations
+  // The first rows appear at once and the rest are added a few at a time right behind them, so a big Home never holds up the first screen.
+  const [shown, setShown] = useState(5)
+  useEffect(() => { setShown(5) }, [activeTab])
+  const rowCount = (rows?.length ?? 0) + recRows.length
+  useEffect(() => {
+    if (shown >= rowCount) return
+    const t = setTimeout(() => setShown((n) => n + 3), 140)
+    return () => clearTimeout(t)
+  }, [shown, rowCount])
   const merged: (HomeRow & { subtitle?: string; recs?: boolean })[] = rows ? [...rows.slice(0, after), ...shownRecs.map((r) => ({ ...r, recs: true })), ...rows.slice(after)] : []
 
   if (error) return <div className="grid h-screen place-items-center px-8 text-center text-white/70">Couldn't load your library.<br />{error}</div>
@@ -200,7 +209,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
           ? <><RowSkeleton landscape /><RowSkeleton /><RowSkeleton /></>
           : <>
               {merged.length === 0 && recsReady && <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>}
-              {merged.map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
+              {merged.slice(0, shown).map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
               {wantsRecs && !recsReady && (activeTab === 'foryou' || shownRecs.length === 0) && <RowSkeleton />}
               {activeTab === 'foryou' && recsReady && recRows.length === 0 && (
                 <div className="mx-[var(--gutter)] mb-8 max-w-3xl rounded-2xl bg-white/6 p-6 ring-1 ring-white/10">

@@ -5,7 +5,7 @@ import { Focusable } from './Focusable'
 import { CheckMark } from './SelectionBar'
 import { useSettings } from '../lib/settings'
 import { useItemMenu } from '../lib/itemMenu'
-import { backdropPath, episodeLabel, formatLeft, imageUrl, isSpoilerRisk, isWatched, posterPath, progressOf, type PlexMedia, type PlexServer } from '../lib/plex'
+import { backdropPath, episodeLabel, formatLeft, imageUrl, prefetchDetail, isSpoilerRisk, isWatched, posterPath, progressOf, type PlexMedia, type PlexServer } from '../lib/plex'
 
 function Img({ src, alt, className = '' }: { src: string; alt: string; className?: string }) {
   const [loaded, setLoaded] = useState(false)
@@ -38,6 +38,10 @@ function Progress({ p }: { p: number }) {
   return p > 0 ? <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20"><div className="h-full bg-accent" style={{ width: `${p * 100}%` }} /></div> : null
 }
 
+// Smaller pictures on weak devices: less to download, decode and hold in memory, and the cards are small on screen anyway.
+const POSTER = LOW_POWER ? [240, 360] as const : [360, 540] as const
+const LAND = LOW_POWER ? [480, 270] as const : [640, 360] as const
+
 export const focusRing = LOW_POWER
   ? 'transition-transform duration-200 ease-out group-data-[hl=true]/f:scale-[1.06] group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]'
   : 'transition-[transform,box-shadow] duration-300 ease-out-expo group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_18px_40px_-8px_rgba(0,0,0,.8),0_0_0_3px_var(--accent)] group-hover/f:scale-[1.03]'
@@ -47,10 +51,10 @@ export function PosterCard({ m, server, onEnter, onFocus, leftEdge, fromRecs, fr
   const sub = m.type === 'episode' ? `${episodeLabel(m)}` : m.type === 'collection' ? 'Collection' : [m.year, m.type === 'show' ? 'Series' : m.contentRating].filter(Boolean).join(' · ')
   const openMenu = useItemMenu()
   return (
-    <Focusable onEnter={onEnter} onLongPress={onLongPress ?? (m.type === 'collection' ? undefined : () => openMenu(m, { fromRecs, fromContinue, onSelect }))} onFocus={onFocus} title={title} leftToRail={leftEdge} className="w-[var(--card-w)] shrink-0">
+    <Focusable onEnter={onEnter} onLongPress={onLongPress ?? (m.type === 'collection' ? undefined : () => openMenu(m, { fromRecs, fromContinue, onSelect }))} onFocus={(el) => { onFocus(el); prefetchDetail(server, m) }} title={title} leftToRail={leftEdge} className="w-[var(--card-w)] shrink-0">
       <div className={`relative aspect-[2/3] overflow-hidden rounded-xl bg-surface ${focusRing} ${selecting && checked ? 'ring-4 ring-accent' : ''}`}>
         {selecting && <CheckMark checked={!!checked} />}
-        <Img src={imageUrl(server, posterPath(m), 360, 540)} alt={title} />
+        <Img src={imageUrl(server, posterPath(m), POSTER[0], POSTER[1])} alt={title} />
         <Badge m={m} />
         {m.newSeason && <div className="absolute left-2 top-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white [text-shadow:0_1px_2px_rgba(0,0,0,.45)]">New · S{m.newSeason.season}</div>}
         <PinMark m={m} />
@@ -73,9 +77,9 @@ export function LandscapeCard({ m, server, onEnter, onFocus, leftEdge }: { m: Pl
   const blur = settings.hideSpoilers && isSpoilerRisk(m)
   const openMenu = useItemMenu()
   return (
-    <Focusable onEnter={onEnter} onLongPress={() => openMenu(m, { fromContinue: true })} onFocus={onFocus} title={title} leftToRail={leftEdge} className="w-[var(--land-w)] shrink-0 snap-start">
+    <Focusable onEnter={onEnter} onLongPress={() => openMenu(m, { fromContinue: true })} onFocus={(el) => { onFocus(el); prefetchDetail(server, m) }} title={title} leftToRail={leftEdge} className="w-[var(--land-w)] shrink-0 snap-start">
       <div className={`relative aspect-video overflow-hidden rounded-xl bg-surface ${focusRing}`}>
-        <Img src={imageUrl(server, art, 640, 360)} alt={title} className={blur ? 'scale-110 blur-lg brightness-90' : ''} />
+        <Img src={imageUrl(server, art, LAND[0], LAND[1])} alt={title} className={blur ? 'scale-110 blur-lg brightness-90' : ''} />
         <div className="absolute inset-0 bg-linear-to-t from-black/85 via-black/10 to-transparent" />
         <div className="absolute inset-x-3.5 bottom-3.5">
           <div className="truncate text-[0.95rem] font-bold leading-tight drop-shadow">{title}</div>
