@@ -235,7 +235,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     if (home !== true && last?.type === 'episode' && last.grandparentRatingKey && details[details.length - 1] === last.grandparentRatingKey) setEpFocus({ show: last.grandparentRatingKey, season: last.parentRatingKey, ep: last.ratingKey })
     clearResume(); setPlaying(undefined); invalidateWatchState(); resetNewSeason(); setWatchKey((k) => k + 1); if (home === true) navigate({ type: 'home' })
   }
-  const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying(full) }
+  const playNext = async (m: PlexMedia) => { const full = await resolvePlayable(server, m); if (full) setPlaying({ ...full, viewOffset: 0 }) }   // (next / previous episode: always from the start, even if it was partly watched before)
 
   const open = (m: PlexMedia) => {
     const key = m.type === 'episode' ? m.grandparentRatingKey ?? m.ratingKey : m.type === 'season' ? m.parentRatingKey ?? m.ratingKey : m.ratingKey
