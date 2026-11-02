@@ -18,6 +18,7 @@ import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/
 
 interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void; /** Nobody answered "Are you still watching?" */ onIdle?: () => void }
 
+const REFRESH_MS = 20 * 60_000   // how often the stream is quietly asked for again
 const TUNE_DELAY = 350   // wait for the remote to settle before loading, so flipping through channels doesn't hammer the server
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
@@ -49,7 +50,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
 
   // A stream that drops (the server closed the connection, the network blinked, a transcode was reaped) is rejoined quietly at the live position
   // instead of showing an error: a few tries with growing pauses, and the count starts over once it has played steadily again.
-  const tuneRef = useRef<(i: number) => void>(() => {})
+  const tuneRef = useRef<(i: number, quiet?: boolean) => void>(() => {})
   const fails = useRef(0)
   const recovering = useRef(0)
   const recover = useCallback((why: string) => {
@@ -101,11 +102,13 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const trackLabel = (t: MpvTrack) => [t.title || t.lang?.toUpperCase(), t.codec?.toUpperCase(), t.channels ? `${t.channels}ch` : '', t.external ? 'external' : ''].filter(Boolean).join(' · ') || 'Track'
 
   // Tune: find what's on now, jump into it part-way through, and line up the next switch for when it ends.
-  const tune = useCallback(async (i: number) => {
+  const quietLoad = useRef(false)   // the next 'loaded' is a refresh of what's already playing: no fade-up, nothing else to redo
+  const tune = useCallback(async (i: number, quiet = false) => {
     const my = ++seq.current
     clearTimeout(advance.current)
     const ch = channels[i]
-    setStatus('tuning'); flash()
+    quietLoad.current = quiet
+    if (!quiet) { setStatus('tuning'); flash() }
     const now = Date.now()
     const list = slotsRef.current[ch.id]
     // Whatever is on now; if the schedule has a gap (it was being rebuilt, or ran out), the next program, else the last one, rather than an error.
@@ -190,7 +193,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     if (mode !== 'native') return
     let off: (() => void) | undefined, dead = false
     onMpv((p) => { if (p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
-      if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() }
+      if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); if (quietLoad.current) { quietLoad.current = false; applyTracks() } else { flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() } }
       if ((e.event === 'end' && e.reason === 4) || e.event === 'error') recover('player')
     }).then((u) => { if (dead) u(); else off = u })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
@@ -203,6 +206,16 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       setTimeout(() => document.documentElement.classList.remove('ui-fade'), 900)
     }
   }, [mode, tune, flash, applyTracks, recover])
+  // Every 20 minutes, quietly ask the server for the same program again, at the live position, and swap to it: to the server it is a fresh request,
+  // on screen a very brief blip. Skipped while a menu is open or when the program is about to end anyway.
+  useEffect(() => {
+    if (status !== 'playing') return
+    const t = setInterval(() => {
+      if (tracksOpenRef.current || pillRef.current >= 0 || (slot && slot.end - Date.now() < 120_000)) return
+      tuneRef.current(idxRef.current, true)
+    }, REFRESH_MS)
+    return () => clearInterval(t)
+  }, [status, slot?.key, idx]) // eslint-disable-line react-hooks/exhaustive-deps
   // A picture that has silently stopped moving (the connection died without an error) is treated the same way.
   useEffect(() => {
     if (mode !== 'native' || status !== 'playing') return
