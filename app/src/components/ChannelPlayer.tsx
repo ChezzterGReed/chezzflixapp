@@ -18,7 +18,7 @@ import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/
 
 interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void; /** Nobody answered "Are you still watching?" */ onIdle?: () => void }
 
-const REFRESH_MS = 20 * 60_000   // how often the stream is quietly asked for again
+const REFRESH_MS = 25 * 60_000   // how often the stream is quietly asked for again
 const TUNE_DELAY = 350   // wait for the remote to settle before loading, so flipping through channels doesn't hammer the server
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
@@ -206,7 +206,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       setTimeout(() => document.documentElement.classList.remove('ui-fade'), 900)
     }
   }, [mode, tune, flash, applyTracks, recover])
-  // Every 20 minutes, quietly ask the server for the same program again, at the live position, and swap to it: to the server it is a fresh request,
+  // Every 25 minutes, quietly ask the server for the same program again, at the live position, and swap to it: to the server it is a fresh request,
   // on screen a very brief blip. Skipped while a menu is open when the program is about to end anyway, and for programs of 30 minutes or less.
   useEffect(() => {
     if (status !== 'playing') return
