@@ -93,7 +93,9 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   const aired = (s: Slot) => s.end > origin
 
   // ----- grid navigation (one focus target; the cursor is ours) -----
+  const axis = useRef<'h' | 'v'>('h')   // which way the cursor last moved: going up or down never slides the timeline sideways
   const move = (dir: 'left' | 'right' | 'up' | 'down'): boolean | void => {
+    axis.current = dir === 'up' || dir === 'down' ? 'v' : 'h'
     const { row, t } = selRef.current
     const slots = rowSlots(row).filter(aired)
     const c = slotAt(slots, t) ?? slots.find((s) => s.end > t)
@@ -118,7 +120,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   useEffect(() => {
     if (!cur) return
     const el = document.getElementById(`cell-${sel.row}-${cur.start}`)
-    if (el) { reveal(el, { block: 'none', inline: 'nearest', margin: CH_W + 30 }); reveal(el, { block: 'nearest', inline: 'none', margin: 56 }) }
+    if (el) { if (axis.current === 'h') reveal(el, { block: 'none', inline: 'nearest', margin: CH_W + 30 }); reveal(el, { block: 'nearest', inline: 'none', margin: 56 }) }
   }, [sel.row, cur?.start, guide.ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Details for the highlighted program (its summary comes from Plex, a moment after you stop moving).
