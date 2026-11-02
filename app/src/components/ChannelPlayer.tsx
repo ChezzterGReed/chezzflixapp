@@ -59,7 +59,12 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     const wait = [600, 1500, 3000, 6000, 10000, 15000][fails.current++]
     console.warn('[tv guide] stream lost, rejoining', why, fails.current)
     setStatus('tuning')
-    recovering.current = window.setTimeout(() => { recovering.current = 0; tuneRef.current(idxRef.current) }, wait)
+    recovering.current = window.setTimeout(() => {
+      recovering.current = 0
+      // Start over exactly as if the channel had just been flipped to: whatever the engine is holding is let go first.
+      if (modeRef.current === 'native') mpvCmd('stop').catch(() => {}).finally(() => tuneRef.current(idxRef.current))
+      else tuneRef.current(idxRef.current)
+    }, wait)
   }, [])
 
   // Audio and subtitle choices: this channel's own, else the guide's defaults.

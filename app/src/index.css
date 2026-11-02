@@ -147,3 +147,9 @@ html[data-perf="low"] .ss-rise { animation: none; }   /* (the background drift s
 /* A dark accent colour (Forest): what sits on it turns white instead of black. */
 html[data-on-accent="light"] .bg-accent { color: #fff !important; }
 html[data-on-accent="light"] .bg-accent .text-black, html[data-on-accent="light"] .bg-accent [class*="text-black"] { color: inherit !important; }
+
+/* ---------- Minimal layout (TV) ---------- */
+@keyframes mfade { from { opacity: 0 } to { opacity: 1 } }
+.m-fade { animation: mfade .4s ease-out both; }
+.m-hide-scroll { scrollbar-width: none; }
+.m-hide-scroll::-webkit-scrollbar { display: none; }

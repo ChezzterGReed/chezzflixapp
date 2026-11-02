@@ -10,6 +10,7 @@ import { getCollections, getGenres, getPlaylists, type PlexSection, type PlexSer
 import { mergeRows, rowCatalog } from '../lib/homeData'
 import { inTauri } from '../lib/player'
 import { isAndroid } from '../lib/native'
+import { isTvDevice } from '../lib/layout'
 import { trendingIds } from '../lib/tmdb'
 import { SeasonIcon } from './SeasonIcon'
 import { RECAP_GAP_MAX, RECAP_GAP_MIN } from '../lib/recapNudge'
@@ -83,6 +84,22 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
         <TextField value={settings.brand} onChange={(v) => update({ brand: v })} placeholder="CHEZZ" suffix="FLIX" />
         <p className="mt-2 text-sm text-white/55">Your profile will see the app as <b className="tracking-widest text-white">{brandName(settings)}</b>.</p>
       </div>
+      {isTvDevice && (
+        <>
+          <Heading>Layout</Heading>
+          <div className="flex gap-2 px-4 py-2">
+            <Pill active={settings.layout !== 'minimal'} onEnter={() => update({ layout: 'classic' })}>Classic</Pill>
+            <Pill active={settings.layout === 'minimal'} onEnter={() => update({ layout: 'minimal' })}>Minimal</Pill>
+          </div>
+          <p className="px-4 pb-3 text-sm text-white/55">{settings.layout === 'minimal' ? 'Made for TVs: the artwork fills the screen, one row of titles along the bottom, and tabs across the top. Move onto a title to see its details.' : 'The full layout: a side menu, a banner, and rows of titles.'}</p>
+          {settings.layout === 'minimal' && (
+            <>
+              <Toggle label="Show descriptions" hint="A short summary under the title as you move over things" on={settings.minimalInfo} onChange={(v) => update({ minimalInfo: v })} />
+              <Toggle label="Movies, TV Shows and Anime rows" hint="A short row of each at the end of Home. Select the row's name to open that whole section" on={settings.minimalTypeRows} onChange={(v) => update({ minimalTypeRows: v })} />
+            </>
+          )}
+        </>
+      )}
       <Heading>Info screen</Heading>
       <div className="flex gap-2 px-4 py-2">
         <Pill active={settings.infoStyle === 'full'} onEnter={() => update({ infoStyle: 'full' })}>Full</Pill>
@@ -92,7 +109,7 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
       <Toggle label="Use my profile picture as the logo" hint="Shown at the top of the menu instead of the letter tile" on={settings.avatarLogo} onChange={(v) => update({ avatarLogo: v })} />
       <div className="flex items-center gap-3 px-4 pb-2 text-sm text-white/55"><Avatar name={profileName} thumb={profileThumb} size={28} />Preview of the logo style on the menu</div>
       <Toggle label="Navigation sounds" hint="A small blip as you move around the screen" on={settings.navSounds} onChange={(v) => update({ navSounds: v })} />
-      <Toggle label="Screensaver" hint="After a few quiet minutes (and nothing playing), drift through backgrounds and poster collages from your server. Any button brings the app back" on={settings.screensaver} onChange={(v) => update({ screensaver: v })} />
+      <Toggle label="Screensaver" hint="After a few quiet minutes (and nothing playing), drift through backgrounds from your server. Any button brings the app back" on={settings.screensaver} onChange={(v) => update({ screensaver: v })} />
       {settings.screensaver && (
         <>
           <div className="px-4 pt-2 text-sm font-semibold text-white/60">Start after</div>

@@ -220,6 +220,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   @Command fun setPause(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { player?.playWhenReady = !a.value; if (!a.value) armWatchdog() } }
   @Command fun seek(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.seekTo((a.value * 1000).toLong()) } }
   @Command fun setVolume(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { userVolume = a.value; applyVolume(); emit("volume", userVolume * 100) } }
+  @Command fun exitApp(invoke: Invoke) { activity.runOnUiThread { invoke.resolve(); activity.finishAffinity() } }
   @Command fun setSpeed(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.playbackParameters = PlaybackParameters(a.value.toFloat().coerceIn(0.25f, 4f), 1f) } }   // speed with the pitch kept
   @Command fun setMute(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { muted = a.value; applyVolume(); emit("mute", muted) } }
   // 0 dB is exactly off: the samples pass through untouched.

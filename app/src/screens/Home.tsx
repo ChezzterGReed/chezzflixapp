@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Hero, HeroSkeleton } from '../components/Hero'
+import { MinimalHome } from './MinimalHome'
+import { useMinimal } from '../lib/layout'
 import { Clock } from '../components/Clock'
 import { TrendingBanner } from '../components/TrendingBanner'
 import { TabBanner, hasTabBanner } from '../components/TabBanner'
@@ -13,7 +15,7 @@ import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
 import { hidesWatched, useSeason, useSettings } from '../lib/settings'
 
-interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; /** Bumped when you come back to the app: Continue Watching is read again. */ returnKey: number; onPlay: (m: PlexMedia, fromContinue?: boolean) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
+interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; /** Bumped when you come back to the app: Continue Watching is read again. */ returnKey: number; /** Show this tab (the Minimal layout opens Movies / TV Shows / Anime / Trending directly). */ tabOverride?: Tab; onType: (t: Tab) => void; onPlay: (m: PlexMedia, fromContinue?: boolean) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
 
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'foryou', label: 'For You' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
 const TAB_KEY = 'chezzflix_home_tab'
@@ -40,10 +42,12 @@ const writeSnap = (sig: string, c: Cached) => {
   try { localStorage.setItem(SNAP_KEY, JSON.stringify({ sig, saved: Date.now(), c: { ...c, rows: cut(c.rows), recRows: cut(c.recRows) as Cached['recRows'] } })) } catch { /* full or private mode */ }
 }
 
-export function Home({ server, sections, token, profileName, refreshKey, watchKey, returnKey, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
+export function Home({ server, sections, token, profileName, refreshKey, watchKey, returnKey, tabOverride, onType, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
   const { settings } = useSettings()
   const season = useSeason()
-  const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem(TAB_KEY) as Tab) || 'all')
+  const minimal = useMinimal()
+  const [tabState, setTab] = useState<Tab>(() => (sessionStorage.getItem(TAB_KEY) as Tab) || 'all')
+  const tab: Tab = tabOverride ?? (minimal ? 'all' : tabState)
   const [rows, setRows] = useState<HomeRow[]>()
   const [hero, setHero] = useState<PlexMedia[]>()
   const [anime, setAnime] = useState<AnimeInfo>()
@@ -60,7 +64,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   const [fullTick, setFullTick] = useState(0)   // bumped when Continue Watching can't be patched in place and everything has to be read again
   const putRows = (r: HomeRow[] | undefined) => { rowsRef.current = r; setRows(r) }
 
-  useEffect(() => { try { sessionStorage.setItem(TAB_KEY, tab) } catch { /* ignore */ } }, [tab])
+  useEffect(() => { if (!tabOverride && !minimal) try { sessionStorage.setItem(TAB_KEY, tab) } catch { /* ignore */ } }, [tab])
 
   // Only this profile's visible libraries count towards the anime tab.
   const visible = sections.filter((s) => !settings.hiddenLibraries.includes(s.key))
@@ -184,6 +188,11 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   const merged: (HomeRow & { subtitle?: string; recs?: boolean })[] = rows ? [...rows.slice(0, after), ...shownRecs.map((r) => ({ ...r, recs: true })), ...rows.slice(after)] : []
 
   if (error) return <div className="grid h-screen place-items-center px-8 text-center text-white/70">Couldn't load your library.<br />{error}</div>
+
+  if (minimal) return (
+    <MinimalHome server={server} sections={visible} anime={rowsAnime ?? anime} tab={activeTab} hero={hero} rows={rows ? merged : undefined} rotate={settings.heroRotate}
+      onPlay={onPlay} onOpen={onOpen} onType={onType} continueWide={settings.continueStyle === 'episode'} />
+  )
 
   return (
     <div className="relative pb-24">

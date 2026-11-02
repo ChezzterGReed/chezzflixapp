@@ -133,3 +133,12 @@ export function setNativeVideoActive(on: boolean) {
   if (on) document.documentElement.dataset.nativeVideo = '1'
   else delete document.documentElement.dataset.nativeVideo
 }
+
+/** Closes the app (Android: all of its screens; desktop: the window). */
+export async function exitApp(): Promise<void> {
+  try {
+    if (isAndroid) { await droid('exitApp'); return }
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().close()
+  } catch { window.close() }
+}

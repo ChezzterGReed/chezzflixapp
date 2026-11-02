@@ -10,7 +10,7 @@ import { useBack } from './lib/back'
 import { matchList, missingFromList, seasonalList } from './lib/seasonal'
 import { justMoved, moveCount, settleMs } from './lib/input'
 import { ensureFocus, rescueSoon } from './lib/focusRescue'
-import { isAndroid } from './lib/native'
+import { exitApp, isAndroid } from './lib/native'
 import { inTauri, startPlayback } from './lib/player'
 import { brandName, SettingsProvider, useSettings } from './lib/settings'
 import { Login } from './screens/Login'
@@ -38,6 +38,10 @@ import { BrowseIndex } from './screens/BrowseIndex'
 import { ListView } from './screens/ListView'
 import { Detail } from './screens/Detail'
 import { Sidebar, type View } from './components/Sidebar'
+import { ExitConfirm } from './components/ExitConfirm'
+import { MinimalProfile, TopBar, tabOf } from './components/TopBar'
+import { Libraries } from './screens/Libraries'
+import { useMinimal } from './lib/layout'
 import { ProfileMenu } from './components/ProfileMenu'
 const SettingsModal = lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })))
 const Player = lazy(() => import('./components/Player').then((m) => ({ default: m.Player })))
@@ -77,6 +81,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   onSwitch: (p: PlexProfile, pin?: string) => Promise<void>; onSignOut: () => void
 }) {
   const { settings, update } = useSettings()
+  const minimal = useMinimal()
+  const [exitAsk, setExitAsk] = useState(false)
   const [menu, setMenu] = useState<{ item: PlexMedia; fromContinue?: boolean; fromRecs?: boolean; onSelect?: () => void }>()
   const [view, setView] = useState<View>({ type: 'home' })
   const [epFocus, setEpFocus] = useState<{ show: string; season?: string; ep: string }>()   // open a show's page and land on this episode
@@ -119,13 +125,21 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
   useBack(() => {
     if (history.length > 0) return back()
+    if (minimal) {
+      // Nothing further back: first the cursor goes up to the tabs; from the tabs, Home; from Home's tabs, a question about closing the app.
+      const k = getCurrentFocusKey() ?? ''
+      const here = tabOf(view)
+      if (!(k === 'TOPBAR' || k.startsWith('mtab-'))) { setFocus(here && doesFocusableExist(`mtab-${here}`) ? `mtab-${here}` : 'TOPBAR'); return }
+      if (view.type !== 'home' || view.tab) { navigate({ type: 'home' }); setTimeout(() => setFocus('mtab-home'), 200); return }
+      setExitAsk(true); return
+    }
     if (isAndroid) toggleRail()   // nothing to go back to: the remote's Back opens / closes the side menu (Home is in the menu)
   })
   // Left with nothing further left to select always opens the side menu.
   const railKeyRef = useRef(railKey()); railKeyRef.current = railKey()
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowLeft' || e.repeat || justMoved() || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (minimal || e.key !== 'ArrowLeft' || e.repeat || justMoved() || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const before = getCurrentFocusKey(), m0 = moveCount()
       if (!before || before === 'SN:ROOT' || before.startsWith('nav-')) return
       setTimeout(() => {
@@ -136,7 +150,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [])
+  }, [minimal])
   // The focused button can vanish when a screen changes or reloads; put focus back so the remote never goes dead.
   useEffect(() => { rescueSoon() }, [view])
   useEffect(() => {
@@ -284,18 +298,26 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs, onSelect: opts?.onSelect })}>
       <SeasonalAmbient />
       <Screensaver server={server} sections={sections} enabled={settings.screensaver && !playing} minutes={settings.screensaverMins} />
-      <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
-        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} streams={streams} onScan={scanLibrary} />
+      {minimal
+        ? <>
+            {view.type !== 'guide' && <TopBar view={view} tvGuide={settings.tvGuide} trending={!!settings.tmdbKey} onGo={navigate} onSettings={() => setLayer('settings')} />}
+            {view.type === 'home' && <MinimalProfile name={me.name} thumb={me.thumb} onOpen={() => setLayer('profile')} />}
+          </>
+        : <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
+        brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} streams={streams} onScan={scanLibrary} />}
       <FocusContext.Provider value={mainKey}>
-        <main ref={mainRef} key={view.type + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className="fade-in min-h-screen md:pl-[var(--rail)]"
-          style={view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
-          {view.type === 'home' && <Home server={server} sections={allSections} token={token} profileName={me.name} refreshKey={refreshKey} watchKey={watchKey} returnKey={returnKey} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
+        <main ref={mainRef} key={view.type + (view.type === 'home' ? view.tab ?? '' : '') + (view.type === 'library' ? view.section.key : view.type === 'browse' ? view.kind + view.tab : view.type === 'list' ? view.title : '')} className={`fade-in min-h-screen ${minimal ? '' : 'md:pl-[var(--rail)]'}`}
+          style={minimal ? (['search', 'browse', 'list', 'watchlist', 'dashboard', 'library'].includes(view.type) ? { paddingTop: 96 } : undefined) : view.type === 'home' ? { paddingLeft: 0, ['--gutter' as string]: 'calc(var(--rail) + 44px)' } : undefined}>
+          {view.type === 'home' && <Home server={server} sections={allSections} token={token} profileName={me.name} refreshKey={refreshKey} watchKey={watchKey} returnKey={returnKey} tabOverride={view.tab} onType={(t) => push({ type: 'home', tab: t })} onPlay={play} onOpen={open} onBrowse={(kind, tab) => push({ type: 'browse', kind, tab })} onOpenEpisode={(m) => { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) }} onSeasonal={(id) => { const l = seasonalList(id); if (l) push({ type: 'list', title: l.title, subtitle: l.subtitle, source: { kind: 'seasonal', id } }) }} onOpenSettings={() => setLayer('settings')} />}
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'list' && listLoader && <ListView server={server} token={token} title={view.title} subtitle={view.subtitle} load={listLoader} missing={missingLoader} onOpen={open} onBack={back} />}
           {view.type === 'library' && <Library server={server} token={token} section={view.section} onOpen={open} onShuffle={shuffle}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
+            onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
+          {view.type === 'libraries' && <Libraries server={server} token={token} all={allSections} onOpen={open} onShuffle={shuffle}
+            onBrowse={(sec, kind) => push({ type: 'browse', kind, tab: sec.type === 'movie' ? 'movie' : 'show', section: sec })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
           {view.type === 'guide' && settings.tvGuide && <TVGuide server={server} sections={sections} scope={me.key} onLeave={() => navigate({ type: 'home' })} onOpenInfo={async (slot) => { if (slot.show) { setEpFocus({ show: slot.show, ep: slot.key }); setDetails((d) => (d[d.length - 1] === slot.show ? d : [...d, slot.show!])) } else { try { const m = await getMetadata(server, slot.key); if (m.type === 'episode') { const show = m.grandparentRatingKey ?? m.ratingKey; setEpFocus({ show, season: m.parentRatingKey, ep: m.ratingKey }); setDetails((d) => (d[d.length - 1] === show ? d : [...d, show])) } else open(m) } catch { setDetails((d) => (d[d.length - 1] === slot.key ? d : [...d, slot.key])) } } }} />}
@@ -323,6 +345,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
         onPlay={() => { void startNow(nudge.target) }} onDone={() => setNudge(undefined)} />}
       {playing && <Player key={`${playing.ratingKey}:${playing.versionIndex ?? 0}`} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} onSwitch={setPlaying} />}
 
+      {exitAsk && <ExitConfirm onStay={() => setExitAsk(false)} onExit={() => { setExitAsk(false); void exitApp() }} />}
       {toast && <div className="pop fixed bottom-8 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black shadow-2xl">{toast}</div>}
     </ItemMenuContext.Provider>
   )
