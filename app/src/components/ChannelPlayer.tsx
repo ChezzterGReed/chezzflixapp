@@ -6,9 +6,9 @@ import { StillWatching } from './StillWatching'
 import { Layer } from './Layer'
 import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
-import { DEMO_URI, directPlayUrl, getMetadata, type PlexMedia, type PlexServer } from '../lib/plex'
+import { DEMO_URI, directPlayUrl, getMetadataFresh, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
-import { applySubStyle, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
+import { applySubStyle, keepAwake, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
 import { hexA } from '../lib/seasonal'
 import { setNowPlaying, setPlayback, startNowPlaying } from '../lib/nowPlaying'
@@ -46,6 +46,20 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const hls = useRef<{ destroy: () => void } | null>(null)
   const modeRef = useRef(mode); modeRef.current = mode
   const settingsRef = useRef(settings); settingsRef.current = settings
+
+  // A stream that drops (the server closed the connection, the network blinked, a transcode was reaped) is rejoined quietly at the live position
+  // instead of showing an error: a few tries with growing pauses, and the count starts over once it has played steadily again.
+  const tuneRef = useRef<(i: number) => void>(() => {})
+  const fails = useRef(0)
+  const recovering = useRef(0)
+  const recover = useCallback((why: string) => {
+    if (recovering.current) return   // (an error usually arrives as two events)
+    if (fails.current >= 6) { setStatus('error'); return }
+    const wait = [600, 1500, 3000, 6000, 10000, 15000][fails.current++]
+    console.warn('[tv guide] stream lost, rejoining', why, fails.current)
+    setStatus('tuning')
+    recovering.current = window.setTimeout(() => { recovering.current = 0; tuneRef.current(idxRef.current) }, wait)
+  }, [])
 
   // Audio and subtitle choices: this channel's own, else the guide's defaults.
   const applyTracks = useCallback(async (tries = 0): Promise<void> => {
@@ -93,15 +107,17 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     const ch = channels[i]
     setStatus('tuning'); flash()
     const now = Date.now()
-    const s = slotAt(slotsRef.current[ch.id], now)
+    const list = slotsRef.current[ch.id]
+    // Whatever is on now; if the schedule has a gap (it was being rebuilt, or ran out), the next program, else the last one, rather than an error.
+    const s = slotAt(list, now) ?? list?.find((x) => x.start > now) ?? list?.[list.length - 1]
     setSlot(s)
-    if (!s) { setStatus('error'); return }
+    if (!s) { recover('no schedule'); return }
     try {
-      const media: PlexMedia = await getMetadata(server, s.key)
+      const media: PlexMedia = await getMetadataFresh(server, s.key)
       if (my !== seq.current) return
       setMedia(media)
       const dur = (media.duration ?? s.end - s.start) / 1000
-      const offset = Math.max(0, Math.min((Date.now() - s.start) / 1000, Math.max(0, dur - 8)))
+      const offset = Math.max(0, Math.min(Math.max(0, Date.now() - s.start) / 1000, Math.max(0, dur - 8)))
       advance.current = window.setTimeout(() => { if (my === seq.current) tune(idxRef.current) }, Math.max(1000, s.end - Date.now()))
       if (modeRef.current === 'native') {
         const url = directPlayUrl(server, media)
@@ -117,13 +133,20 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
         if (plan.hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
           const Hls = (await import('hls.js')).default
           if (!Hls.isSupported()) throw new Error('unsupported')
+          let netTries = 0, mediaTries = 0
           const h = new Hls({ startPosition: offset, maxBufferLength: 20 }); hls.current = h
-          h.on(Hls.Events.ERROR, (_e, d) => { if (d.fatal && my === seq.current) setStatus('error') })
+          h.on(Hls.Events.ERROR, (_e, d) => {
+            if (!d.fatal || my !== seq.current) return
+            if (d.type === Hls.ErrorTypes.NETWORK_ERROR && netTries++ < 2) h.startLoad()
+            else if (d.type === Hls.ErrorTypes.MEDIA_ERROR && mediaTries++ < 2) h.recoverMediaError()
+            else recover('hls')
+          })
           h.loadSource(plan.url); h.attachMedia(v)
         } else v.src = plan.url
       }
-    } catch (e) { console.warn('[tv guide] tune failed', e); if (my === seq.current) setStatus('error') }
-  }, [channels, server, flash])
+    } catch (e) { console.warn('[tv guide] tune failed', e); if (my === seq.current) recover('tune') }
+  }, [channels, server, flash, recover])
+  tuneRef.current = tune
 
   // A short fade-up on each tune, so the first moments of a louder program don't jolt, while the level evens out.
   const fade = useRef<number>(0)
@@ -168,7 +191,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     let off: (() => void) | undefined, dead = false
     onMpv((p) => { if (p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
       if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() }
-      if ((e.event === 'end' && e.reason === 4) || e.event === 'error') setStatus('error')
+      if ((e.event === 'end' && e.reason === 4) || e.event === 'error') recover('player')
     }).then((u) => { if (dead) u(); else off = u })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
     return () => {
@@ -179,12 +202,24 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       document.documentElement.classList.add('ui-fade')
       setTimeout(() => document.documentElement.classList.remove('ui-fade'), 900)
     }
-  }, [mode, tune, flash, applyTracks])
-  useEffect(() => () => { clearTimeout(advance.current); clearTimeout(bannerTimer.current); hls.current?.destroy(); seq.current++ }, [])
+  }, [mode, tune, flash, applyTracks, recover])
+  // A picture that has silently stopped moving (the connection died without an error) is treated the same way.
+  useEffect(() => {
+    if (mode !== 'native' || status !== 'playing') return
+    let last = '', still = 0, steady = 0
+    const t = setInterval(async () => {
+      const now = await mpvGet('time-pos').catch(() => null)
+      if (now !== null && now !== last) { last = now; still = 0; if (++steady >= 4) fails.current = 0 }
+      else if (now !== null && ++still >= 6) { still = 0; steady = 0; recover('stalled') }
+    }, 5000)
+    return () => clearInterval(t)
+  }, [mode, status, recover])
+  useEffect(() => () => { clearTimeout(recovering.current); clearTimeout(advance.current); clearTimeout(bannerTimer.current); hls.current?.destroy(); seq.current++ }, [])
 
   // Tune whenever the channel changes (after a short settle), once the engine is chosen.
   useEffect(() => {
     if (mode === 'pending') return
+    clearTimeout(recovering.current); recovering.current = 0; fails.current = 0   // a channel change starts clean
     setStatus('tuning'); flash()
     const t = setTimeout(() => tune(idx), idx === start && seq.current === 0 ? 0 : TUNE_DELAY)
     return () => clearTimeout(t)
@@ -212,7 +247,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     <Layer player onClose={() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (ctlRef.current) { setCtl(false); setBanner(false) } else close() }} scrim="bg-transparent">
       <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
         {askingStill && !leaving && <StillWatching onStay={stillHere} onTimeout={() => close(true)} />}
-        {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => setStatus('error')} />}
+        {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => recover('video')} />}
         {/* Receives the remote: Up / Down (or Left / Right, per the Guide setting) flip channels, OK shows the banner */}
         <Focusable focusKey="channel-surface" title="Channel"
           onEnter={() => { if (pillRef.current >= 0 && pillIdsRef.current[pillRef.current]) { pillAct(pillIdsRef.current[pillRef.current]); return } if (level.note?.kind === 'offer') { level.acceptOffer(); return } if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}   // OK shows the info; OK again, with it showing, opens audio & subtitles
