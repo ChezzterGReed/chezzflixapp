@@ -9,3 +9,6 @@ export function useMinimal(): boolean {
   const { settings } = useSettings()
   return isTvDevice && settings.layout === 'minimal'
 }
+
+/** Where Down from a top tab lands, set by the screen underneath (it knows where the cursor was last). */
+export const tabDown: { fn: (() => string | undefined) | null } = { fn: null }

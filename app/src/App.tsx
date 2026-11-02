@@ -130,6 +130,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
   useBack(() => {
     if (history.length > 0) return back()
+    if (view.type === 'guide') { navigate({ type: 'home' }); return }   // the guide has no tabs or menu to step through: Back is Home
     if (minimal) {
       // Nothing further back: first the cursor goes up to the tabs; from the tabs, Home; from Home's tabs, a question about closing the app.
       const k = getCurrentFocusKey() ?? ''

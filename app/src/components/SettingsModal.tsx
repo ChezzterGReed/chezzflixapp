@@ -94,12 +94,12 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
           <p className="px-4 pb-3 text-sm text-white/55">{settings.layout === 'minimal' ? 'Made for TVs: the artwork fills the screen, one row of titles along the bottom, and tabs across the top. Move onto a title to see its details.' : 'The full layout: a side menu, a banner, and rows of titles.'}</p>
           {settings.layout === 'minimal' && (
             <>
-              <Toggle label="Show descriptions" hint="A short summary under the title as you move over things" on={settings.minimalInfo} onChange={(v) => update({ minimalInfo: v })} />
               <Toggle label="Movies, TV Shows and Anime rows" hint="A short row of each at the end of Home. Select the row's name to open that whole section" on={settings.minimalTypeRows} onChange={(v) => update({ minimalTypeRows: v })} />
             </>
           )}
         </>
       )}
+      <Toggle label="Show descriptions" hint="A short summary under the title on the banner as you move over things" on={settings.showInfo} onChange={(v) => update({ showInfo: v })} />
       <Heading>Info screen</Heading>
       <div className="flex gap-2 px-4 py-2">
         <Pill active={settings.infoStyle === 'full'} onEnter={() => update({ infoStyle: 'full' })}>Full</Pill>

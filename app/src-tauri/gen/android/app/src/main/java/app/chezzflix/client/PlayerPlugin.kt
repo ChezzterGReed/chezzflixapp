@@ -248,7 +248,9 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       var done = false
       var frame = false
       var seeking = false
-      var synced = false
+      var tries = 0
+      var seekAt = 0L
+      var lag = 500L   // how long a seek takes to land; learned from the first one
       lateinit var timeout: Runnable
       val abort = { why: String ->
         if (!done) { done = true; ui.removeCallbacks(timeout); b.release(); parent.removeView(bView); invoke.reject(why) }
@@ -276,18 +278,15 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
         if (done) return
         if (token != swapToken || player !== old) { abort("cancelled"); return }
         if (!frame || b.playbackState != Player.STATE_READY) return
-        if (!synced) {
-          synced = true
-          // Same file, same point in the program: line the new player up with the one on screen (a little ahead, for the time the jump takes).
-          val drift = old.currentPosition - b.currentPosition
-          if (kotlin.math.abs(drift) > 400) { seeking = true; b.seekTo(old.currentPosition + 500); return }
-        }
         if (seeking) return
+        // Same file, same point in the program: line the new player up with the one on screen (a little ahead, for the time the jump takes), and check again after each jump.
+        val drift = old.currentPosition - b.currentPosition
+        if (kotlin.math.abs(drift) > 120 && tries < 4) { tries++; seeking = true; seekAt = android.os.SystemClock.uptimeMillis(); b.seekTo(old.currentPosition + lag); return }
         commit()
       }
       b.addListener(object : Player.Listener {
         override fun onRenderedFirstFrame() { frame = true; check() }
-        override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_READY) { if (seeking && synced) seeking = false; check() } }
+        override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_READY) { if (seeking) { seeking = false; lag = (android.os.SystemClock.uptimeMillis() - seekAt).coerceIn(150L, 1500L) }; check() } }
         override fun onPlayerError(error: PlaybackException) { abort("${error.errorCodeName}: ${error.message ?: "playback failed"}") }
       })
       b.prepare()

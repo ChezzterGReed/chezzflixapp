@@ -43,7 +43,9 @@ export function SortBar({ sort, onSort, years, year, onYear, tv }: Props) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        {(Object.keys(SORTS) as SortKey[]).filter((k) => k !== 'newEpisodes' || tv).map((k) => <Pill key={k} active={sort === k} onEnter={() => onSort(k)}>{SORTS[k].label}</Pill>)}
+        {/* One pill for the alphabet: A – Z, then Z – A, then off (back to newest first) */}
+        <Pill active={sort === 'titleAsc' || sort === 'titleDesc'} onEnter={() => onSort(sort === 'titleAsc' ? 'titleDesc' : sort === 'titleDesc' ? 'added' : 'titleAsc')} title="Sort by title">{sort === 'titleDesc' ? SORTS.titleDesc.label : SORTS.titleAsc.label}</Pill>
+        {(Object.keys(SORTS) as SortKey[]).filter((k) => k !== 'titleAsc' && k !== 'titleDesc' && (k !== 'newEpisodes' || tv)).map((k) => <Pill key={k} active={sort === k} onEnter={() => onSort(k)}>{SORTS[k].label}</Pill>)}
         <span className="mx-1 h-5 w-px bg-white/15" />
         <Pill active={!!year} onEnter={() => setPicking(true)} title="Filter by release year"><CalendarDays size={15} />{year ?? 'Year'}</Pill>
         {year && <Pill onEnter={() => onYear(undefined)} title="Clear year"><X size={14} />Clear</Pill>}

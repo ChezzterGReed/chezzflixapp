@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Film, Library as LibraryIcon, Tv } from 'lucide-react'
-import { FocusContext, getCurrentFocusKey, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { FocusContext, doesFocusableExist, getCurrentFocusKey, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from '../components/Focusable'
 import { Layer } from '../components/Layer'
 import { Library } from './Library'
@@ -58,6 +58,7 @@ export function Libraries({ server, token, all, onOpen, onShuffle, onBrowse, onC
   const { ref, focusKey, hasFocusedChild } = useFocusable({ focusKey: 'LIBNAV', saveLastFocusedChild: true, autoRestoreFocus: false, trackChildren: true })
   const open = hasFocusedChild
   const content = useRef<HTMLDivElement>(null)
+  const keyOf = (s: PlexSection) => (s.key === sel?.key ? 'lib-current' : `lib-${s.key}`)
   const toggle = (s: PlexSection) => {
     const off = settings.hiddenLibraries.includes(s.key)
     update({ hiddenLibraries: off ? settings.hiddenLibraries.filter((k) => k !== s.key) : [...settings.hiddenLibraries, s.key] })
@@ -67,7 +68,7 @@ export function Libraries({ server, token, all, onOpen, onShuffle, onBrowse, onC
   useEffect(() => {
     const centre = (el: Element) => { const r = el.getBoundingClientRect(); return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, r } }
     const h = (e: KeyboardEvent) => {
-      if ((e.key !== 'ArrowUp' && e.key !== 'ArrowRight') || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || document.querySelector('[data-layer]')) return
+      if ((e.key !== 'ArrowUp' && e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || document.querySelector('[data-layer]')) return
       const key = getCurrentFocusKey()
       if (!key) return
       const cur = document.querySelector(`[data-fk="${key}"]`)
@@ -83,6 +84,10 @@ export function Libraries({ server, token, all, onOpen, onShuffle, onBrowse, onC
         const pool = inAlpha ? letters.filter((n) => n !== cur) : content_
         if (pool.some((n) => centre(n).y < me.y - 12)) return   // something is still above
         e.preventDefault(); e.stopPropagation(); setFocus('mtab-libraries')
+      } else if (e.key === 'ArrowLeft') {
+        if (inAlpha || content_.some((n) => { const c = centre(n); return c.x < me.x - 12 && Math.abs(c.y - me.y) < 40 })) return   // something is still to the left
+        const side = doesFocusableExist('lib-current') ? 'lib-current' : 'lib-viewall'
+        e.preventDefault(); e.stopPropagation(); setFocus(side)
       } else if (inContent && letters.length) {
         if (content_.some((n) => { const c = centre(n); return c.x > me.x + 12 && Math.abs(c.y - me.y) < 40 })) return   // something is still to the right
         const near = letters.reduce((a, b) => (Math.abs(centre(b).y - me.y) < Math.abs(centre(a).y - me.y) ? b : a))
@@ -100,14 +105,18 @@ export function Libraries({ server, token, all, onOpen, onShuffle, onBrowse, onC
         <aside ref={ref} data-open={open} className={`fixed bottom-0 left-0 top-0 z-[30] overflow-y-auto overscroll-contain px-3 pb-8 pt-28 transition-[width] duration-300 ease-out-expo m-hide-scroll ${open ? 'w-[19rem] bg-linear-to-r from-black/95 via-black/90 to-black/60' : 'w-[5rem]'}`}>
           <div className="space-y-1.5">
             {enabled.map((s, i) => (
-              <Focusable key={s.key} focusKey={s.key === sel?.key ? 'lib-current' : `lib-${s.key}`} onEnter={() => setSel(s.key)} title={s.title} onArrow={(d) => { if (d === 'up' && i === 0) { setFocus('mtab-libraries'); return false } if (d === 'left') return false }}>
+              <Focusable key={s.key} focusKey={keyOf(s)} onEnter={() => setSel(s.key)} title={s.title} onArrow={(d) => {
+                if (d === 'up') { setFocus(i === 0 ? 'mtab-libraries' : keyOf(enabled[i - 1])); return false }
+                if (d === 'down') { setFocus(i === enabled.length - 1 ? 'lib-viewall' : keyOf(enabled[i + 1])); return false }
+                if (d === 'left') return false
+              }}>
                 <div className={`flex h-12 items-center overflow-hidden rounded-xl transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${s.key === sel?.key ? 'bg-white/14 text-white' : 'text-white/65'}`}>
                   <span className="grid w-[3.5rem] shrink-0 place-items-center">{typeIcon(s)}</span>
                   <span className={`min-w-0 flex-1 truncate pr-4 text-[1rem] font-semibold transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>{s.title}</span>
                 </div>
               </Focusable>
             ))}
-            <Focusable focusKey="lib-viewall" onEnter={() => setPicker(true)} title="View all libraries" onArrow={(d) => { if (d === 'up' && enabled.length === 0) { setFocus('mtab-libraries'); return false } if (d === 'left') return false }}>
+            <Focusable focusKey="lib-viewall" onEnter={() => setPicker(true)} title="View all libraries" onArrow={(d) => { if (d === 'up') { setFocus(enabled.length ? keyOf(enabled[enabled.length - 1]) : 'mtab-libraries'); return false } if (d === 'down' || d === 'left') return false }}>
               <div className="flex h-12 items-center overflow-hidden rounded-xl text-white/65 transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
                 <span className="grid w-[3.5rem] shrink-0 place-items-center"><LibraryIcon size={22} /></span>
                 <span className={`min-w-0 flex-1 truncate pr-4 text-[1rem] font-semibold transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}>View all</span>

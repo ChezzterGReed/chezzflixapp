@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
+import { getCurrentFocusKey } from '@noriginmedia/norigin-spatial-navigation'
+import { tabDown } from '../lib/layout'
 import { Search, Settings as Cog } from 'lucide-react'
 import { FocusContext, doesFocusableExist, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
@@ -18,9 +20,16 @@ export function tabOf(view: View): TopTab | undefined {
   return undefined
 }
 
+/** Down from a tab: into the screen's content (the first title in a library, or wherever the screen says the cursor was). */
+function goDown(id: TopTab) {
+  const first = id === 'libraries' ? document.querySelector<HTMLElement>('[data-grid-cell] [data-fk]')?.getAttribute('data-fk') ?? undefined : undefined
+  const k = first ?? tabDown.fn?.() ?? (id === 'libraries' && doesFocusableExist('lib-current') ? 'lib-current' : undefined)
+  setFocus(k && doesFocusableExist(k) ? k : 'MAIN')
+}
+
 function Tab({ id, active, icon, label, onEnter, round }: { id: TopTab; active: boolean; icon?: ReactNode; label?: string; onEnter: () => void; round?: boolean }) {
   return (
-    <Focusable focusKey={`mtab-${id}`} onEnter={onEnter} title={label ?? id} onArrow={(d) => { if (d === 'down') { setFocus(id === 'libraries' && doesFocusableExist('lib-current') ? 'lib-current' : 'MAIN'); return false } if (d === 'up') return false }}>
+    <Focusable focusKey={`mtab-${id}`} onEnter={onEnter} title={label ?? id} onArrow={(d) => { if (d === 'down') { goDown(id); return false } if (d === 'up') return false }}>
       <div className={`flex h-12 items-center justify-center gap-2 rounded-full text-[1.02rem] font-semibold transition-colors duration-200 group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${round ? 'w-12' : 'px-6'} ${active ? 'bg-white/18 text-white' : 'text-white/65'}`}>
         {icon}{label}
       </div>
@@ -32,6 +41,27 @@ function Tab({ id, active, icon, label, onEnter, round }: { id: TopTab; active: 
 export function TopBar({ view, tvGuide, trending, watchlist, onGo, onSettings }: { view: View; tvGuide: boolean; trending: boolean; /** Something is on the Watchlist. */ watchlist: boolean; onGo: (v: View) => void; onSettings: () => void }) {
   const { ref, focusKey } = useFocusable({ focusKey: 'TOPBAR', saveLastFocusedChild: true, trackChildren: true })
   const cur = tabOf(view)
+  // On any screen: Up from the top-most thing on it reaches the tabs.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowUp' || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || document.querySelector('[data-layer], [data-player]')) return
+      const key = getCurrentFocusKey()
+      if (!key || key === 'SN:ROOT' || key === 'TOPBAR' || key.startsWith('mtab-')) return
+      const el = document.querySelector<HTMLElement>(`[data-fk="${key}"]`)
+      if (!el) return
+      const y = (n: Element) => { const r = n.getBoundingClientRect(); return (r.top + r.bottom) / 2 }
+      const me = y(el)
+      for (const n of document.querySelectorAll('[data-fk]')) {
+        if (n === el || n.closest('nav')) continue
+        const r = n.getBoundingClientRect()
+        if (r.width > 0 && r.height > 0 && y(n) < me - 12) return   // something is still above: the normal move handles it
+      }
+      const t = cur && doesFocusableExist(`mtab-${cur}`) ? `mtab-${cur}` : 'mtab-home'
+      if (doesFocusableExist(t)) { e.preventDefault(); e.stopPropagation(); setFocus(t) }
+    }
+    window.addEventListener('keydown', h, true)
+    return () => window.removeEventListener('keydown', h, true)
+  }, [cur])
   return (
     <FocusContext.Provider value={focusKey}>
       <nav ref={ref} className="pointer-events-none fixed inset-x-0 top-0 z-[45] flex justify-center pt-6">

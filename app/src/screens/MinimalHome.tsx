@@ -10,6 +10,7 @@ import { useSettings } from '../lib/settings'
 import { backdropPath, episodeLabel, formatRuntime, getSectionItems, imageUrl, logoPath, posterPath, progressOf, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import type { AnimeInfo, HomeRow, Tab } from '../lib/homeData'
 import { playLabel } from '../components/Hero'
+import { tabDown } from '../lib/layout'
 
 type MRowData = HomeRow & { recs?: boolean; typeTab?: Tab }
 
@@ -154,7 +155,15 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
   const [seen, setSeen] = useState<PlexMedia>()      // the title the cursor was last on
   const [active, setActive] = useState(0)
   const [toHero, setToHero] = useState(false)   // heading up to the banner: its buttons are put back on screen first
-  const inRows = !toHero && !!key && (key.startsWith('mcard-') || key.startsWith('mtitle-') || key === 'mprofile')
+  // Whether the view is down in the rows. The tabs don't change it: going up to them leaves the screen as it was.
+  const [rowsMode, setRowsMode] = useState(false)
+  const lastRow = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!key) return
+    if (key.startsWith('mcard-') || key.startsWith('mtitle-') || key === 'mprofile') { setRowsMode(true); if (key !== 'mprofile') lastRow.current = key }
+    else if (key.startsWith('hero-')) setRowsMode(false)
+  }, [key])
+  const inRows = !toHero && rowsMode
   const hasHero = !!hero?.length
   const heroItem = hasHero ? hero![hi % hero!.length] : undefined
   const shown = inRows ? seen ?? heroItem : heroItem ?? seen ?? all[0]?.items[0]
@@ -163,7 +172,15 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
 
   // Back at the top (banner, tabs): the first row is the one in view again.
   useEffect(() => { if (key && key.startsWith('hero-')) setToHero(false) }, [key])
-  useEffect(() => { if (key && (key.startsWith('hero-') || key.startsWith('mtab-') || key === 'TOPBAR')) setActive(0) }, [key])
+  useEffect(() => { if (key && key.startsWith('hero-')) setActive(0) }, [key])
+  // Down from a tab: back to where the cursor was (the banner's button, or the card it was on).
+  useEffect(() => {
+    tabDown.fn = () => {
+      if (rowsMode && lastRow.current && doesFocusableExist(lastRow.current)) return lastRow.current
+      return doesFocusableExist('hero-play') ? 'hero-play' : doesFocusableExist('mrow-0') ? 'mrow-0' : undefined
+    }
+    return () => { tabDown.fn = null }
+  }, [rowsMode, hero])
 
   // The recommended titles take turns while the cursor isn't down in the rows.
   useEffect(() => {
@@ -221,14 +238,16 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
       <div className="relative flex h-full flex-col justify-end">
         <div className="flex-1" />
         {m && (
-          <div key={m.ratingKey} className="m-fade mb-7 max-w-[min(820px,62vw)] px-[var(--mg)]">
+          <div className="mb-7 max-w-[min(820px,62vw)] px-[var(--mg)]">
+           <div key={m.ratingKey} className="m-fade">
             {heroMode && m.newSeason && <div className="mb-3 inline-flex rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-white">New Season</div>}
             {logo
               ? <img src={imageUrl(server, logo, 800, 300)} alt={title} className="mb-4 max-h-32 max-w-[26rem] object-contain object-left drop-shadow-2xl" />
               : <h1 className={`mb-3 text-balance font-extrabold leading-[1.02] tracking-[-0.03em] drop-shadow-2xl ${long ? 'text-[clamp(2rem,3.6vw,3.4rem)]' : 'text-[clamp(2.4rem,4.6vw,4.4rem)]'}`}>{title}</h1>}
             {isEp && <div className="mb-1.5 text-[1.15rem] font-semibold text-white/90">{m.title}</div>}
             <Meta m={m} />
-            {settings.minimalInfo && m.summary && <p className="clamp-2 mt-3 max-w-[36rem] text-[1.02rem] leading-relaxed text-white/75">{m.summary}</p>}
+            {settings.showInfo && m.summary && <p className="clamp-2 mt-3 max-w-[36rem] text-[1.02rem] leading-relaxed text-white/75">{m.summary}</p>}
+           </div>
             {heroMode && (
               <div className="mt-6 flex items-center gap-3">
                 <Focusable focusKey="hero-play" onEnter={() => onPlay(m)} title="Play" onArrow={(d) => { if (d === 'up') return toTop(); if (d === 'down') return toRows(); if (d === 'left') return false }}>
@@ -237,6 +256,17 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
                 <Focusable focusKey="hero-info" onEnter={() => onOpen(m)} title="More info" onArrow={(d) => { if (d === 'up') return toTop(); if (d === 'down') return toRows() }}>
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/18 px-7 text-[1.05rem] font-semibold transition-all duration-200 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Info size={20} />More info</div>
                 </Focusable>
+                {hero!.length > 1 && (
+                  <div className="ml-3 flex items-center">
+                    {hero!.map((it, n) => (
+                      <Focusable key={it.ratingKey} focusKey={`hero-dot-${n}`} onEnter={() => setHi(n)} onFocus={() => setHi(n)} title={`Show ${it.title}`} onArrow={(d) => { if (d === 'up') return toTop(); if (d === 'down') return toRows() }}>
+                        <div className="grid size-8 place-items-center" aria-current={n === hi % hero!.length}>
+                          <span className={`block rounded-full transition-all duration-300 group-data-[hl=true]/f:scale-150 group-data-[hl=true]/f:bg-white ${n === hi % hero!.length ? 'size-3 bg-accent shadow-[0_0_12px_var(--accent)]' : 'size-2 bg-white/45'}`} />
+                        </div>
+                      </Focusable>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

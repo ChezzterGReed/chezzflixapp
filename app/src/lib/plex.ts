@@ -29,7 +29,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.3',
+    'X-Plex-Version': '0.6.4',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -407,16 +407,21 @@ export async function getMetadata(server: PlexServer, ratingKey: string): Promis
   return c.Metadata[0]
 }
 
-/** The letters a library's titles start with (A-Z, and # for the rest), for the jump-to-letter strip. */
-export async function getFirstCharacters(server: PlexServer, sectionKey: string, year?: number, unwatched = false): Promise<string[]> {
+/** The letters a library's titles are filed under (by sort title: "The Accountant" is under A), with how many titles each holds. A-Z, and # for the rest. */
+export async function getFirstCharacters(server: PlexServer, sectionKey: string, year?: number, unwatched = false): Promise<{ l: string; n: number }[]> {
   const norm = (t: string) => { const c = t.trim().charAt(0).toUpperCase(); return c >= 'A' && c <= 'Z' ? c : '#' }
+  const fold = (pairs: [string, number][]) => {
+    const m = new Map<string, number>()
+    for (const [k, n] of pairs) m.set(norm(k), (m.get(norm(k)) ?? 0) + n)
+    return [...m].map(([l, n]) => ({ l, n })).sort((a, b) => (a.l === '#' ? -1 : b.l === '#' ? 1 : a.l.localeCompare(b.l)))
+  }
   try {
     if (server.uri === DEMO_URI) {
       const all = await getAllSectionItems(server, sectionKey, 'titleAsc', year, 5000, unwatched)
-      return [...new Set(all.map((m) => norm((m as { titleSort?: string }).titleSort || m.title)))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)))
+      return fold(all.map((m) => [(m as { titleSort?: string }).titleSort || m.title, 1]))
     }
-    const c = await get<{ Directory?: { key: string; title?: string }[] }>(server, `/library/sections/${sectionKey}/firstCharacter${year || unwatched ? `?${[year ? `year=${year}` : '', unwatched ? 'unwatched=1' : ''].filter(Boolean).join('&')}` : ''}`, year || unwatched ? 60_000 : 600_000)
-    return [...new Set((c.Directory ?? []).map((d) => norm(d.title || d.key)))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)))
+    const c = await get<{ Directory?: { key: string; title?: string; size?: number }[] }>(server, `/library/sections/${sectionKey}/firstCharacter${year || unwatched ? `?${[year ? `year=${year}` : '', unwatched ? 'unwatched=1' : ''].filter(Boolean).join('&')}` : ''}`, year || unwatched ? 60_000 : 600_000)
+    return fold((c.Directory ?? []).map((d) => [d.title || d.key, d.size ?? 0]))
   } catch { return [] }
 }
 

@@ -158,7 +158,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   useEffect(() => { if (!rows) return; const t = setTimeout(() => setBooted(true), 2500); return () => clearTimeout(t) }, [!!rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (activeTab === 'trending' && rows && !focusedOnce.current) { focusedOnce.current = true; setTimeout(() => setFocus('tab-trending'), 60) }
+    if (activeTab === 'trending' && rows && !focusedOnce.current) { focusedOnce.current = true; setTimeout(() => setFocus(minimal ? 'mtab-trending' : 'tab-trending'), 60) }
   }, [rows, activeTab])
 
   useEffect(() => {
@@ -189,15 +189,15 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
 
   if (error) return <div className="grid h-screen place-items-center px-8 text-center text-white/70">Couldn't load your library.<br />{error}</div>
 
-  if (minimal) return (
+  if (minimal && activeTab !== 'trending') return (
     <MinimalHome server={server} sections={visible} anime={rowsAnime ?? anime} tab={activeTab} hero={hero} rows={rows ? merged : undefined} rotate={settings.heroRotate}
       onPlay={onPlay} onOpen={onOpen} onType={onType} continueWide={settings.continueStyle === 'episode'} />
   )
 
   return (
-    <div className="relative pb-24">
-      <Clock className="pointer-events-none absolute right-[var(--gutter)] top-8 z-20 text-xl font-semibold text-white/85 drop-shadow" />
-      <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
+    <div className={`relative pb-24 ${minimal ? 'pt-20' : ''}`}>
+      {!minimal && <Clock className="pointer-events-none absolute right-[var(--gutter)] top-8 z-20 text-xl font-semibold text-white/85 drop-shadow" />}
+      {!minimal && <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
         <div className="flex gap-1 rounded-full bg-black/50 p-1">
           {TABS.filter((t) => (t.id !== 'anime' || showAnime) && (t.id !== 'foryou' || settings.recs) && (t.id !== 'trending' || !!settings.tmdbKey)).map((t) => (
             <Focusable key={t.id} focusKey={`tab-${t.id}`} onEnter={() => switchTab(t.id)} title={t.label} leftToRail={t.id === 'all'} onArrow={(d) => { if (d === 'down' && hero?.length && activeTab !== 'trending') { setFocus('hero-play'); return false } }}>
@@ -205,7 +205,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
             </Focusable>
           ))}
         </div>
-      </div>
+      </div>}
 
       {activeTab === 'trending'
         ? <TrendingBanner server={server} posters={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).flatMap((r) => r.items)} count={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).reduce((n, r) => n + r.items.length, 0)} loading={!rows} />

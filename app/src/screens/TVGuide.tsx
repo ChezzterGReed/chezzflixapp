@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, Copy, Info as InfoIcon, Languages, ListChecks, Play as PlayIcon, RefreshCw, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { Home, ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, Copy, Info as InfoIcon, Languages, ListChecks, Play as PlayIcon, RefreshCw, Loader2, Pencil, Plus, Radio, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { AddChannel, Btn, CheckRow, NameField, Pill } from '../components/AddChannel'
 import { ChannelEditor } from '../components/ChannelEditor'
@@ -110,7 +110,12 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
     if (!c) return false
     const anchor = Math.max(c.start, origin) + 1
     if (dir === 'right') { const n = slots[slots.indexOf(c) + 1]; if (n) { noteMove(); setSel({ row, t: n.start + 1 }) } return false }
-    if (dir === 'left') { const p = slots[slots.indexOf(c) - 1]; if (p) { noteMove(); setSel({ row, t: Math.max(p.start, origin) + 1 }); return false } noteMove(); setChan(true); return false }   // at the first one: Left selects the channel itself
+    if (dir === 'left') {
+      // The start of this block has scrolled out of view to the left: Left brings it back before moving on.
+      const el = document.getElementById(`cell-${row}-${c.start}`), tr = track.current
+      if (el && tr) { const d = el.getBoundingClientRect().left - (tr.getBoundingClientRect().left + CH_W + 20); if (d < -4) { tr.scrollBy({ left: d, behavior: 'smooth' }); return false } }
+      const p = slots[slots.indexOf(c) - 1]; if (p) { noteMove(); setSel({ row, t: Math.max(p.start, origin) + 1 }); return false } noteMove(); setChan(true); return false   // at the first one: Left selects the channel itself
+    }
     if (dir === 'up') { if (row === 0) { setFocus('guide-add'); return false } noteMove(); setSel({ row: row - 1, t: anchor }); return false }
     if (row < channels.length - 1) { noteMove(); setSel({ row: row + 1, t: anchor }) }
     return false
@@ -166,7 +171,10 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
     <div className="mb-3 flex shrink-0 items-center gap-2">
       <div className="flex items-center gap-2.5 whitespace-nowrap text-[1.6rem] font-extrabold tracking-[-0.03em]"><Radio size={26} className="text-accent" />TV Guide</div>
       <div className="flex-1" />
-      <Focusable focusKey="guide-add" onEnter={() => setAdding(true)} title="Add channel" leftToRail onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
+      <Focusable focusKey="guide-home" onEnter={onLeave} title="Home" leftToRail onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
+        <div className="grid size-11 place-items-center rounded-full bg-white/12 transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><Home size={19} /></div>
+      </Focusable>
+      <Focusable focusKey="guide-add" onEnter={() => setAdding(true)} title="Add channel" onArrow={(d) => { if (d === 'down' && guide.ready && channels.length) { setFocus('guide-grid'); return false } if (d === 'up') return false }}>
         <div className="flex h-11 items-center gap-2 rounded-full bg-white px-3.5 text-[0.86rem] whitespace-nowrap font-bold text-black transition-transform group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Plus size={18} />Add channel</div>
       </Focusable>
       {channels.length > 0 && (
@@ -272,7 +280,7 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
                               className={`absolute inset-y-[3px] rounded-lg py-1.5 ring-1 transition-colors ${on ? 'bg-white text-black ring-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]' : ch.accent ? '' : 'bg-white/[0.07] ring-white/10'}`}
                               style={{ left: left + 2, width: Math.max(8, right - left - 4), background: !on && ch.accent ? hexA(ch.accent, 0.16) : undefined, ...(!on && ch.accent ? { ['--tw-ring-color' as string]: hexA(ch.accent, 0.4) } : {}) }}>
                               {/* The text stays pinned to the left edge of the visible guide while the block scrolls past, until the block is gone */}
-                              <div className="sticky px-3" style={{ left: CH_W + 2, maxWidth: Math.max(8, right - left - 4) }}>
+                              <div className="sticky w-fit px-3" style={{ left: CH_W + 2, maxWidth: Math.min(Math.max(8, right - left - 4), 380) }}>
                                 <div className="flex items-center gap-1.5 truncate text-[0.98rem] font-bold">{s.start < origin && <span className="opacity-60">◂</span>}<span className="truncate">{s.title}</span></div>
                                 <div className={`truncate text-xs ${on ? 'text-black/60' : 'text-white/50'}`}>{s.sub}</div>
                               </div>

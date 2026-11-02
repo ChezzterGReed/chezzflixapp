@@ -51,23 +51,41 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
   const [items, setItems] = useState<PlexMedia[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  // The grid fills in a screenful at a time (a big library puts hundreds of posters on screen otherwise, which makes opening and scrolling it heavy).
+  const [shownN, setShownN] = useState(24)
+  useEffect(() => { setShownN(24) }, [section.key, sort, year, collapse, unwatched])
+  useEffect(() => {
+    if (shownN >= items.length) return
+    const t = setTimeout(() => setShownN((n) => n + 24), 90)
+    return () => clearTimeout(t)
+  }, [shownN, items.length])
   const sentinel = useRef<HTMLDivElement>(null)
   const page = useRef<HTMLDivElement>(null)
   useGridNav(page)
   // Jump-to-letter strip: whenever the list is in A-Z (or Z-A) order and long enough to need it, with any filter on (it then lists the letters that are left).
-  const [serverLetters, setServerLetters] = useState<string[]>([])
+  const [serverLetters, setServerLetters] = useState<{ l: string; n: number }[]>([])
   const [jumping, setJumping] = useState(false)
   const jumpTo = useRef<string | null>(null)
   useEffect(() => { if (collapse) return; let alive = true; getFirstCharacters(server, section.key, year, unwatched).then((l) => alive && setServerLetters(l)).catch(() => {}); return () => { alive = false } }, [server, section.key, year, unwatched, collapse])
   // Grouped collections: everything is already loaded, so the letters come straight from the tiles on screen.
-  const letters = useMemo(() => (collapse ? [...new Set(items.map((m) => alphaOf((m as { titleSort?: string }).titleSort || m.title)))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b))) : serverLetters), [collapse, items, serverLetters])
+  const letters = useMemo(() => (collapse ? [...new Set(items.map((m) => alphaOf((m as { titleSort?: string }).titleSort || m.title)))].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b))) : serverLetters.map((x) => x.l)), [collapse, items, serverLetters])
   const railOn = (sort === 'titleAsc' || sort === 'titleDesc') && total > 60
   const sortedLetters = sort === 'titleDesc' ? [...letters].reverse() : letters
   const focusLetter = (l: string) => {
-    const hit = items.find((m) => alphaOf((m as { titleSort?: string }).titleSort || m.title) === l)
-    const el = hit && document.querySelector<HTMLElement>(`[data-rk="${hit.ratingKey}"] [data-fk]`)
-    const fk = el?.getAttribute('data-fk')
-    if (fk) setFocus(fk)
+    // Where the letter starts is counted from how many titles the server files under each letter before it (its sort order, not the shown title); grouped collections only have what's on screen.
+    let at = -1
+    if (!collapse && serverLetters.length) {
+      const order = sort === 'titleDesc' ? [...serverLetters].reverse() : serverLetters
+      let n = 0
+      for (const x of order) { if (x.l === l) { at = n; break } n += x.n }
+    }
+    const hit = at >= 0 ? items[at] : items.find((m) => alphaOf((m as { titleSort?: string }).titleSort || m.title) === l)
+    setShownN(items.length)   // make sure the title is on screen to land on
+    setTimeout(() => {
+      const el = hit && document.querySelector<HTMLElement>(`[data-rk="${hit.ratingKey}"] [data-fk]`)
+      const fk = el?.getAttribute('data-fk')
+      if (fk) setFocus(fk)
+    }, 80)
   }
   const pickLetter = async (l: string) => {
     if (items.length < total) {   // not every title is loaded yet: load the lot (once), then jump
@@ -105,14 +123,14 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
     const el = sentinel.current
     if (!el || collapse) return
     const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && !loading && items.length < total) {
+      if (e.isIntersecting && !loading && items.length < total && shownN >= items.length) {
         setLoading(true)
         getSectionItems(server, section.key, sort, items.length, PAGE, year, unwatched).then((r) => { setItems((x) => [...x, ...r.items]); setLoading(false) })
       }
     }, { rootMargin: '600px' })
     io.observe(el)
     return () => io.disconnect()
-  }, [items.length, total, loading, server, section.key, sort, year, collapse, unwatched])
+  }, [items.length, total, loading, server, section.key, sort, year, collapse, unwatched, shownN])
 
   const noun = section.type === 'movie' ? 'movies' : 'shows'
   const count = useMemo(() => (collapse ? `${total.toLocaleString()} tiles · collections grouped` : `${total.toLocaleString()} ${unwatched ? `unwatched ${noun}` : noun}`) + (year ? ` from ${year}` : ''), [collapse, total, noun, year, unwatched])
@@ -131,7 +149,7 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
   return (
     <div ref={page} className="px-[var(--gutter)] pb-24 pt-14">
       {railOn && <AlphaRail letters={sortedLetters} onPick={pickLetter} busy={jumping} />}
-      <div className="fade-up mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-5">
+      <div className={`fade-up mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-5 ${railOn ? 'mr-12' : ''}`}>
         <div>
           <h1 className="text-[2.6rem] font-extrabold tracking-[-0.03em]">{section.title}</h1>
           <p className="mt-1 text-white/55">{loading && !items.length ? '\u00a0' : count}</p>
@@ -156,7 +174,7 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
         <div className="pt-1.5"><SortBar sort={sort} onSort={setSort} years={years} year={year} onYear={setYear} tv={section.type === 'show'} /></div>
       </div>
       <div className="grid gap-x-4 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(var(--card-w),1fr))]">
-        {items.map((m) => (
+        {items.slice(0, shownN).map((m) => (
           <div key={m.ratingKey} data-grid-cell data-rk={m.ratingKey} className="[--card-w:100%]">
             {(() => {
               const pickable = m.type === 'movie' || m.type === 'show'
