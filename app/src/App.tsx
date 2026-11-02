@@ -11,6 +11,8 @@ import { matchList, missingFromList, seasonalList } from './lib/seasonal'
 import { justMoved, moveCount, settleMs } from './lib/input'
 import { ensureFocus, rescueSoon } from './lib/focusRescue'
 import { exitApp, isAndroid } from './lib/native'
+import { getWatchlist } from './lib/watchlist'
+import { MinimalAccountMenu } from './components/MinimalAccountMenu'
 import { inTauri, startPlayback } from './lib/player'
 import { brandName, SettingsProvider, useSettings } from './lib/settings'
 import { Login } from './screens/Login'
@@ -83,16 +85,19 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const { settings, update } = useSettings()
   const minimal = useMinimal()
   const [exitAsk, setExitAsk] = useState(false)
+  const [hasWatch, setHasWatch] = useState(false)
   const [menu, setMenu] = useState<{ item: PlexMedia; fromContinue?: boolean; fromRecs?: boolean; onSelect?: () => void }>()
   const [view, setView] = useState<View>({ type: 'home' })
   const [epFocus, setEpFocus] = useState<{ show: string; season?: string; ep: string }>()   // open a show's page and land on this episode
   const [history, setHistory] = useState<View[]>([])
   const [details, setDetails] = useState<string[]>([])
-  const [layer, setLayer] = useState<'profile' | 'settings' | null>(null)
+  const [layer, setLayer] = useState<'profile' | 'account' | 'settings' | null>(null)
   const [playing, setPlaying] = useState<PlexMedia>()
   const streams = useStreamCount(server, !!server.owned)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [returnKey, setReturnKey] = useState(0)   // bumped when you come back to the app (or it sits open a while): only the Continue Watching row is read again
+  const [returnKey, setReturnKey] = useState(0)
+  // (the Minimal layout only gives the Watchlist a tab when there's something on it)
+  useEffect(() => { if (minimal) getWatchlist(token, view.type === 'watchlist').then((l) => setHasWatch(l.length > 0)).catch(() => {}) }, [minimal, token, returnKey, view.type]) // eslint-disable-line react-hooks/exhaustive-deps   // bumped when you come back to the app (or it sits open a while): only the Continue Watching row is read again
   useEffect(() => {
     if (token === 'demo') return
     let away = 0, lastRead = Date.now()
@@ -300,8 +305,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       <Screensaver server={server} sections={sections} enabled={settings.screensaver && !playing} minutes={settings.screensaverMins} />
       {minimal
         ? <>
-            {view.type !== 'guide' && <TopBar view={view} tvGuide={settings.tvGuide} trending={!!settings.tmdbKey} onGo={navigate} onSettings={() => setLayer('settings')} />}
-            {view.type === 'home' && <MinimalProfile name={me.name} thumb={me.thumb} onOpen={() => setLayer('profile')} />}
+            {view.type !== 'guide' && <TopBar view={view} tvGuide={settings.tvGuide} trending={!!settings.tmdbKey} watchlist={hasWatch || view.type === 'watchlist'} onGo={navigate} onSettings={() => setLayer('settings')} />}
+            {view.type === 'home' && <MinimalProfile name={me.name} thumb={me.thumb} onOpen={() => setLayer(server.owned ? 'account' : 'profile')} />}
           </>
         : <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
         brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} streams={streams} onScan={scanLibrary} />}
@@ -329,7 +334,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {details.length > 0 && <Detail key={`${details[details.length - 1]}.${refreshKey}.${watchKey}`} ratingKey={details[details.length - 1]} server={server} token={token}
         focusEpisode={epFocus && epFocus.show === details[details.length - 1] ? epFocus : undefined}
         onClose={() => { setDetails((d) => d.slice(0, -1)); setEpFocus(undefined) }} onPlay={play} onShuffle={shuffle} onEdited={edited} onOpen={open} onCollection={openCollection} onActor={openActor} />}
-      {layer === 'profile' && <ProfileMenu profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
+      {layer === 'account' && <MinimalAccountMenu streams={streams} onClose={() => setLayer(null)} onDashboard={() => { setLayer(null); navigate({ type: 'dashboard' }) }} onProfiles={() => setLayer('profile')} />}
+      {layer === 'profile' && <ProfileMenu right={minimal} profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
       {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}

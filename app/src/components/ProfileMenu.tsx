@@ -50,6 +50,8 @@ export function PinPad({ name, thumb, error, onSubmit, onCancel }: { name: strin
 }
 
 interface Props {
+  /** Opens from the bottom-right corner (the Minimal layout) instead of the bottom-left. */
+  right?: boolean
   profiles: PlexProfile[]
   currentName: string
   onClose: () => void
@@ -58,7 +60,7 @@ interface Props {
   onSignOut: () => void
 }
 
-export function ProfileMenu({ profiles, currentName, onClose, onSwitch, onSettings, onSignOut }: Props) {
+export function ProfileMenu({ right, profiles, currentName, onClose, onSwitch, onSettings, onSignOut }: Props) {
   const update = useUpdatePending()
   const [pinFor, setPinFor] = useState<PlexProfile>()
   const [error, setError] = useState<string>()
@@ -72,7 +74,7 @@ export function ProfileMenu({ profiles, currentName, onClose, onSwitch, onSettin
   if (pinFor) return <PinPad name={pinFor.title} thumb={pinFor.thumb} error={error} onCancel={() => setPinFor(undefined)} onSubmit={(pin) => choose(pinFor, pin)} />
 
   return (
-    <Layer onClose={onClose} scrim="bg-black/40" className="absolute bottom-6 left-[calc(var(--rail)+12px)] w-[300px]">
+    <Layer onClose={onClose} scrim="bg-black/40" className={`absolute w-[300px] ${right ? 'bottom-24 right-10' : 'bottom-6 left-[calc(var(--rail)+12px)]'}`}>
       <div className="pop rounded-2xl bg-[#17171c]/95 p-2 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10 backdrop-blur-2xl">
         <div className="px-3 pb-1 pt-2 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Who's watching?</div>
         {profiles.map((p) => (
