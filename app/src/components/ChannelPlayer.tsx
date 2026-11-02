@@ -53,19 +53,40 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const tuneRef = useRef<(i: number, quiet?: boolean) => void>(() => {})
   const fails = useRef(0)
   const recovering = useRef(0)
-  const recover = useCallback((why: string) => {
-    if (recovering.current) return   // (an error usually arrives as two events)
-    if (fails.current >= 6) { setStatus('error'); return }
-    const wait = [600, 1500, 3000, 6000, 10000, 15000][fails.current++]
-    console.warn('[tv guide] stream lost, rejoining', why, fails.current)
-    setStatus('tuning')
-    recovering.current = window.setTimeout(() => {
-      recovering.current = 0
-      // Start over exactly as if the channel had just been flipped to: whatever the engine is holding is let go first.
-      if (modeRef.current === 'native') mpvCmd('stop').catch(() => {}).finally(() => tuneRef.current(idxRef.current))
-      else tuneRef.current(idxRef.current)
-    }, wait)
+  const warming = useRef(false)   // another channel's picture is being fetched for a moment (silently); the engine's events are not for the screen
+  const [why, setWhy] = useState('')
+  const channelsRef = useRef(channels); channelsRef.current = channels
+  const serverRef = useRef(server); serverRef.current = server
+  // Starting over. From the third attempt it does what flipping to another channel and back does: the server is asked for a different channel's
+  // program for a moment (silently), and then for this one again.
+  const retune = useCallback(async (n: number) => {
+    if (modeRef.current === 'native') {
+      await mpvCmd('stop').catch(() => {})
+      const chs = channelsRef.current
+      if (n >= 2 && chs.length > 1) {
+        try {
+          warming.current = true
+          const o = (idxRef.current + 1) % chs.length
+          const s = slotAt(slotsRef.current[chs[o].id], Date.now())
+          if (s) {
+            const m = await getMetadataFresh(serverRef.current, s.key)
+            const url = directPlayUrl(serverRef.current, m)
+            if (url) { await mpvSet('volume', 0).catch(() => {}); await mpvCmd('loadfile', url, 'replace', '-1', 'start=20,pause=no'); await new Promise((r) => setTimeout(r, 1600)) }
+          }
+        } catch { /* it was only a nudge */ } finally { warming.current = false }
+      }
+    }
+    tuneRef.current(idxRef.current)
   }, [])
+  const recover = useCallback((reason: string) => {
+    if (recovering.current || warming.current) return   // (an error usually arrives as two events)
+    setWhy(reason)
+    const n = fails.current++
+    const wait = [600, 1500, 3000, 6000, 10000][Math.min(n, 4)] ?? 20000
+    console.warn('[tv guide] stream lost, rejoining', reason, n + 1)
+    setStatus(n >= 3 ? 'error' : 'tuning')   // after a few tries it says so, and carries on trying
+    recovering.current = window.setTimeout(() => { recovering.current = 0; void retune(n) }, wait)
+  }, [retune])
 
   // Audio and subtitle choices: this channel's own, else the guide's defaults.
   const applyTracks = useCallback(async (tries = 0): Promise<void> => {
@@ -200,9 +221,10 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   useEffect(() => {
     if (mode !== 'native') return
     let off: (() => void) | undefined, dead = false
-    onMpv((p) => { if (p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
+    onMpv((p) => { if (!warming.current && p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
+      if (warming.current) return
       if (e.event === 'loaded') { clearTimeout(loadWatch.current); if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); if (quietLoad.current) { quietLoad.current = false; applyTracks() } else { flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() } }
-      if ((e.event === 'end' && e.reason === 4) || e.event === 'error') recover('player')
+      if ((e.event === 'end' && e.reason === 4) || e.event === 'error') recover(`player ${e.message ?? ''}`.trim())
     }).then((u) => { if (dead) u(); else off = u })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
     return () => {
@@ -369,7 +391,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
           {status === 'error' && !leaving && (
             <div className="max-w-md text-center"><TriangleAlert className="mx-auto text-amber-300" size={44} />
               <div className="mt-4 text-2xl font-extrabold">{ch.seasonal ? '' : `${ch.number} · `}{ch.name}</div>
-              <p className="mt-2 text-white/70">This channel isn’t working. Try another channel (Left or Right).</p></div>
+              <p className="mt-2 text-white/70">This channel isn’t working right now. Still trying; or pick another channel.</p>{why && <p className="mt-2 text-xs text-white/35">{why}</p>}</div>
           )}
         </div>
       </div>
