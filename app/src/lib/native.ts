@@ -142,3 +142,12 @@ export async function exitApp(): Promise<void> {
     await getCurrentWindow().close()
   } catch { window.close() }
 }
+
+/**
+ * Android only: asks for the same program again with a second player that loads out of sight and then takes over (see PlayerPlugin.prepareSwap).
+ * Resolves true once it has swapped, false when it couldn't (the caller then reloads the usual way).
+ */
+export async function nativeSwap(url: string, startMs: number): Promise<boolean> {
+  if (!isAndroid) return false
+  try { await droid('prepareSwap', { url, startMs, pause: false, title: mediaInfo?.title, subtitle: mediaInfo?.subtitle, artwork: mediaInfo?.artwork }); return true } catch (e) { console.warn('[native swap]', e); return false }
+}

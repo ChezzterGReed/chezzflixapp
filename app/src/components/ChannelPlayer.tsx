@@ -8,7 +8,7 @@ import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
 import { DEMO_URI, directPlayUrl, getMetadataFresh, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
-import { applySubStyle, keepAwake, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
+import { applySubStyle, keepAwake, isAndroid, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, nativeSwap, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
 import { hexA } from '../lib/seasonal'
 import { setNowPlaying, setPlayback, startNowPlaying } from '../lib/nowPlaying'
@@ -236,6 +236,27 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       setTimeout(() => document.documentElement.classList.remove('ui-fade'), 900)
     }
   }, [mode, tune, flash, applyTracks, recover])
+  // The seamless way to ask for the program again (Android): a second player loads it out of sight and takes over. False = it couldn't; reload the usual way.
+  const swapping = useRef(false)
+  const swapStream = useCallback(async (): Promise<boolean> => {
+    if (!isAndroid || modeRef.current !== 'native' || swapping.current) return false
+    swapping.current = true
+    try {
+      const ch = channelsRef.current[idxRef.current]
+      const now = Date.now()
+      const s = ch && slotAt(slotsRef.current[ch.id], now)
+      if (!s) return false
+      const m = await getMetadataFresh(serverRef.current, s.key)
+      const url = directPlayUrl(serverRef.current, m)
+      if (!url) return false
+      const dur = (m.duration ?? s.end - s.start) / 1000
+      const offset = Math.max(0, Math.min(Math.max(0, now - s.start) / 1000, Math.max(0, dur - 8)))
+      const ok = await nativeSwap(url, Math.round(offset * 1000))
+      if (ok) applyTracks()
+      return ok
+    } catch { return false } finally { swapping.current = false }
+  }, [applyTracks])
+
   // Every 25 minutes, quietly ask the server for the same program again, at the live position, and swap to it: to the server it is a fresh request,
   // on screen a very brief blip. Skipped while a menu is open when the program is about to end anyway, and for programs of 30 minutes or less.
   useEffect(() => {
@@ -243,10 +264,10 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     const t = setInterval(() => {
       if (!slot || slot.end - slot.start <= 30 * 60_000) return   // shorter programs are swapped when the next one starts anyway
       if (tracksOpenRef.current || pillRef.current >= 0 || slot.end - Date.now() < 120_000) return
-      tuneRef.current(idxRef.current, true)
+      void swapStream().then((ok) => { if (!ok) tuneRef.current(idxRef.current, true) })
     }, REFRESH_MS)
     return () => clearInterval(t)
-  }, [status, slot?.key, idx]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, slot?.key, idx, swapStream]) // eslint-disable-line react-hooks/exhaustive-deps
   // A picture that has silently stopped moving (the connection died without an error) is treated the same way.
   useEffect(() => {
     if (mode !== 'native' || status !== 'playing') return
@@ -254,10 +275,10 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     const t = setInterval(async () => {
       const now = await mpvGet('time-pos').catch(() => null)
       if (now !== null && now !== last) { last = now; still = 0; if (++steady >= 4) fails.current = 0 }
-      else if (now !== null && ++still >= 6) { still = 0; steady = 0; recover('stalled') }
+      else if (now !== null && ++still >= 6) { still = 0; steady = 0; void swapStream().then((ok) => { if (!ok) recover('stalled') }) }
     }, 5000)
     return () => clearInterval(t)
-  }, [mode, status, recover])
+  }, [mode, status, recover, swapStream])
   useEffect(() => () => { clearTimeout(loadWatch.current); clearTimeout(recovering.current); clearTimeout(advance.current); clearTimeout(bannerTimer.current); hls.current?.destroy(); seq.current++ }, [])
 
   // Tune whenever the channel changes (after a short settle), once the engine is chosen.

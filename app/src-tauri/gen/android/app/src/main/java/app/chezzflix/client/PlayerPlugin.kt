@@ -61,7 +61,8 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   private var player: ExoPlayer? = null
   private var session: MediaSession? = null   // lets the system (media keys, Assistant, the now-playing card) see and control the player
   private var view: PlayerView? = null
-  private val gain = GainProcessor()
+  private var gain = GainProcessor()
+  private var swapToken = 0   // bumped when a hot swap starts or the video is stopped, so a swap that is still preparing knows it is no longer wanted
   private var subStyle: SubStyleArg? = null
   private var loadedFired = false
   private var userVolume = 1.0
@@ -73,30 +74,37 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
   override fun load(webView: WebView) { web = webView }
 
   // ---- setup ----
-  private fun ensure(): ExoPlayer {
-    player?.let { return it }
-    val gainChain = DefaultAudioSink.DefaultAudioProcessorChain(gain)
+  private fun build(g: GainProcessor): ExoPlayer {
+    val gainChain = DefaultAudioSink.DefaultAudioProcessorChain(g)
     val factory = object : DefaultRenderersFactory(activity) {
       override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
         DefaultAudioSink.Builder(context).setEnableFloatOutput(enableFloatOutput).setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).setAudioProcessorChain(gainChain).build()
     }.setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     val p = ExoPlayer.Builder(activity, factory).build()
-    p.addListener(listener)
     p.setSeekParameters(SeekParameters.CLOSEST_SYNC)   // jump to the nearest keyframe: avoids the picture freezing while the decoder catches up to an exact spot
+    return p
+  }
+
+  private fun makeView(p: ExoPlayer, visible: Boolean): PlayerView = PlayerView(activity).apply {
+    useController = false
+    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+    setBackgroundColor(Color.BLACK)
+    // Never take part in D-pad focus: a focused view gets the system's thin white focus outline, which showed as bars down the sides.
+    isFocusable = false
+    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+    if (android.os.Build.VERSION.SDK_INT >= 26) defaultFocusHighlightEnabled = false
+    visibility = if (visible) View.VISIBLE else View.GONE
+    player = p
+  }
+
+  private fun ensure(): ExoPlayer {
+    player?.let { return it }
+    val p = build(gain)
+    p.addListener(listener)
     player = p
     session = MediaSession.Builder(activity, p).build()
-    val v = PlayerView(activity).apply {
-      useController = false
-      resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-      setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-      setBackgroundColor(Color.BLACK)
-      // Never take part in D-pad focus: a focused view gets the system's thin white focus outline, which showed as bars down the sides.
-      isFocusable = false
-      descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-      if (android.os.Build.VERSION.SDK_INT >= 26) defaultFocusHighlightEnabled = false
-      visibility = View.GONE
-      player = p
-    }
+    val v = makeView(p, false)
     view = v
     // Behind the web view (which is transparent): the page shows through where it has no content.
     val parent = web?.parent as? ViewGroup
@@ -217,6 +225,75 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     else -> MimeTypes.APPLICATION_SUBRIP
   }
 
+  /**
+   * Hot swap: the same program is asked for again by a SECOND player that loads out of sight (underneath the picture now playing, muted).
+   * Once it has a picture and sits at the same point in the program, it takes over and the first player is let go: a blink at most, no loading screen.
+   * Resolves when the swap is done; rejects if the second player can't get going (a device with one video decoder, a dead connection), so the page can fall back.
+   */
+  @Command fun prepareSwap(invoke: Invoke) {
+    val a = invoke.parseArgs(LoadArgs::class.java)
+    activity.runOnUiThread {
+      val old = player
+      val oldView = view
+      val parent = oldView?.parent as? ViewGroup
+      if (old == null || oldView == null || parent == null) { invoke.reject("nothing is playing"); return@runOnUiThread }
+      val token = ++swapToken
+      val g = GainProcessor().also { it.linear = gain.linear }
+      val b = build(g)
+      val bView = makeView(b, true)
+      parent.addView(bView, parent.indexOfChild(oldView), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+      b.volume = 0f
+      b.setMediaItem(MediaItem.Builder().setUri(a.url).setMediaMetadata(MediaMetadata.Builder().setTitle(a.title).setArtist(a.subtitle).setArtworkUri(a.artwork?.let { android.net.Uri.parse(it) }).build()).build(), a.startMs)
+      b.playWhenReady = true
+      var done = false
+      var frame = false
+      var seeking = false
+      var synced = false
+      lateinit var timeout: Runnable
+      val abort = { why: String ->
+        if (!done) { done = true; ui.removeCallbacks(timeout); b.release(); parent.removeView(bView); invoke.reject(why) }
+      }
+      val commit = {
+        if (!done) {
+          done = true; ui.removeCallbacks(timeout)
+          old.volume = 0f
+          b.volume = if (muted) 0f else userVolume.coerceIn(0.0, 1.0).toFloat()
+          gain = g
+          b.addListener(listener)
+          loadedFired = true; nudges = 0
+          session?.player = b
+          player = b; view = bView
+          applySubStyle()
+          old.removeListener(listener)
+          parent.removeView(oldView)
+          old.release()
+          invoke.resolve()
+        }
+      }
+      timeout = Runnable { abort("the second player took too long") }
+      ui.postDelayed(timeout, 15000)
+      fun check() {
+        if (done) return
+        if (token != swapToken || player !== old) { abort("cancelled"); return }
+        if (!frame || b.playbackState != Player.STATE_READY) return
+        if (!synced) {
+          synced = true
+          // Same file, same point in the program: line the new player up with the one on screen (a little ahead, for the time the jump takes).
+          val drift = old.currentPosition - b.currentPosition
+          if (kotlin.math.abs(drift) > 400) { seeking = true; b.seekTo(old.currentPosition + 500); return }
+        }
+        if (seeking) return
+        commit()
+      }
+      b.addListener(object : Player.Listener {
+        override fun onRenderedFirstFrame() { frame = true; check() }
+        override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_READY) { if (seeking && synced) seeking = false; check() } }
+        override fun onPlayerError(error: PlaybackException) { abort("${error.errorCodeName}: ${error.message ?: "playback failed"}") }
+      })
+      b.prepare()
+    }
+  }
+
   @Command fun setPause(invoke: Invoke) { val a = invoke.parseArgs(BoolArg::class.java); onUi(invoke) { player?.playWhenReady = !a.value; if (!a.value) armWatchdog() } }
   @Command fun seek(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { player?.seekTo((a.value * 1000).toLong()) } }
   @Command fun setVolume(invoke: Invoke) { val a = invoke.parseArgs(NumArg::class.java); onUi(invoke) { userVolume = a.value; applyVolume(); emit("volume", userVolume * 100) } }
@@ -230,6 +307,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
 
   @Command fun stop(invoke: Invoke) {
     onUi(invoke) {
+      swapToken++
       player?.stop(); player?.clearMediaItems()
       view?.visibility = View.GONE
       activity.window.setBackgroundDrawable(ColorDrawable(0xFF0A0A0D.toInt()))   // back to the app's dark background
