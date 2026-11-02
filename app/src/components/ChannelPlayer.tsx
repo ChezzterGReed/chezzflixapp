@@ -207,11 +207,12 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     }
   }, [mode, tune, flash, applyTracks, recover])
   // Every 20 minutes, quietly ask the server for the same program again, at the live position, and swap to it: to the server it is a fresh request,
-  // on screen a very brief blip. Skipped while a menu is open or when the program is about to end anyway.
+  // on screen a very brief blip. Skipped while a menu is open when the program is about to end anyway, and for programs of 30 minutes or less.
   useEffect(() => {
     if (status !== 'playing') return
     const t = setInterval(() => {
-      if (tracksOpenRef.current || pillRef.current >= 0 || (slot && slot.end - Date.now() < 120_000)) return
+      if (!slot || slot.end - slot.start <= 30 * 60_000) return   // shorter programs are swapped when the next one starts anyway
+      if (tracksOpenRef.current || pillRef.current >= 0 || slot.end - Date.now() < 120_000) return
       tuneRef.current(idxRef.current, true)
     }, REFRESH_MS)
     return () => clearInterval(t)
