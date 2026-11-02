@@ -102,12 +102,15 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const trackLabel = (t: MpvTrack) => [t.title || t.lang?.toUpperCase(), t.codec?.toUpperCase(), t.channels ? `${t.channels}ch` : '', t.external ? 'external' : ''].filter(Boolean).join(' · ') || 'Track'
 
   // Tune: find what's on now, jump into it part-way through, and line up the next switch for when it ends.
+  const loadWatch = useRef(0)   // a load that never answers (a dead connection that doesn't even report an error) is treated as a failure too
   const quietLoad = useRef(false)   // the next 'loaded' is a refresh of what's already playing: no fade-up, nothing else to redo
   const tune = useCallback(async (i: number, quiet = false) => {
     const my = ++seq.current
     clearTimeout(advance.current)
     const ch = channels[i]
     quietLoad.current = quiet
+    clearTimeout(loadWatch.current)
+    loadWatch.current = window.setTimeout(() => { if (my === seq.current) recover('no response') }, 15_000)
     if (!quiet) { setStatus('tuning'); flash() }
     const now = Date.now()
     const list = slotsRef.current[ch.id]
@@ -193,7 +196,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     if (mode !== 'native') return
     let off: (() => void) | undefined, dead = false
     onMpv((p) => { if (p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
-      if (e.event === 'loaded') { if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); if (quietLoad.current) { quietLoad.current = false; applyTracks() } else { flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() } }
+      if (e.event === 'loaded') { clearTimeout(loadWatch.current); if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); if (quietLoad.current) { quietLoad.current = false; applyTracks() } else { flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() } }
       if ((e.event === 'end' && e.reason === 4) || e.event === 'error') recover('player')
     }).then((u) => { if (dead) u(); else off = u })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
@@ -228,7 +231,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     }, 5000)
     return () => clearInterval(t)
   }, [mode, status, recover])
-  useEffect(() => () => { clearTimeout(recovering.current); clearTimeout(advance.current); clearTimeout(bannerTimer.current); hls.current?.destroy(); seq.current++ }, [])
+  useEffect(() => () => { clearTimeout(loadWatch.current); clearTimeout(recovering.current); clearTimeout(advance.current); clearTimeout(bannerTimer.current); hls.current?.destroy(); seq.current++ }, [])
 
   // Tune whenever the channel changes (after a short settle), once the engine is chosen.
   useEffect(() => {
@@ -261,7 +264,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     <Layer player onClose={() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (ctlRef.current) { setCtl(false); setBanner(false) } else close() }} scrim="bg-transparent">
       <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
         {askingStill && !leaving && <StillWatching onStay={stillHere} onTimeout={() => close(true)} />}
-        {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => recover('video')} />}
+        {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { clearTimeout(loadWatch.current); setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => recover('video')} />}
         {/* Receives the remote: Up / Down (or Left / Right, per the Guide setting) flip channels, OK shows the banner */}
         <Focusable focusKey="channel-surface" title="Channel"
           onEnter={() => { if (pillRef.current >= 0 && pillIdsRef.current[pillRef.current]) { pillAct(pillIdsRef.current[pillRef.current]); return } if (level.note?.kind === 'offer') { level.acceptOffer(); return } if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}   // OK shows the info; OK again, with it showing, opens audio & subtitles
