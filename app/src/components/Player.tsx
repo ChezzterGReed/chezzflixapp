@@ -123,14 +123,16 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   const plexAudio = streamsOf(media, 2)
   const plexSubs = streamsOf(media, 3)
-  const trackLabel = (t: MpvTrack) => [t.title || t.lang?.toUpperCase(), t.codec?.toUpperCase(), t.channels ? `${t.channels}ch` : '', t.external ? 'external' : ''].filter(Boolean).join(' · ') || 'Track'
+  // A sidecar subtitle's name can come through as a file address (".../199833?X-Plex-Token=..."): never show that, the language will do.
+  const cleanName = (s?: string | null) => (s && !/X-Plex-Token|[?&=]|^\d+$/.test(s) ? s : undefined)
+  const trackLabel = (t: MpvTrack) => [cleanName(t.title) || t.lang?.toUpperCase(), t.codec?.toUpperCase(), t.channels ? `${t.channels}ch` : '', t.external ? 'external' : ''].filter(Boolean).join(' · ') || 'Track'
   type Row = { id: number; label: string; on: boolean }
   const audio: Row[] = mode === 'native'
     ? nTracks.filter((t) => t.type === 'audio').map((t) => ({ id: t.id, label: trackLabel(t), on: t.selected }))
     : plexAudio.map((s) => ({ id: s.id, label: s.displayTitle ?? s.language ?? 'Track', on: (choice.audioId ?? (plexAudio.find((x) => x.selected) ?? plexAudio[0])?.id) === s.id }))
   const subs: Row[] = mode === 'native'
     ? nTracks.filter((t) => t.type === 'sub').map((t) => ({ id: t.id, label: trackLabel(t), on: t.selected }))
-    : plexSubs.map((s) => ({ id: s.id, label: s.displayTitle ?? s.language ?? 'Track', on: (choice.subtitleId === undefined ? plexSubs.find((x) => x.selected)?.id ?? null : choice.subtitleId) === s.id }))
+    : plexSubs.map((s) => ({ id: s.id, label: cleanName(s.displayTitle) ?? s.language ?? 'Track', on: (choice.subtitleId === undefined ? plexSubs.find((x) => x.selected)?.id ?? null : choice.subtitleId) === s.id }))
   const intro = media.Marker?.find((m) => m.type === 'intro')
   const credits = media.Marker?.find((m) => m.type === 'credits')
 
@@ -186,7 +188,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     mpvSet('video-zoom', 0).catch(() => {}); mpvSet('brightness', 0).catch(() => {})
     mpvSet('af', '').catch(() => {})   // clean slate; the volume engine installs its filters once the file has loaded
     // Android's engine needs sidecar subtitles when the file loads (mpv adds them afterwards, below).
-    setExternalSubs(plexSubs.filter((s) => s.key).map((s) => ({ url: `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, lang: s.languageCode, name: s.displayTitle })))
+    setExternalSubs(plexSubs.filter((s) => s.key).map((s) => ({ url: `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, lang: s.languageCode, name: cleanName(s.displayTitle) })))
     try { await mpvCmd('loadfile', url, 'replace', '-1', `start=${startAt > 1 ? startAt : 0},pause=yes`) } catch (e) { setError(String(e)) }
   }, [server, media])
 

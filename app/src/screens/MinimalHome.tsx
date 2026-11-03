@@ -74,7 +74,7 @@ function Backdrop({ m, server }: { m: PlexMedia; server: PlexServer }) {
   )
 }
 
-function MCard({ m, server, row, wide, last, onEnter, onFocus, fromContinue, fromRecs, onUp }: { m: PlexMedia; server: PlexServer; row: number; wide: boolean; last: boolean; onEnter: () => void; onFocus: (el: HTMLElement) => void; fromContinue?: boolean; fromRecs?: boolean; onUp?: () => boolean }) {
+function MCard({ m, server, row, wide, onEnter, onFocus, fromContinue, fromRecs, onUp }: { m: PlexMedia; server: PlexServer; row: number; wide: boolean; onEnter: () => void; onFocus: (el: HTMLElement) => void; fromContinue?: boolean; fromRecs?: boolean; onUp?: () => boolean }) {
   const openMenu = useItemMenu()
   const art = wide ? (m.type === 'episode' ? m.thumb : backdropPath(m) ?? m.thumb) : posterPath(m)
   const [w, h] = wide ? WIDE : POSTER
@@ -83,7 +83,7 @@ function MCard({ m, server, row, wide, last, onEnter, onFocus, fromContinue, fro
   return (
     <Focusable focusKey={`mcard-${row}-${m.ratingKey}`} onEnter={onEnter} onFocus={onFocus} title={m.title} className="shrink-0"
       onLongPress={m.type === 'collection' ? undefined : () => openMenu(m, { fromContinue, fromRecs })}
-      onArrow={(d) => { if (d === 'up' && onUp) return onUp(); if (d === 'right' && last) { setFocus('mprofile'); return false } }}>
+      onArrow={(d) => { if (d === 'up' && onUp) return onUp(); }}>
       <div className={`relative h-[var(--mh)] overflow-hidden rounded-2xl bg-white/8 transition-[transform,box-shadow] duration-200 ease-out group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_0_0_3px_#fff,0_18px_40px_-8px_rgba(0,0,0,.8)] ${wide ? 'aspect-video' : 'aspect-[2/3]'}`}>
         {art && <img src={imageUrl(server, art, w, h)} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} className={`absolute inset-0 size-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} />}
         {m.newSeason && <div className="absolute left-2 top-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">New</div>}
@@ -93,7 +93,7 @@ function MCard({ m, server, row, wide, last, onEnter, onFocus, fromContinue, fro
   )
 }
 
-function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, onPick, lastRow }: { onPick: (m: PlexMedia, fromContinue?: boolean) => void; idx: number; row: MRowData; active: number; server: PlexServer; continueWide: boolean; onShow: (m: PlexMedia, idx: number) => void; onTitle?: () => void; onUp: () => boolean; lastRow: boolean }) {
+function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, onPick }: { onPick: (m: PlexMedia, fromContinue?: boolean) => void; idx: number; row: MRowData; active: number; server: PlexServer; continueWide: boolean; onShow: (m: PlexMedia, idx: number) => void; onTitle?: () => void; onUp: () => boolean }) {
   const { ref, focusKey } = useFocusable({ focusKey: `mrow-${idx}`, saveLastFocusedChild: true, autoRestoreFocus: false })
   const track = useRef<HTMLDivElement>(null)
   const wide = !!row.continue && continueWide
@@ -110,8 +110,8 @@ function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, o
             : <h2 className="px-4 text-[1.25rem] font-bold tracking-tight text-white/90">{row.title}</h2>}
         </div>
         <div ref={track} className="m-hide-scroll flex gap-4 overflow-x-auto px-[var(--mg)] py-4 -my-1">
-          {row.items.map((m, n) => (
-            <MCard key={m.ratingKey} m={m} server={server} row={idx} wide={wide} last={lastRow && n === row.items.length - 1} fromContinue={row.continue} fromRecs={row.recs}
+          {row.items.map((m) => (
+            <MCard key={m.ratingKey} m={m} server={server} row={idx} wide={wide} fromContinue={row.continue} fromRecs={row.recs}
               onUp={idx === 0 && !onTitle ? onUp : undefined}
               onEnter={() => onPick(m, row.continue)}
               onFocus={(el) => {
@@ -281,7 +281,7 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
                 {all.length === 0 && <p className="px-[var(--mg)] pt-10 text-white/60">Nothing to show here yet.</p>}
                 {all.map((r, i) => (
                   <MRow key={r.id} idx={i} row={r} active={active} server={server} continueWide={continueWide}
-                    onPick={pick} onShow={(it, ri) => { setSeen(it); setActive(ri) }} onUp={upFromFirstRow} lastRow={i === all.length - 1}
+                    onPick={pick} onShow={(it, ri) => { setSeen(it); setActive(ri) }} onUp={upFromFirstRow}
                     onTitle={r.typeTab ? () => onType(r.typeTab!) : undefined} />
                 ))}
               </div>

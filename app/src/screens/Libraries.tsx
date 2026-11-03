@@ -58,7 +58,8 @@ export function Libraries({ server, token, all, onOpen, onShuffle, onBrowse, onC
   const { ref, focusKey, hasFocusedChild } = useFocusable({ focusKey: 'LIBNAV', saveLastFocusedChild: true, autoRestoreFocus: false, trackChildren: true })
   const open = hasFocusedChild
   const content = useRef<HTMLDivElement>(null)
-  const keyOf = (s: PlexSection) => (s.key === sel?.key ? 'lib-current' : `lib-${s.key}`)
+  const keyOf = (s: PlexSection) => `lib-${s.key}`   // fixed per library: a focus key can't change once its button is on screen
+  const selNow = useRef(''); selNow.current = sel ? keyOf(sel) : ''
   const toggle = (s: PlexSection) => {
     const off = settings.hiddenLibraries.includes(s.key)
     update({ hiddenLibraries: off ? settings.hiddenLibraries.filter((k) => k !== s.key) : [...settings.hiddenLibraries, s.key] })
@@ -86,7 +87,7 @@ export function Libraries({ server, token, all, onOpen, onShuffle, onBrowse, onC
         e.preventDefault(); e.stopPropagation(); setFocus('mtab-libraries')
       } else if (e.key === 'ArrowLeft') {
         if (inAlpha || content_.some((n) => { const c = centre(n); return c.x < me.x - 12 && Math.abs(c.y - me.y) < 40 })) return   // something is still to the left
-        const side = doesFocusableExist('lib-current') ? 'lib-current' : 'lib-viewall'
+        const side = doesFocusableExist(selNow.current) ? selNow.current : 'lib-viewall'
         e.preventDefault(); e.stopPropagation(); setFocus(side)
       } else if (inContent && letters.length) {
         if (content_.some((n) => { const c = centre(n); return c.x > me.x + 12 && Math.abs(c.y - me.y) < 40 })) return   // something is still to the right

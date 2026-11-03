@@ -21,15 +21,16 @@ export function tabOf(view: View): TopTab | undefined {
 }
 
 /** Down from a tab: into the screen's content (the first title in a library, or wherever the screen says the cursor was). */
-function goDown(id: TopTab) {
+const tabNow = { k: '' }   // the tab of the screen on show
+function goDown(id?: TopTab) {
   const first = id === 'libraries' ? document.querySelector<HTMLElement>('[data-grid-cell] [data-fk]')?.getAttribute('data-fk') ?? undefined : undefined
-  const k = first ?? tabDown.fn?.() ?? (id === 'libraries' && doesFocusableExist('lib-current') ? 'lib-current' : undefined)
+  const k = first ?? tabDown.fn?.() ?? undefined
   setFocus(k && doesFocusableExist(k) ? k : 'MAIN')
 }
 
 function Tab({ id, active, icon, label, onEnter, round }: { id: TopTab; active: boolean; icon?: ReactNode; label?: string; onEnter: () => void; round?: boolean }) {
   return (
-    <Focusable focusKey={`mtab-${id}`} onEnter={onEnter} title={label ?? id} onArrow={(d) => { if (d === 'down') { goDown(id); return false } if (d === 'up') return false }}>
+    <Focusable focusKey={`mtab-${id}`} onEnter={onEnter} title={label ?? id} onArrow={(d) => { if (d === 'down') { goDown(id); return false } if (d === 'up') return false; if (d === 'left' && id === 'search') { setFocus('mprofile'); return false } }}>
       <div className={`flex h-12 items-center justify-center gap-2 rounded-full text-[1.02rem] font-semibold transition-colors duration-200 group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${round ? 'w-12' : 'px-6'} ${active ? 'bg-white/18 text-white' : 'text-white/65'}`}>
         {icon}{label}
       </div>
@@ -41,12 +42,13 @@ function Tab({ id, active, icon, label, onEnter, round }: { id: TopTab; active: 
 export function TopBar({ view, tvGuide, trending, watchlist, onGo, onSettings }: { view: View; tvGuide: boolean; trending: boolean; /** Something is on the Watchlist. */ watchlist: boolean; onGo: (v: View) => void; onSettings: () => void }) {
   const { ref, focusKey } = useFocusable({ focusKey: 'TOPBAR', saveLastFocusedChild: true, trackChildren: true })
   const cur = tabOf(view)
+  tabNow.k = cur ? `mtab-${cur}` : ''
   // On any screen: Up from the top-most thing on it reaches the tabs.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowUp' || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || document.querySelector('[data-layer], [data-player]')) return
       const key = getCurrentFocusKey()
-      if (!key || key === 'SN:ROOT' || key === 'TOPBAR' || key.startsWith('mtab-')) return
+      if (!key || key === 'SN:ROOT' || key === 'TOPBAR' || key === 'mprofile' || key.startsWith('mtab-') || key.startsWith('mcard-') || key.startsWith('mtitle-') || key.startsWith('hero-')) return   // Minimal Home steps through its banner on its own
       const el = document.querySelector<HTMLElement>(`[data-fk="${key}"]`)
       if (!el) return
       const y = (n: Element) => { const r = n.getBoundingClientRect(); return (r.top + r.bottom) / 2 }
@@ -83,8 +85,8 @@ export function TopBar({ view, tvGuide, trending, watchlist, onGo, onSettings }:
 export function MinimalProfile({ name, thumb, onOpen }: { name: string; thumb?: string; onOpen: () => void }) {
   const update = useUpdatePending()
   return (
-    <div className="fixed bottom-7 right-10 z-[44]">
-      <Focusable focusKey="mprofile" onEnter={onOpen} title="Profile" onArrow={(d) => { if (d === 'up' || d === 'left') { setFocus('MAIN'); return false } if (d === 'down' || d === 'right') return false }}>
+    <div className="fixed left-10 top-[1.35rem] z-[46]">
+      <Focusable focusKey="mprofile" onEnter={onOpen} title="Profile" onArrow={(d) => { if (d === 'right') { setFocus(tabNow.k && doesFocusableExist(tabNow.k) ? tabNow.k : 'mtab-home'); return false } if (d === 'down') { goDown(); return false } if (d === 'up' || d === 'left') return false }}>
         <div className="relative rounded-full p-1 transition-all duration-200 group-hover/f:scale-105 group-data-[hl=true]/f:scale-110 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
           <Avatar name={name} thumb={thumb} size={46} />
           {update && <UpdateDot className="absolute right-0 top-0" />}

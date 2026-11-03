@@ -307,7 +307,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {minimal
         ? <>
             {view.type !== 'guide' && <TopBar view={view} tvGuide={settings.tvGuide} trending={!!settings.tmdbKey} watchlist={hasWatch || view.type === 'watchlist'} onGo={navigate} onSettings={() => setLayer('settings')} />}
-            {view.type === 'home' && <MinimalProfile name={me.name} thumb={me.thumb} onOpen={() => setLayer(server.owned ? 'account' : 'profile')} />}
+            {view.type !== 'guide' && <MinimalProfile name={me.name} thumb={me.thumb} onOpen={() => setLayer(server.owned ? 'account' : 'profile')} />}
           </>
         : <Sidebar tvGuide={settings.tvGuide} sections={sections} everySection={allSections} view={view} onNavigate={navigate} profileName={me.name} profileThumb={me.thumb}
         brand={brandName(settings)} avatarLogo={settings.avatarLogo} onProfile={() => setLayer('profile')} showDashboard={!!server.owned} streams={streams} onScan={scanLibrary} />}

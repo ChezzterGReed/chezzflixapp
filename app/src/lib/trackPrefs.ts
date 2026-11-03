@@ -1,5 +1,5 @@
 // Remembers the audio and subtitle choices you make while watching a TV show, so the rest of its episodes follow the same rules
-// (e.g. an anime: Japanese audio with English subtitles). Saved per show on this device; movies aren't remembered.
+// (e.g. an anime: Japanese audio with English subtitles). Saved per show on this device; a movie remembers its own choices for when you come back to it.
 import { LANGS } from './tvguide'
 import { activeProfile } from './profile'
 import type { PlexMedia, PlexStream } from './plex'
@@ -9,7 +9,7 @@ export interface TrackPref { audio?: TrackRef; sub?: 'off' | TrackRef }
 const KEY = 'chezzflix_track_prefs'
 
 // Kept per profile (what one person picks for a show doesn't change what another sees). Choices saved before profiles were separated are still read as a fallback.
-const baseKey = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : null)
+const baseKey = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : m.type === 'movie' ? `movie:${m.ratingKey}` : null)
 const keyOf = (m: PlexMedia) => { const b = baseKey(m); return b && activeProfile() ? `${activeProfile()}|${b}` : b }
 const readAll = (): Record<string, TrackPref> => { try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') } catch { return {} } }
 
@@ -17,7 +17,12 @@ export const getTrackPref = (m: PlexMedia): TrackPref | undefined => { const k =
 export function saveTrackPref(m: PlexMedia, patch: TrackPref) {
   const k = keyOf(m)
   if (!k) return
-  try { const all = readAll(); all[k] = { ...all[k], ...patch }; localStorage.setItem(KEY, JSON.stringify(all)) } catch { /* private mode */ }
+  try {
+    const all = readAll(); const next = { ...all[k], ...patch }
+    delete all[k]; all[k] = next   // newest last
+    const keys = Object.keys(all); if (keys.length > 400) for (const old of keys.slice(0, keys.length - 400)) delete all[old]   // movies add up: keep the most recent
+    localStorage.setItem(KEY, JSON.stringify(all))
+  } catch { /* private mode */ }
 }
 
 /** Language codes differ ("ja", "jpn", "Japanese"): compare them by meaning. */
