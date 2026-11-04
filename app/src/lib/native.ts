@@ -84,15 +84,16 @@ export async function keepAwake(on: boolean) {
   } catch { /* best effort */ }
 }
 
-export interface SubStyle { subSize: string; subFont: string; subColor: string; subEdge: string; subBackground: boolean }
+export interface SubStyle { subSize: string; subFont: string; subColor: string; subEdge: string; subBackground: boolean; subLift?: number }
 export const SUB_SIZES = { small: 0.75, medium: 1, large: 1.3, huge: 1.7 } as const
 /** Applies the subtitle look to the player (plain-text subtitles; styled .ass ones keep their own). */
 export async function applySubStyle(s: SubStyle) {
   const size = SUB_SIZES[s.subSize as keyof typeof SUB_SIZES] ?? 1
-  if (isAndroid) return droid('setSubStyle', { size, font: s.subFont, color: s.subColor, edge: s.subEdge, background: s.subBackground })
+  if (isAndroid) return droid('setSubStyle', { size, font: s.subFont, color: s.subColor, edge: s.subEdge, background: s.subBackground, lift: s.subLift ?? 0 })
   const set = (n: string, v: string | number) => mpvSet(n, v).catch(() => {})
   await Promise.all([
     set('sub-font-size', Math.round(55 * size)),
+    set('sub-pos', 100 - (s.subLift ?? 0)),   // 100 is the bottom edge; smaller moves the text up
     set('sub-font', s.subFont === 'serif' ? 'Georgia' : s.subFont === 'mono' ? 'Menlo' : 'Helvetica Neue'),
     set('sub-color', s.subColor === 'yellow' ? '#FFE600' : '#FFFFFF'),
     set('sub-border-style', s.subBackground ? 'background-box' : 'outline-and-shadow'),

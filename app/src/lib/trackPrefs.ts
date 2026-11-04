@@ -11,7 +11,13 @@ const KEY = 'chezzflix_track_prefs'
 // Kept per profile (what one person picks for a show doesn't change what another sees). Choices saved before profiles were separated are still read as a fallback.
 const baseKey = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : m.type === 'movie' ? `movie:${m.ratingKey}` : null)
 const keyOf = (m: PlexMedia) => { const b = baseKey(m); return b && activeProfile() ? `${activeProfile()}|${b}` : b }
-const readAll = (): Record<string, TrackPref> => { try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') } catch { return {} } }
+// The choices live in the profile's settings (so they sync to the person's other devices); the settings provider hands over its copy here.
+// Choices saved on this device before that are still read (and move into the settings the next time something is saved).
+export interface TrackPrefStore { get: () => Record<string, TrackPref>; set: (v: Record<string, TrackPref>) => void }
+let store: TrackPrefStore | undefined
+export const bindTrackPrefs = (s: TrackPrefStore | undefined) => { store = s }
+const legacy = (): Record<string, TrackPref> => { try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') } catch { return {} } }
+const readAll = (): Record<string, TrackPref> => (store ? { ...legacy(), ...store.get() } : legacy())
 
 export const getTrackPref = (m: PlexMedia): TrackPref | undefined => { const k = keyOf(m); if (!k) return undefined; const all = readAll(); return all[k] ?? all[baseKey(m)!] }
 export function saveTrackPref(m: PlexMedia, patch: TrackPref) {
@@ -20,8 +26,8 @@ export function saveTrackPref(m: PlexMedia, patch: TrackPref) {
   try {
     const all = readAll(); const next = { ...all[k], ...patch }
     delete all[k]; all[k] = next   // newest last
-    const keys = Object.keys(all); if (keys.length > 400) for (const old of keys.slice(0, keys.length - 400)) delete all[old]   // movies add up: keep the most recent
-    localStorage.setItem(KEY, JSON.stringify(all))
+    const keys = Object.keys(all); if (keys.length > 150) for (const old of keys.slice(0, keys.length - 150)) delete all[old]   // movies add up (and these travel with the settings): keep the most recent
+    if (store) store.set(all); else localStorage.setItem(KEY, JSON.stringify(all))
   } catch { /* private mode */ }
 }
 

@@ -1,5 +1,6 @@
 // Plex API layer. Direct play is the default; transcode is an explicit fallback.
 import { artUrl, mockGet } from './mock'
+import { reportFail, reportOk } from './serverStatus'
 
 const PRODUCT = 'Chezzflix'
 export const DEMO_URI = 'demo://'
@@ -29,7 +30,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.5',
+    'X-Plex-Version': '0.6.6',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -241,7 +242,9 @@ async function get<T>(server: PlexServer, path: string, ttl = 60_000): Promise<T
       await new Promise((r) => setTimeout(r, 120)) // feel real latency in demo
       data = mockGet(path)
     } else {
-      const r = await fetch(`${server.uri}${path}`, { headers: baseHeaders(server.accessToken) })
+      let r: Response
+      try { r = await fetch(`${server.uri}${path}`, { headers: baseHeaders(server.accessToken) }) } catch (e) { reportFail(); throw e }   // (couldn't reach the server at all)
+      if (r.status >= 502 && r.status <= 504) reportFail(); else reportOk()
       if (!r.ok) throw new Error(`Plex ${r.status} on ${path}`)
       data = (await r.json()).MediaContainer
     }
@@ -330,6 +333,12 @@ export interface PlexGenre { key: string; title: string }
 export async function getGenres(server: PlexServer, sectionKey: string): Promise<PlexGenre[]> {
   const c = await get<{ Directory?: PlexGenre[] }>(server, `/library/sections/${sectionKey}/genre`)
   return c.Directory ?? []
+}
+
+/** The tags (your own labels) already in use in a library. */
+export async function getLabels(server: PlexServer, sectionKey: string): Promise<string[]> {
+  const c = await get<{ Directory?: { title?: string }[] }>(server, `/library/sections/${sectionKey}/label`).catch(() => ({ Directory: [] as { title?: string }[] }))
+  return (c.Directory ?? []).map((d) => d.title ?? '').filter(Boolean)
 }
 
 export async function getGenreItems(server: PlexServer, sectionKey: string, genreKey: string, size = 30): Promise<PlexMedia[]> {

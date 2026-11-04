@@ -4,6 +4,8 @@ import { setNavSounds } from './sfx'
 import { setActiveProfile } from './profile'
 import { initialMeta, isSynced, mergeSettings, pullSettings, pushSettings, syncedValues, SYNC_URL, type Meta, type SyncAuth } from './sync'
 import type { Channel, ChannelPrefs } from './tvguide'
+import { bindTrackPrefs, type TrackPref } from './trackPrefs'
+import { bindLevels, type Mem as LevelMem } from './leveling'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 export const ACCENTS: { name: string; value: string }[] = [
@@ -61,6 +63,12 @@ export interface Settings {
   showInfo: boolean
   /** Minimal layout: Home ends with short Movies / TV Shows / Anime rows (the row's name opens that whole section). */
   minimalTypeRows: boolean
+  /** The audio and subtitle choices made while watching (per show, and per movie), so they follow the person to their other devices. */
+  trackPrefs: Record<string, TrackPref>
+  /** Each library's sort order and year filter, kept for next time. */
+  libView: Record<string, { sort?: string; year?: number }>
+  /** The volume level (boost) remembered for each title, so it follows the person to their other devices. */
+  levels: Record<string, LevelMem>
   /** TV Guide, while watching: which arrows flip channels ('updown', the default) and which bring up the player controls. */
   guideZap: 'updown' | 'sides'
   /** Audio / subtitle choices for the app's seasonal channels (they aren't stored with your own channels). */
@@ -144,12 +152,14 @@ export interface Settings {
   subColor: 'white' | 'yellow'
   subEdge: 'outline' | 'shadow' | 'none'
   subBackground: boolean
+  /** How far up (or down, when negative) the subtitles sit from their usual place, in percent of the screen height. */
+  subLift: number
 }
 
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideWatchedTabs: {}, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: false, layout: 'classic', showInfo: true, minimalTypeRows: true, guideZap: 'updown', seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: true, dialogueBoost: false, autoplayNext: true, resumePrompt: true, screensaver: true, screensaverMins: 10, waitForScenes: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: false, layout: 'classic', trackPrefs: {}, levels: {}, libView: {}, showInfo: true, minimalTypeRows: true, guideZap: 'updown', seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: true, dialogueBoost: false, autoplayNext: true, resumePrompt: true, screensaver: true, screensaverMins: 10, waitForScenes: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false, subLift: 0,
 }
 
 export const PUMPKIN = '#ff7a1a'
@@ -303,6 +313,21 @@ export function SettingsProvider({ profileKey, shared: sharedValues, syncAuth, c
     if (changed) { saveMeta(profileKey, metaRef.current); scheduleSync() }
     setSettings((s) => ({ ...s, ...p }))
   }, [profileKey, scheduleSync])
+
+  // The audio / subtitle choices live in these settings (so they sync); the code that reads and writes them sits outside React and goes through this.
+  const trackPending = useRef<Record<string, TrackPref> | undefined>(undefined)   // (two saves in a row, before the screen has caught up, must not lose the first)
+  useEffect(() => { trackPending.current = undefined }, [settings.trackPrefs])
+  useEffect(() => {
+    bindTrackPrefs({ get: () => trackPending.current ?? settingsRef.current.trackPrefs ?? {}, set: (v) => { trackPending.current = v; update({ trackPrefs: v }) } })
+    return () => bindTrackPrefs(undefined)
+  }, [update])
+
+  const levelPending = useRef<Record<string, LevelMem> | undefined>(undefined)
+  useEffect(() => { levelPending.current = undefined }, [settings.levels])
+  useEffect(() => {
+    bindLevels({ get: () => levelPending.current ?? settingsRef.current.levels ?? {}, set: (v) => { levelPending.current = v; update({ levels: v }) } })
+    return () => bindLevels(undefined)
+  }, [update])
 
   // Values shared by this server's owner are applied on top, never saved into this person's own settings.
   const tmdbShared = !settings.tmdbKey && !!sharedValues?.tmdbKey

@@ -45,7 +45,7 @@ import kotlin.math.pow
 @InvokeArg class SubArg { var url: String = ""; var lang: String? = null; var name: String? = null }
 @InvokeArg class LoadArgs { var url: String = ""; var startMs: Long = 0; var pause: Boolean = true; var subs: Array<SubArg>? = null; var title: String? = null; var subtitle: String? = null; var artwork: String? = null }
 @InvokeArg class BoolArg { var value: Boolean = false }
-@InvokeArg class SubStyleArg { var size: Double = 1.0; var font: String = "sans"; var color: String = "white"; var edge: String = "outline"; var background: Boolean = false }
+@InvokeArg class SubStyleArg { var size: Double = 1.0; var font: String = "sans"; var color: String = "white"; var edge: String = "outline"; var background: Boolean = false; var lift: Double = 0.0 }
 @InvokeArg class NumArg { var value: Double = 0.0 }
 @InvokeArg class NameArg { var name: String = "" }
 
@@ -184,6 +184,7 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
     val edge = when (st.edge) { "shadow" -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW; "none" -> CaptionStyleCompat.EDGE_TYPE_NONE; else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE }
     val face = when (st.font) { "serif" -> Typeface.SERIF; "mono" -> Typeface.MONOSPACE; else -> Typeface.SANS_SERIF }
     sv.setApplyEmbeddedStyles(true)   // styled subtitles (.ass) keep their own look; this applies to plain text ones (.srt etc.)
+    sv.setBottomPaddingFraction((SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION + st.lift.toFloat() / 100f).coerceIn(0f, 0.6f))   // (percent of the screen height, up from the usual place)
     sv.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * st.size.toFloat())
     sv.setStyle(CaptionStyleCompat(fg, if (st.background) Color.argb(190, 0, 0, 0) else Color.TRANSPARENT, Color.TRANSPARENT, edge, Color.BLACK, face))
   }

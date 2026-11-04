@@ -3,13 +3,14 @@ import { AlphaRail, alphaOf } from '../components/AlphaRail'
 import { useGridNav } from '../lib/gridNav'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { reveal } from '../lib/scroll'
-import { Eye, EyeOff, Layers, Loader2, Shuffle, Tags } from 'lucide-react'
+import { Eye, EyeOff, Layers, Loader2, Shuffle, Tags, X } from 'lucide-react'
 import { PosterCard } from '../components/Card'
 import { SortBar } from '../components/SortBar'
 import { Focusable } from '../components/Focusable'
 import { orderByNewestEpisode } from '../lib/newSeason'
 import { getAllSectionItems, getCollections, getFirstCharacters, getSectionItems, getYears, isWatched, type PlexCollectionRef, type PlexMedia, type PlexSection, type PlexServer, type SortKey } from '../lib/plex'
 import { useSettings } from '../lib/settings'
+import { pendingFocus } from '../lib/layout'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 
 const PAGE = 120
@@ -45,8 +46,15 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
   const sel = useTitleSelection(server, token)
   const collapse = !!settings.collapseCollections[section.key]
   const unwatched = !!settings.unwatchedOnly[section.key]
-  const [sort, setSort] = useState<SortKey>('titleAsc')
-  const [year, setYear] = useState<number>()
+  // The sort order and year are kept per library, for next time (and on the person's other devices).
+  const saved = settings.libView?.[section.key]
+  const [sort, setSortState] = useState<SortKey>((saved?.sort as SortKey) ?? 'titleAsc')
+  const [year, setYearState] = useState<number | undefined>(saved?.year)
+  const remember = (s: SortKey, y: number | undefined) => update({ libView: { ...settings.libView, [section.key]: { sort: s, year: y } } })
+  const setSort = (s: SortKey) => { setSortState(s); remember(s, year) }
+  const setYear = (y?: number) => { setYearState(y); remember(sort, y) }
+  const filtered = year !== undefined || unwatched
+  const clearFilters = () => { setYearState(undefined); remember(sort, undefined); if (unwatched) update({ unwatchedOnly: { ...settings.unwatchedOnly, [section.key]: false }, libView: { ...settings.libView, [section.key]: { sort, year: undefined } } }) }
   const [years, setYears] = useState<number[]>([])
   const [items, setItems] = useState<PlexMedia[]>([])
   const [total, setTotal] = useState(0)
@@ -54,6 +62,13 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
   // The grid fills in a screenful at a time (a big library puts hundreds of posters on screen otherwise, which makes opening and scrolling it heavy).
   const [shownN, setShownN] = useState(24)
   useEffect(() => { setShownN(24) }, [section.key, sort, year, collapse, unwatched])
+  // Coming back to the library: the title the cursor was on has to be on screen again.
+  useEffect(() => {
+    const k = pendingFocus.key
+    if (!k?.startsWith('card-') || !items.length) return
+    const at = items.findIndex((m) => `card-${m.ratingKey}` === k)
+    if (at >= 0) setShownN((n) => Math.max(n, at + 24))
+  }, [items.length]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (shownN >= items.length) return
     const t = setTimeout(() => setShownN((n) => n + 24), 90)
@@ -157,6 +172,11 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
             <Focusable onEnter={() => update({ unwatchedOnly: { ...settings.unwatchedOnly, [section.key]: !unwatched } })} title="Show unwatched only" leftToRail>
               <div className={`${toolBtn} ${unwatched ? 'bg-accent text-black' : 'bg-white/8 text-white/80'}`}>{unwatched ? <EyeOff size={15} /> : <Eye size={15} />}{unwatched ? 'Unwatched only' : 'All titles'}</div>
             </Focusable>
+            {filtered && (
+              <Focusable onEnter={clearFilters} title="Clear filters">
+                <div className={`${toolBtn} bg-white/8 text-white/80`}><X size={15} />Clear filters</div>
+              </Focusable>
+            )}
             {section.type === 'movie' && (
               <Focusable onEnter={shuffleAll} title="Shuffle these movies">
                 <div className={`${toolBtn} bg-white/8 text-white/80`}>{shuffling ? <Loader2 size={15} className="animate-spin" /> : <Shuffle size={15} />}Shuffle</div>
@@ -178,7 +198,7 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
           <div key={m.ratingKey} data-grid-cell data-rk={m.ratingKey} className="[--card-w:100%]">
             {(() => {
               const pickable = m.type === 'movie' || m.type === 'show'
-              return <PosterCard m={m} server={server} onFocus={(el) => reveal(el)} selecting={sel.active && pickable} checked={sel.has(m)}
+              return <PosterCard focusKey={`card-${m.ratingKey}`} m={m} server={server} onFocus={(el) => reveal(el)} selecting={sel.active && pickable} checked={sel.has(m)}
                 onEnter={() => (sel.active ? pickable && sel.toggle(m) : m.type === 'collection' ? onCollection(m) : onOpen(m))}
                 onLongPress={sel.active ? () => pickable && sel.toggle(m) : undefined} onSelect={pickable ? () => sel.start(m) : undefined} />
             })()}

@@ -10,7 +10,7 @@ import { useSettings } from '../lib/settings'
 import { backdropPath, episodeLabel, formatRuntime, getSectionItems, imageUrl, logoPath, posterPath, progressOf, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import type { AnimeInfo, HomeRow, Tab } from '../lib/homeData'
 import { playLabel } from '../components/Hero'
-import { tabDown } from '../lib/layout'
+import { pendingFocus, tabDown } from '../lib/layout'
 
 type MRowData = HomeRow & { recs?: boolean; typeTab?: Tab }
 
@@ -205,6 +205,7 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
   useEffect(() => {
     if (!readyRows) return
     const land = () => {
+      if (pendingFocus.key) { setTimeout(land, 2600); return }   // coming back to this screen: the cursor is being put back where it was
       const k = getCurrentFocusKey()
       if (k && k !== 'SN:ROOT' && k !== 'MAIN' && doesFocusableExist(k)) return
       setFocus(doesFocusableExist('hero-play') ? 'hero-play' : 'mrow-0')

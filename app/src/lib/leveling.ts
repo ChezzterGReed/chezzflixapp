@@ -37,16 +37,29 @@ const LAYOUTS: Record<string, string[]> = {
 const dialoguePan = (layout: string) => { const ch = LAYOUTS[layout]; return ch ? `lavfi=[pan=${layout}|${ch.map((c) => (c === 'FC' ? `FC=${DIALOGUE}*FC` : `${c}=${c}`)).join('|')}]` : null }
 
 // ---- what we remember per title (a whole show shares one entry) ----
-interface Mem { gain?: number; boost?: Boost; /** The amount was set by hand from the "Boost applied" pill: auto leveling leaves it alone. */ locked?: boolean }
+export interface Mem { gain?: number; boost?: Boost; /** The amount was set by hand from the "Boost applied" pill: auto leveling leaves it alone. */ locked?: boolean }
 const MEM_KEY = 'chezzflix_levels'
 export const memKey = (m: PlexMedia) => (m.type === 'episode' ? `show:${m.grandparentRatingKey ?? m.ratingKey}` : `item:${m.ratingKey}`)
-function readAll(): Record<string, Mem> { try { return JSON.parse(localStorage.getItem(MEM_KEY) ?? '{}') } catch { return {} } }
+// Kept in the profile's settings so a title's volume level follows the person to their other devices; levels saved on this device before that are still read.
+export interface LevelStore { get: () => Record<string, Mem>; set: (v: Record<string, Mem>) => void }
+let store: LevelStore | undefined
+export const bindLevels = (s: LevelStore | undefined) => { store = s }
+const legacy = (): Record<string, Mem> => { try { return JSON.parse(localStorage.getItem(MEM_KEY) ?? '{}') } catch { return {} } }
+function readAll(): Record<string, Mem> { return store ? { ...legacy(), ...store.get() } : legacy() }
 export function readMem(key: string): Mem {
   const m = readAll()[key] ?? {}
   const b = m.boost as unknown
   return { ...m, boost: b === 'off' ? 0 : typeof b === 'number' ? clampBoost(b) : b === 'auto' ? 'auto' : undefined }   // older versions stored 'off' and +3/+6/+9/+12
 }
-function writeMem(key: string, patch: Mem) { try { const all = readAll(); all[key] = { ...all[key], ...patch }; localStorage.setItem(MEM_KEY, JSON.stringify(all)) } catch { /* private mode */ } }
+function writeMem(key: string, patch: Mem) {
+  try {
+    const all = readAll(); const next = { ...all[key], ...patch }
+    if (JSON.stringify(next) === JSON.stringify(all[key])) return   // nothing new: no need to touch (or sync) the settings
+    delete all[key]; all[key] = next   // newest last
+    const keys = Object.keys(all); if (keys.length > 200) for (const old of keys.slice(0, keys.length - 200)) delete all[old]
+    if (store) store.set(all); else localStorage.setItem(MEM_KEY, JSON.stringify(all))
+  } catch { /* private mode */ }
+}
 
 const clamp = (v: number) => Math.max(MIN_GAIN, Math.min(MAX_GAIN, v))
 const gainFilter = (g: number) => `@g:lavfi=[volume=${g.toFixed(2)}dB:eval=frame,${LIMITER}]`

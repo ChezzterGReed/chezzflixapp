@@ -42,11 +42,14 @@ export async function getWatchlist(token: string, fresh = false): Promise<WatchI
   return items
 }
 
+/** Tells the rest of the app the Watchlist changed (the Minimal layout shows its tab only while there's something on it). */
+const changed = () => { try { window.dispatchEvent(new Event('chezz-watchlist')) } catch { /* not in a window */ } }
 export async function setOnWatchlist(token: string, item: WatchItem, on: boolean): Promise<void> {
-  if (token === 'demo') { demo = on ? [item, ...demo.filter((x) => x.key !== item.key)] : demo.filter((x) => x.key !== item.key); return }
+  if (token === 'demo') { demo = on ? [item, ...demo.filter((x) => x.key !== item.key)] : demo.filter((x) => x.key !== item.key); changed(); return }
   const r = await fetch(`${DISCOVER}/actions/${on ? 'addToWatchlist' : 'removeFromWatchlist'}?ratingKey=${encodeURIComponent(item.key)}`, { method: 'PUT', headers: headers(token) })
   if (!r.ok) throw new Error(`Plex ${r.status}`)
   if (cache?.token === token) cache = { ...cache, items: on ? [item, ...cache.items.filter((x) => x.key !== item.key)] : cache.items.filter((x) => x.key !== item.key) }
+  changed()
 }
 
 /** Which Watchlist titles are in your libraries (matched by Plex id, then by title and year), so they open directly. */

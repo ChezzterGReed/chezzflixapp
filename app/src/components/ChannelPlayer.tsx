@@ -103,7 +103,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
 
   useEffect(() => { nativeStart().then((ok) => setMode(ok ? 'native' : 'web')) }, [])
   useEffect(() => { keepAwake(true); return () => { keepAwake(false) } }, [])
-  useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, status, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
+  useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, status, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground, settings.subLift])
 
   const [tracksOpen, setTracksOpen] = useState(false)
   const [tracks, setTracks] = useState<MpvTrack[]>([])

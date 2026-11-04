@@ -43,7 +43,9 @@ import { Sidebar, type View } from './components/Sidebar'
 import { ExitConfirm } from './components/ExitConfirm'
 import { MinimalProfile, TopBar, tabOf } from './components/TopBar'
 import { Libraries } from './screens/Libraries'
-import { useMinimal } from './lib/layout'
+import { restoreFocus, useMinimal } from './lib/layout'
+import { reportOk, useServerDown } from './lib/serverStatus'
+import { Loader2 } from 'lucide-react'
 import { ProfileMenu } from './components/ProfileMenu'
 const SettingsModal = lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })))
 const Player = lazy(() => import('./components/Player').then((m) => ({ default: m.Player })))
@@ -99,6 +101,11 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   // (the Minimal layout only gives the Watchlist a tab when there's something on it)
   useEffect(() => { if (minimal) getWatchlist(token, view.type === 'watchlist').then((l) => setHasWatch(l.length > 0)).catch(() => {}) }, [minimal, token, returnKey, view.type]) // eslint-disable-line react-hooks/exhaustive-deps   // bumped when you come back to the app (or it sits open a while): only the Continue Watching row is read again
   useEffect(() => {
+    const h = () => { getWatchlist(token).then((l) => setHasWatch(l.length > 0)).catch(() => {}) }
+    window.addEventListener('chezz-watchlist', h)
+    return () => window.removeEventListener('chezz-watchlist', h)
+  }, [token])
+  useEffect(() => {
     if (token === 'demo') return
     let away = 0, lastRead = Date.now()
     const bump = () => { lastRead = Date.now(); invalidateWatchState(); setReturnKey((k) => k + 1) }
@@ -122,9 +129,10 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   useEffect(() => { if (view.type === 'library' && !allSections.some((s) => s.key === (view as { section: PlexSection }).section.key)) setView({ type: 'home' }) }, [allSections, view])
 
   // Rail navigation starts fresh; drilling in (browse -> genre -> title) keeps a back stack.
-  const navigate = (v: View) => { setView(v); setHistory([]); setDetails([]); window.scrollTo({ top: 0 }) }
-  const push = (v: View) => { setHistory((h) => [...h, view]); setView(v); setDetails([]); window.scrollTo({ top: 0 }) }
-  const back = () => { setView(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); window.scrollTo({ top: 0 }) }
+  const spots = useRef<string[]>([])   // where the cursor was on each screen we drilled in from, so Back puts it there again
+  const navigate = (v: View) => { spots.current = []; setView(v); setHistory([]); setDetails([]); window.scrollTo({ top: 0 }) }
+  const push = (v: View) => { spots.current.push(getCurrentFocusKey() ?? ''); setHistory((h) => [...h, view]); setView(v); setDetails([]); window.scrollTo({ top: 0 }) }
+  const back = () => { const k = spots.current.pop(); setView(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); window.scrollTo({ top: 0 }); restoreFocus(k) }
   // Back: go back a screen; with nothing to go back to, a TV remote's Back goes Home, and from Home it opens/closes the side menu.
   const railKey = () => (view.type === 'library' ? `nav-lib-${view.section.key}` : view.type === 'search' ? 'nav-search' : view.type === 'watchlist' ? 'nav-watchlist' : view.type === 'guide' ? 'nav-guide' : view.type === 'dashboard' ? 'nav-dashboard' : 'nav-home')
   const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
@@ -299,10 +307,25 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   // Connected the long way round? Say so once, so slow playback isn't a mystery.
   useEffect(() => { if (server.relay) say('Connected through Plex’s relay, which can limit video quality. Allow direct connections on your server for the best playback.') }, [server.uri])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The server can't be reached: say so, keep knocking in the background, and reload the screens when it answers.
+  const serverDown = useServerDown()
+  useEffect(() => {
+    if (!serverDown || token === 'demo') return
+    const t = setInterval(async () => {
+      try { const r = await fetch(`${server.uri}/identity`, { headers: { Accept: 'application/json' } }); if (r.ok) { reportOk(); invalidateCache(); setRefreshKey((k) => k + 1) } } catch { /* still down */ }
+    }, 5000)
+    return () => clearInterval(t)
+  }, [serverDown, server.uri, token])
+
   void token
   return (
     <ItemMenuContext.Provider value={(item, opts) => setMenu({ item, fromContinue: opts?.fromContinue, fromRecs: opts?.fromRecs, onSelect: opts?.onSelect })}>
       <SeasonalAmbient />
+      {serverDown && !playing && (
+        <div className="pointer-events-none fixed inset-x-0 top-24 z-[70] flex justify-center">
+          <div className="flex items-center gap-3 rounded-full bg-black/80 px-5 py-2.5 text-[0.95rem] font-semibold shadow-2xl ring-1 ring-white/15 backdrop-blur-xl"><Loader2 size={17} className="animate-spin text-accent" />Can’t reach your server. Trying again…</div>
+        </div>
+      )}
       <Screensaver server={server} sections={sections} enabled={settings.screensaver && !playing} minutes={settings.screensaverMins} />
       {minimal
         ? <>
@@ -322,7 +345,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
           {view.type === 'library' && <Library server={server} token={token} section={view.section} onOpen={open} onShuffle={shuffle}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
-          {view.type === 'libraries' && <Libraries server={server} token={token} all={allSections} onOpen={open} onShuffle={shuffle}
+          {view.type === 'libraries' && <Libraries server={server} token={token} all={allSections} onOpen={open} onShuffle={shuffle} onScan={scanLibrary}
             onBrowse={(sec, kind) => push({ type: 'browse', kind, tab: sec.type === 'movie' ? 'movie' : 'show', section: sec })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
           {view.type === 'dashboard' && server.owned && <Dashboard server={server} onOpen={open} />}
@@ -339,7 +362,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {layer === 'profile' && <ProfileMenu right={minimal} profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
       {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
-      {menu && <ItemMenu item={menu.item} server={server} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
+      {menu && <ItemMenu item={menu.item} server={server} token={token} say={say} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
         onPlay={() => play(menu.item, !!menu.fromContinue)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)}
         onEdit={canEdit(server) && ['movie', 'show', 'episode'].includes(menu.item.type) ? () => setEditing(menu.item) : undefined} />}
       {editing && <EditInfo server={server} item={editing} onClose={() => setEditing(undefined)} onSaved={edited} />}

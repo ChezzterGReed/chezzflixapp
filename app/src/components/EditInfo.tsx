@@ -4,7 +4,7 @@ import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Btn } from './AddChannel'
-import { getCollections, getImageChoices, getMetadataFresh, imageUrl, type ImageChoice, type PlexMedia, type PlexServer } from '../lib/plex'
+import { getCollections, getGenres, getImageChoices, getLabels, getMetadataFresh, imageUrl, type ImageChoice, type PlexMedia, type PlexServer } from '../lib/plex'
 import { addImageFromFile, addImageFromUrl, chooseImage, fieldsOf, saveFields, saveTags, type EditFields, type TagKind } from '../lib/edit'
 
 type Tab = 'details' | 'tags' | 'poster' | 'background'
@@ -37,7 +37,10 @@ function Field({ focusKey, label, value, onChange, placeholder, multiline, onSub
 function TagList({ id, title, hint, values, onChange, suggestions = [] }: { id: string; title: string; hint?: string; values: string[]; onChange: (v: string[]) => void; suggestions?: string[] }) {
   const [text, setText] = useState('')
   const add = () => { const t = text.trim(); if (t && !values.some((v) => v.toLowerCase() === t.toLowerCase())) onChange([...values, t]); setText('') }
-  const offer = suggestions.filter((s) => !values.includes(s) && (!text || s.toLowerCase().includes(text.toLowerCase()))).slice(0, 6)
+  // Names already in use, as you type: the ones that start with what's typed come first.
+  const q = text.trim().toLowerCase()
+  const offer = suggestions.filter((s) => !values.some((v) => v.toLowerCase() === s.toLowerCase()) && (!q || s.toLowerCase().includes(q)))
+    .sort((a, b) => Number(b.toLowerCase().startsWith(q)) - Number(a.toLowerCase().startsWith(q)) || a.localeCompare(b)).slice(0, 8)
   return (
     <div className="mb-7">
       <div className="mb-1 px-1 text-[0.72rem] font-bold uppercase tracking-[0.18em] text-white/45">{title}</div>
@@ -113,6 +116,8 @@ export function EditInfo({ server, item, onClose, onSaved }: Props) {
   const [tags, setTags] = useState<Record<TagKind, string[]>>({ genre: [], collection: [], label: [] })
   const orig = useRef<{ fields: EditFields; tags: Record<TagKind, string[]> } | undefined>(undefined)
   const [known, setKnown] = useState<string[]>([])
+  const [knownGenres, setKnownGenres] = useState<string[]>([])
+  const [knownLabels, setKnownLabels] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
   const imagesChanged = useRef(false)
@@ -128,6 +133,10 @@ export function EditInfo({ server, item, onClose, onSaved }: Props) {
       orig.current = { fields: f, tags: { genre: [...t.genre], collection: [...t.collection], label: [...t.label] } }
       setM(full); setFields(f); setTags(t)
       if (hasTags && full.librarySectionID != null) getCollections(server, String(full.librarySectionID)).then((c) => alive && setKnown(c.map((x) => x.title).filter((x) => !x.startsWith('_')))).catch(() => {})
+      if (hasTags && full.librarySectionID != null) {
+        getGenres(server, String(full.librarySectionID)).then((g) => alive && setKnownGenres(g.map((x) => x.title))).catch(() => {})
+        getLabels(server, String(full.librarySectionID)).then((l) => alive && setKnownLabels(l)).catch(() => {})
+      }
     }).catch((e) => alive && setError(String(e)))
     return () => { alive = false }
   }, [server, item.ratingKey, hasTags])
@@ -173,8 +182,8 @@ export function EditInfo({ server, item, onClose, onSaved }: Props) {
               {tab === 'tags' && (
                 <>
                   <TagList id="tag-col" title="Collections" hint="Group titles together. A new name creates a collection." values={tags.collection} onChange={(v) => setTags((t) => ({ ...t, collection: v }))} suggestions={known} />
-                  <TagList id="tag-genre" title="Genres" values={tags.genre} onChange={(v) => setTags((t) => ({ ...t, genre: v }))} />
-                  <TagList id="tag-label" title="Tags" hint="Your own labels, handy for filtering." values={tags.label} onChange={(v) => setTags((t) => ({ ...t, label: v }))} />
+                  <TagList id="tag-genre" title="Genres" values={tags.genre} onChange={(v) => setTags((t) => ({ ...t, genre: v }))} suggestions={knownGenres} />
+                  <TagList id="tag-label" title="Tags" hint="Your own labels, handy for filtering." values={tags.label} onChange={(v) => setTags((t) => ({ ...t, label: v }))} suggestions={knownLabels} />
                 </>
               )}
               {tab === 'poster' && <ImagePicker server={server} item={m} kind="posters" onChanged={() => { imagesChanged.current = true }} />}

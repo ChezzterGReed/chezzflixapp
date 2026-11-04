@@ -223,13 +223,15 @@ function SubtitleStyle() {
     <>
       <Heading>Subtitles</Heading>
       <div className="mx-4 mb-2 grid h-24 place-items-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#2b2f3a,#12141a)]">
-        <span className="px-3 py-1 text-center font-semibold leading-tight" style={{ fontFamily: font, fontSize: `${1.15 * SUB_PREVIEW_SIZE[s.subSize]}rem`, color: s.subColor === 'yellow' ? '#ffe600' : '#fff', textShadow: shadow, background: s.subBackground ? 'rgba(0,0,0,.75)' : 'transparent' }}>Sample subtitle text</span>
+        <span className="px-3 py-1 text-center font-semibold leading-tight transition-transform" style={{ transform: `translateY(${-(s.subLift ?? 0) * 1.6}px)`, fontFamily: font, fontSize: `${1.15 * SUB_PREVIEW_SIZE[s.subSize]}rem`, color: s.subColor === 'yellow' ? '#ffe600' : '#fff', textShadow: shadow, background: s.subBackground ? 'rgba(0,0,0,.75)' : 'transparent' }}>Sample subtitle text</span>
       </div>
       {row('Size', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['huge', 'Huge']], 'subSize')}
       {row('Font', [['sans', 'Sans'], ['serif', 'Serif'], ['mono', 'Mono']], 'subFont')}
       {row('Colour', [['white', 'White'], ['yellow', 'Yellow']], 'subColor')}
       {row('Edge', [['outline', 'Outline'], ['shadow', 'Shadow'], ['none', 'None']], 'subEdge')}
       <Toggle label="Background box" hint="A dark box behind the text, easier to read over bright scenes" on={s.subBackground} onChange={(v) => update({ subBackground: v })} />
+      <div className="px-4 pt-1 text-sm font-semibold text-white/80">Position</div>
+      <div className="flex flex-wrap gap-2 px-4 py-2">{([[-4, 'Lowest'], [-2, 'Lower'], [0, 'Default'], [3, 'Higher'], [6, 'High'], [10, 'Higher still'], [15, 'Highest']] as [number, string][]).map(([v, l]) => <Pill key={v} active={s.subLift === v} onEnter={() => update({ subLift: v })}>{l}</Pill>)}</div>
       <p className="px-4 pb-3 text-sm text-white/55">Applies to plain-text subtitles (.srt and similar). Styled subtitles (.ass) and picture-based ones keep the look they were made with.</p>
     </>
   )

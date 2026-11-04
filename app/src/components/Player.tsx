@@ -8,6 +8,8 @@ import { StallOffer } from './StallOffer'
 import { VolumePill } from './VolumePill'
 import { queueNeighbors } from '../lib/shuffleQueue'
 import { saveResume } from '../lib/resume'
+import { Layer } from './Layer'
+import { Focusable } from './Focusable'
 import { activeProfile } from '../lib/profile'
 import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
@@ -49,7 +51,8 @@ const IRIS_MS = 950   // the exit: the app grows back over the video
 const BEAT_MS = 900   // time held in black while the video loads
 
 export function Player({ server, media, onClose: finishClose, onPlayNext, onSwitch }: Props) {
-  const { settings, update } = useSettings()
+  const { settings, update, sync } = useSettings()
+  useEffect(() => { sync.now() }, []) // eslint-disable-line react-hooks/exhaustive-deps   // pick up audio / subtitle choices made on the person's other devices
   const [stylePanel, setStylePanel] = useState<number | null>(null)   // row highlighted in the subtitle-style menu (null = closed)
   const [levelPanel, setLevelPanel] = useState<number | null>(null)   // row highlighted in the volume menu (null = closed)
   const [loadedTick, setLoadedTick] = useState(0)
@@ -235,7 +238,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     }, (e) => {
       if (e.event === 'loaded') {
         setBuffering(false); setReady(true); refreshTracks(); setLoadedTick((n) => n + 1)
-        applyPrefs(); setTimeout(applyPrefs, 1100)
+        applyPrefs(); setTimeout(applyPrefs, 1100); setTimeout(applyPrefs, 4000)   // (the last one catches choices that arrived from another device just after starting)
         // Sidecar subtitles Plex knows about (embedded ones are already in mpv's track list).
         plexSubs.filter((s) => s.key).forEach((s) => mpvCmd('sub-add', `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, 'auto').catch(() => {}))
         setTimeout(refreshTracks, 800)
@@ -396,7 +399,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     }, 1000)
     return () => clearInterval(t)
   }, [lighter])
-  const modalOpen = (askingStill || offer) && !closing
+  // Left paused for 20 minutes: the stream is let go (it holds a connection and a decoder) and the person is asked whether they're still there.
+  const [idleAsk, setIdleAsk] = useState(false)
+  const idleRef = useRef(false)   // the stream was let go on purpose: its "error" is not one
+  const modalOpen = (askingStill || offer || idleAsk) && !closing
   const modalRef = useRef(false); modalRef.current = modalOpen
   useEffect(() => { if (modalOpen) { resumeNav(); return () => pauseNav() } }, [modalOpen])
 
@@ -464,6 +470,19 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     return () => clearTimeout(sleepTimer.current)
   }, [sleepIdx, sleepNow])
   const wakeFromSleep = () => { setSleepDone(false); if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
+  useEffect(() => {
+    if (!paused || !ready || closing || sleepDone || error || idleAsk) return
+    const t = setTimeout(() => {
+      if (!pausedRef.current) return
+      reportProgress(server, media, 'stopped', timeRef.current * 1000).catch(() => {})
+      saveResume({ ratingKey: media.ratingKey, versionIndex: media.versionIndex, offsetMs: Math.round(timeRef.current * 1000), paused: true, at: Date.now(), profile: activeProfile() })
+      idleRef.current = true
+      if (mode === 'native') mpvCmd('stop').catch(() => {})
+      else { const v = video.current; if (v) { v.pause(); v.removeAttribute('src'); v.load() } }
+      setIdleAsk(true)
+    }, 20 * 60_000)
+    return () => clearTimeout(t)
+  }, [paused, ready, closing, sleepDone, error, idleAsk]) // eslint-disable-line react-hooks/exhaustive-deps
   // ----- fast-forward / rewind, like a TV: holding the key starts a smooth glide at one speed (a fast-forward icon); each further press of the same
   // direction goes faster (one more triangle each time, up to three steps); the opposite direction slows it a step at a time, back to normal playing; Play ends it -----
   const scrubbing = useRef(false)
@@ -579,7 +598,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   }, [qIdx, mode])
 
   // Subtitle look (plain-text subtitles; styled .ass ones keep their own).
-  useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, loadedTick, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground])
+  useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, loadedTick, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground, settings.subLift])
   // Manual boost: from Auto, the first press starts from the boost currently in effect, then moves 1 dB at a time (-10 to +15).
   const nudgeBoost = (d: 1 | -1) => level.setBoost(clampBoost((level.boost === 'auto' ? Math.round(level.gain) : level.boost) + d))
   const allLevelRows = [
@@ -693,6 +712,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     { label: 'Colour', key: 'subColor', opts: [['white', 'White'], ['yellow', 'Yellow']] },
     { label: 'Edge', key: 'subEdge', opts: [['outline', 'Outline'], ['shadow', 'Shadow'], ['none', 'None']] },
     { label: 'Background box', key: 'subBackground', opts: [[false, 'Off'], [true, 'On']] },
+    { label: 'Position', key: 'subLift', opts: [[-4, 'Lowest'], [-2, 'Lower'], [0, 'Default'], [3, 'Higher'], [6, 'High'], [10, 'Higher still'], [15, 'Highest']] },
   ] as const
   const styleValue = (i: number) => { const r = styleRows[i]; return (r.opts as readonly (readonly [unknown, string])[]).find((o) => o[0] === (settings as unknown as Record<string, unknown>)[r.key])?.[1] ?? '' }
   const stepStyle = (i: number, d: 1 | -1) => {
@@ -836,7 +856,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         onDurationChange={(e) => isFinite(e.currentTarget.duration) && setDuration(e.currentTarget.duration)}
         onVolumeChange={(e) => { setVolume(e.currentTarget.volume); setMuted(e.currentTarget.muted) }}
         onEnded={() => endedRef.current()}
-        onError={() => fail('This file could not be played.')} />}
+        onError={() => { if (!idleRef.current) fail('This file could not be played.') }} />}
       {mode !== 'native' && <VolumeSync video={video} volume={volume} muted={muted} />}
 
       {/* Loading / error states */}
@@ -1017,6 +1037,24 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
           <p className="mt-2 text-sm text-white/65">Playback was paused. Press OK to keep watching, or Back to leave.</p>
           <button onClick={wakeFromSleep} className="mt-5 rounded-full bg-white px-8 py-2.5 font-bold text-black transition hover:scale-105">Keep watching</button>
         </div>
+      )}
+      {idleAsk && !closing && (
+        <Layer player z="z-[90]" onClose={() => close()} scrim="bg-black/80 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(520px,92vw)] -translate-x-1/2 -translate-y-1/2">
+          <div data-nopause className="pop rounded-3xl bg-[#17171c]/95 p-8 text-center shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
+            <div className="text-[0.75rem] font-bold uppercase tracking-[0.2em] text-white/45">Were you still watching?</div>
+            <div className="mt-3 text-2xl font-extrabold tracking-tight">{title}</div>
+            {subtitle && <div className="mt-1 text-white/65">{subtitle}</div>}
+            <div className="mt-2 text-sm text-white/45">Paused at {fmt(time)}{duration ? ` of ${fmt(duration)}` : ''}. The stream was closed to save bandwidth.</div>
+            <div className="mt-7 flex justify-center gap-3">
+              <Focusable focusKey="idle-resume" onEnter={() => fadeOut(() => { continuing = true; onSwitch({ ...media, viewOffset: Math.round(timeRef.current * 1000) }) })} title="Resume">
+                <div className="rounded-full bg-white px-8 py-3 text-[1.02rem] font-bold text-black transition-all group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">Resume</div>
+              </Focusable>
+              <Focusable focusKey="idle-exit" onEnter={() => close()} title="Exit">
+                <div className="rounded-full bg-white/12 px-8 py-3 text-[1.02rem] font-semibold transition-all group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Exit</div>
+              </Focusable>
+            </div>
+          </div>
+        </Layer>
       )}
       {askingStill && !closing && <StillWatching onStay={stillHere} onTimeout={() => { homeRef.current = true; close() }} />}
       {suggest && <NextMovies server={server} media={media} onClose={close} onPlay={(m) => fadeOut(() => { continuing = true; onPlayNext(m) })} />}
