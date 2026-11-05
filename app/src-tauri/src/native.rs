@@ -113,6 +113,9 @@ impl Native {
             set("cache", "yes");
             set("demuxer-max-bytes", "200MiB");
             set("demuxer-readahead-secs", "60");
+            // A connection the server closes is picked up again at the same spot (ffmpeg re-requests from the byte it reached): the cache covers the gap, so nothing shows.
+            set("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=4xx,5xx,reconnect_delay_max=8");
+            set("network-timeout", "20");
             set("sub-auto", "fuzzy");
             set("audio-client-name", "Chezzflix");
             let r = mpv_initialize(mpv);

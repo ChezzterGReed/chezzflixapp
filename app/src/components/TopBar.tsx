@@ -31,7 +31,7 @@ function goDown(id?: TopTab) {
 function Tab({ id, active, icon, label, onEnter, round }: { id: TopTab; active: boolean; icon?: ReactNode; label?: string; onEnter: () => void; round?: boolean }) {
   return (
     <Focusable focusKey={`mtab-${id}`} onEnter={onEnter} title={label ?? id} onArrow={(d) => { if (d === 'down') { goDown(id); return false } if (d === 'up') return false; if (d === 'left' && id === 'search') { setFocus('mprofile'); return false } }}>
-      <div className={`flex h-12 items-center justify-center gap-2 rounded-full text-[1.02rem] font-semibold transition-colors duration-200 group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${round ? 'w-12' : 'px-6'} ${active ? 'bg-white/18 text-white' : 'text-white/65'}`}>
+      <div className={`flex h-12 items-center justify-center gap-2 rounded-full text-[1.02rem] font-semibold transition-colors duration-200 group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${round ? 'w-12' : 'px-6'} ${active ? 'bg-[color-mix(in_srgb,var(--accent)_45%,transparent)] text-white' : 'text-white/65'}`}>
         {icon}{label}
       </div>
     </Focusable>
@@ -67,7 +67,7 @@ export function TopBar({ view, tvGuide, trending, watchlist, onGo, onSettings }:
   return (
     <FocusContext.Provider value={focusKey}>
       <nav ref={ref} className="pointer-events-none fixed inset-x-0 top-0 z-[45] flex justify-center pt-6">
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-black/45 p-1.5 shadow-[0_10px_40px_-10px_rgba(0,0,0,.8)] ring-1 ring-white/10 backdrop-blur-xl">
+        <div className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-black/45 p-1.5 shadow-[0_10px_40px_-10px_rgba(0,0,0,.8)] ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)] backdrop-blur-xl">
           <Tab id="search" round active={cur === 'search'} icon={<Search size={21} />} label={undefined} onEnter={() => onGo({ type: 'search' })} />
           <Tab id="home" active={cur === 'home'} label="Home" onEnter={() => onGo({ type: 'home' })} />
           {trending && <Tab id="trending" active={cur === 'trending'} label="Trending" onEnter={() => onGo({ type: 'home', tab: 'trending' })} />}

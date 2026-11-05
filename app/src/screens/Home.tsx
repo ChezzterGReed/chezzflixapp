@@ -191,7 +191,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
 
   if (minimal && activeTab !== 'trending') return (
     <MinimalHome server={server} sections={visible} anime={rowsAnime ?? anime} tab={activeTab} hero={hero} rows={rows ? merged : undefined} rotate={settings.heroRotate}
-      onPlay={onPlay} onOpen={onOpen} onType={onType} continueWide={settings.continueStyle === 'episode'} />
+      onPlay={onPlay} onOpen={onOpen} onType={onType} onSeasonal={onSeasonal} continueWide={settings.continueStyle === 'episode'} />
   )
 
   return (

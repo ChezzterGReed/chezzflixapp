@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Captions, Check, Loader2, TriangleAlert } from 'lucide-react'
+import { Captions, Check, Loader2, RotateCw, TriangleAlert } from 'lucide-react'
 import { useInputMode } from '../lib/input'
 import { useStillWatching } from '../lib/stillWatching'
 import { StillWatching } from './StillWatching'
@@ -55,13 +55,15 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const recovering = useRef(0)
   const warming = useRef(false)   // another channel's picture is being fetched for a moment (silently); the engine's events are not for the screen
   const [why, setWhy] = useState('')
+  const [softHold, setSoftHold] = useState(false)   // a quiet rejoin: the Tuning cover stays away for the first few seconds, so a quick recovery isn't seen at all
+  const softTimer = useRef(0)
   const channelsRef = useRef(channels); channelsRef.current = channels
   const serverRef = useRef(server); serverRef.current = server
   // Starting over. From the third attempt it does what flipping to another channel and back does: the server is asked for a different channel's
   // program for a moment (silently), and then for this one again.
   const retune = useCallback(async (n: number) => {
     if (modeRef.current === 'native') {
-      await mpvCmd('stop').catch(() => {})
+      if (n >= 2) await mpvCmd('stop').catch(() => {})   // (the first tries load straight over what's there, so the last picture stays up meanwhile)
       const chs = channelsRef.current
       if (n >= 2 && chs.length > 1) {
         try {
@@ -84,6 +86,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     const n = fails.current++
     const wait = [600, 1500, 3000, 6000, 10000][Math.min(n, 4)] ?? 20000
     console.warn('[tv guide] stream lost, rejoining', reason, n + 1)
+    if (n < 2) { setSoftHold(true); clearTimeout(softTimer.current); softTimer.current = window.setTimeout(() => setSoftHold(false), 3500) }
     setStatus(n >= 3 ? 'error' : 'tuning')   // after a few tries it says so, and carries on trying
     recovering.current = window.setTimeout(() => { recovering.current = 0; void retune(n) }, wait)
   }, [retune])
@@ -286,6 +289,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     if (mode === 'pending') return
     clearTimeout(recovering.current); recovering.current = 0; fails.current = 0   // a channel change starts clean
     setStatus('tuning'); flash()
+    { setSoftHold(false); const c = channelsRef.current[idx], n = Date.now(), l = c && slotsRef.current[c.id]; const first = l && (slotAt(l, n) ?? l.find((x) => x.start > n) ?? l[l.length - 1]); if (first) setSlot(first) }   // the name of what's on shows right away, while the picture loads
     const t = setTimeout(() => tune(idx), idx === start && seq.current === 0 ? 0 : TUNE_DELAY)
     return () => clearTimeout(t)
   }, [idx, mode, tune, start, flash])
@@ -388,12 +392,14 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
                 </Focusable>
                 {settings.guideLeveling && (
                   <div className="px-3 pt-2.5">
+                    <Focusable onEnter={() => { level.rescan(); if (typeof level.boost === 'number') level.setBoost('auto'); level.remeasure(); setTracksOpen(false); flash() }} title="Redo scan"><div className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black"><RotateCw size={15} />Redo scan</div></Focusable>
                     <div className="pb-1 text-[0.68rem] font-bold uppercase tracking-[0.2em] text-white/40">Boost</div>
                     <div className="flex items-center gap-1.5">
                       <Focusable onEnter={() => nudge(-1)} title="Quieter by 1 dB"><div className="grid size-9 place-items-center rounded-full bg-white/12 text-lg font-bold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">−</div></Focusable>
                       <span className="min-w-[3.6rem] text-center text-sm font-bold tabular-nums">{dbLabel(boostNow)}</span>
                       <Focusable onEnter={() => nudge(1)} title="Louder by 1 dB"><div className="grid size-9 place-items-center rounded-full bg-white/12 text-lg font-bold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">+</div></Focusable>
                     </div>
+                    <div className="mt-1.5 text-center text-[0.7rem] font-medium text-white/50">{level.rec !== undefined ? `Recommended: ${dbLabel(Math.round(level.rec))}` : 'Not scanned yet'}</div>
                     {typeof level.boost === 'number' && <div className="mt-1.5"><Focusable onEnter={() => level.setBoost('auto')} title="Back to automatic"><div className="rounded-full px-3 py-1.5 text-xs font-semibold text-white/70 transition-colors group-hover/f:bg-white/10 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Back to automatic</div></Focusable></div>}
                   </div>
                 )}
@@ -403,10 +409,11 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
         )}
 
         {/* Tuning / error cover */}
-        <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity duration-300 ${status === 'playing' && !leaving ? 'opacity-0' : 'opacity-100'}`}>
+        <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity duration-300 ${(status === 'playing' || softHold) && !leaving ? 'opacity-0' : 'opacity-100'}`}>
           {status === 'tuning' && !leaving && (
             <div className="text-center"><Loader2 className="mx-auto animate-spin text-white/60" size={44} />
               <div className="mt-5 flex justify-center text-4xl font-extrabold tabular-nums">{ch.seasonal ? <SeasonIcon size={44} /> : ch.number}</div><div className="mt-1 font-bold tracking-wide" style={{ color: ch.accent ?? 'rgba(255,255,255,.7)' }}>{ch.name}</div>
+              {slot && <div className="mx-auto mt-4 max-w-xl px-6"><div className="truncate text-2xl font-extrabold">{slot.title}</div>{slot.sub && <div className="mt-0.5 truncate text-base text-white/65">{slot.sub}</div>}</div>}
               <div className="mt-3 text-sm uppercase tracking-[0.3em] text-white/40">Tuning</div></div>
           )}
           {status === 'error' && !leaving && (

@@ -1,4 +1,5 @@
 import { useTheme } from '../lib/settings'
+import { useMinimal } from '../lib/layout'
 
 /** Fixed corner cobweb: a few spokes and curved threads. Drawn once, never animated. */
 function Cobweb({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
@@ -127,8 +128,7 @@ function Festive() {
 /** Seasonal atmosphere: spooky fog and embers in October; snow, frost or garlands in December. All kept faint and mostly still. */
 export function SeasonalAmbient() {
   const { key } = useTheme()
-  if (key === 'halloween') return <Spooky />
-  if (key === 'frost') return <Frost />
-  if (key === 'festive') return <Festive />
-  return null
+  const minimal = useMinimal()   // (no side rail in Minimal, so the corner decorations sit right in the corner)
+  const art = key === 'halloween' ? <Spooky /> : key === 'frost' ? <Frost /> : key === 'festive' ? <Festive /> : null
+  return art && <div className="contents" style={minimal ? { ['--rail' as string]: '0px' } : undefined}>{art}</div>
 }

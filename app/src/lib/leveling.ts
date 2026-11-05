@@ -88,6 +88,9 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   const manual = (v: number) => Math.max(MIN_BOOST, Math.min(MAX_BOOST, v))
   const [boost, setBoostState] = useState<Boost>(() => readMem(key).boost ?? 'auto')
   const [gain, setGain] = useState(0)
+  /** What listening to this title suggested (undefined until it has been heard); shown beside the manual boost. */
+  const [rec, setRec] = useState<number | undefined>(() => readMem(key).gain)
+  useEffect(() => { setRec(readMem(key).gain) }, [key])
   /** For a title that hasn't been measured yet: 'measuring' while it listens, then 'applied' (briefly) with the boost it chose. */
   const [note, setNote] = useState<null | { kind: 'measuring' } | { kind: 'offer'; target: number; loud: boolean } | { kind: 'applying'; to: number } | { kind: 'applied'; gain: number }>(null)
   const noteTimer = useRef(0)
@@ -169,6 +172,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
           const lufs = Number(await mpvGet('af-metadata/m/lavfi.r128.I').catch(() => null))
           if (!isFinite(lufs) || lufs < -60) return
           const raw = TARGET_LUFS - lufs
+          setRec(limit(clamp(raw)))
           if (Math.abs(raw) > OFFER_DB) {
             offered.current = key; clearInterval(s.timer)
             offerTarget.current = limit(clamp(raw))
@@ -193,7 +197,7 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
         if (!isFinite(lufs) || lufs < -60) return   // nothing but silence so far
         let next = limit(clamp(TARGET_LUFS - lufs))
         if (!first) next = limit(Math.max(s.gain - 3, Math.min(s.gain + 3, next)))   // later corrections stay small
-        writeMem(key, { gain: next, locked: false }); rampTo(next, first && !fast)   // the first level found for a title is eased in and announced; later fine-tuning is silent
+        writeMem(key, { gain: next, locked: false }); setRec(next); rampTo(next, first && !fast)   // the first level found for a title is eased in and announced; later fine-tuning is silent
       }, 1000)
     })()
     return () => { dead = true; clearInterval(s.timer); clearTimeout(noteTimer.current); setNote(null) }
@@ -219,5 +223,5 @@ export function useLevelEngine({ active, loaded, media, autoLevel, dialogueBoost
   const closeNote = useCallback(() => { clearTimeout(noteTimer.current); setNote(null) }, [])
   /** Forget that this title was already offered or declined, so switching the scan back on listens to it again. */
   const rescan = useCallback(() => { declined.delete(key); offered.current = '' }, [key])
-  return { boost, setBoost, gain, note, holdNote, rescan, adjustNote, revertNote, closeNote, acceptOffer, declineOffer, remeasure }
+  return { boost, setBoost, gain, rec, note, holdNote, rescan, adjustNote, revertNote, closeNote, acceptOffer, declineOffer, remeasure }
 }

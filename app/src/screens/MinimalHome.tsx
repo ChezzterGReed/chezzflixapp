@@ -6,7 +6,8 @@ import { useItemMenu } from '../lib/itemMenu'
 import { useFocusedKey } from '../lib/input'
 import { scrollTo } from '../lib/scroll'
 import { BIG_IMAGE, LOW_POWER } from '../lib/perf'
-import { useSettings } from '../lib/settings'
+import { useSeason, useSettings } from '../lib/settings'
+import { SeasonIcon } from '../components/SeasonIcon'
 import { backdropPath, episodeLabel, formatRuntime, getSectionItems, imageUrl, logoPath, posterPath, progressOf, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import type { AnimeInfo, HomeRow, Tab } from '../lib/homeData'
 import { playLabel } from '../components/Hero'
@@ -93,7 +94,7 @@ function MCard({ m, server, row, wide, onEnter, onFocus, fromContinue, fromRecs,
   )
 }
 
-function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, onPick }: { onPick: (m: PlexMedia, fromContinue?: boolean) => void; idx: number; row: MRowData; active: number; server: PlexServer; continueWide: boolean; onShow: (m: PlexMedia, idx: number) => void; onTitle?: () => void; onUp: () => boolean }) {
+function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, onPick, themed }: { themed?: boolean; onPick: (m: PlexMedia, fromContinue?: boolean) => void; idx: number; row: MRowData; active: number; server: PlexServer; continueWide: boolean; onShow: (m: PlexMedia, idx: number) => void; onTitle?: () => void; onUp: () => boolean }) {
   const { ref, focusKey } = useFocusable({ focusKey: `mrow-${idx}`, saveLastFocusedChild: true, autoRestoreFocus: false })
   const track = useRef<HTMLDivElement>(null)
   const wide = !!row.continue && continueWide
@@ -105,9 +106,9 @@ function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, o
         <div className="flex h-[2.7rem] items-center px-[var(--mg)]">
           {onTitle
             ? <Focusable focusKey={`mtitle-${idx}`} onEnter={onTitle} title={row.title} onFocus={() => onShow(row.items[0], idx)} onArrow={(d) => { if (d === 'up' && idx === 0) return onUp() }}>
-                <div className="flex items-center gap-1.5 rounded-full px-4 py-1 text-[1.25rem] font-bold tracking-tight transition-colors group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">{row.title}<span className="text-white/50 group-data-[hl=true]/f:text-black/60">›</span></div>
+                <div className="flex items-center gap-1.5 rounded-full px-4 py-1 text-[1.25rem] font-bold tracking-tight transition-colors group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">{themed && <SeasonIcon size={24} className="-translate-y-px" />}<span className={themed ? 'text-accent group-data-[hl=true]/f:text-black' : ''}>{row.title}</span>{row.seasonal && <span className="ml-1 text-[0.9rem] font-semibold text-white/55 group-data-[hl=true]/f:text-black/60">See all {row.seasonal.total}</span>}<span className="text-white/50 group-data-[hl=true]/f:text-black/60">›</span></div>
               </Focusable>
-            : <h2 className="px-4 text-[1.25rem] font-bold tracking-tight text-white/90">{row.title}</h2>}
+            : <h2 className={`flex items-center gap-1.5 px-4 text-[1.25rem] font-bold tracking-tight ${themed ? 'text-accent' : 'text-white/90'}`}>{themed && <SeasonIcon size={24} className="-translate-y-px" />}{row.title}</h2>}
         </div>
         <div ref={track} className="m-hide-scroll flex gap-4 overflow-x-auto px-[var(--mg)] py-4 -my-1">
           {row.items.map((m) => (
@@ -142,12 +143,15 @@ interface Props {
   onPlay: (m: PlexMedia, fromContinue?: boolean) => void
   onOpen: (m: PlexMedia) => void
   onType: (tab: Tab) => void
+  /** Opens a seasonal list in full. */
+  onSeasonal: (id: string) => void
   continueWide: boolean
 }
 
 /** The Minimal look: the picture fills the screen, the title and details sit over it, and one row at a time runs along the bottom. */
-export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, onPlay, onOpen, onType, continueWide }: Props) {
+export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, onPlay, onOpen, onType, onSeasonal, continueWide }: Props) {
   const { settings } = useSettings()
+  const season = useSeason()
   const key = useFocusedKey()
   const typeRows = useTypeRows(server, sections, anime, tab === 'all' && settings.minimalTypeRows)
   const all: MRowData[] = rows ? [...rows, ...typeRows] : []
@@ -283,7 +287,8 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
                 {all.map((r, i) => (
                   <MRow key={r.id} idx={i} row={r} active={active} server={server} continueWide={continueWide}
                     onPick={pick} onShow={(it, ri) => { setSeen(it); setActive(ri) }} onUp={upFromFirstRow}
-                    onTitle={r.typeTab ? () => onType(r.typeTab!) : undefined} />
+                    themed={season === 'halloween' && r.title === 'Spooky Season'}
+                    onTitle={r.typeTab ? () => onType(r.typeTab!) : r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} />
                 ))}
               </div>
             )}

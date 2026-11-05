@@ -22,7 +22,12 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.session.MediaSession
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
@@ -80,7 +85,11 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
         DefaultAudioSink.Builder(context).setEnableFloatOutput(enableFloatOutput).setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).setAudioProcessorChain(gainChain).build()
     }.setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-    val p = ExoPlayer.Builder(activity, factory).build()
+    // A dropped connection is re-requested from where it stopped (Range), and the buffer is deep enough to play on through the gap, so a server closing the connection isn't seen.
+    val http = DefaultHttpDataSource.Factory().setConnectTimeoutMs(15_000).setReadTimeoutMs(20_000).setAllowCrossProtocolRedirects(true)
+    val sources = DefaultMediaSourceFactory(DefaultDataSource.Factory(activity, http)).setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(8))
+    val loads = DefaultLoadControl.Builder().setBufferDurationsMs(30_000, 60_000, 2_500, 5_000).build()
+    val p = ExoPlayer.Builder(activity, factory).setMediaSourceFactory(sources).setLoadControl(loads).build()
     p.setSeekParameters(SeekParameters.CLOSEST_SYNC)   // jump to the nearest keyframe: avoids the picture freezing while the decoder catches up to an exact spot
     return p
   }
