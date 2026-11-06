@@ -6,7 +6,7 @@ import { StillWatching } from './StillWatching'
 import { Layer } from './Layer'
 import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
-import { DEMO_URI, directPlayUrl, getMetadataFresh, reportProgress, restoreProgress, type PlexMedia, type PlexServer } from '../lib/plex'
+import { DEMO_URI, directPlayUrl, getMetadataFresh, reportProgress, undoGuideProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
 import { applySubStyle, keepAwake, isAndroid, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, nativeSwap, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
@@ -16,7 +16,7 @@ import { dbLabel, useLevelEngine } from '../lib/leveling'
 import { VolumePill } from './VolumePill'
 import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/tvguide'
 
-interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void; /** Nobody answered "Are you still watching?" */ onIdle?: () => void }
+interface Props { server: PlexServer; channels: Channel[]; start: number; /** Closed; `idx` is the channel that was on screen. */ onClose: (idx: number) => void; /** Nobody answered "Are you still watching?" */ onIdle?: (idx: number) => void }
 
 const RESTORE_KEY = 'chezzflix_guide_restore'
 const REFRESH_MS = 25 * 60_000   // how often the stream is quietly asked for again
@@ -278,10 +278,11 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   // If the app was closed while a guide stream was being reported, put that title's resume position back now.
   useEffect(() => {
     try {
-      const r = JSON.parse(localStorage.getItem(RESTORE_KEY) ?? 'null') as { uri: string; key: string; offset: number } | null
-      if (r && r.uri === server.uri) void restoreProgress(server, r.key, r.offset).then((ok) => { if (ok) localStorage.removeItem(RESTORE_KEY) })
+      const r = JSON.parse(localStorage.getItem(RESTORE_KEY) ?? 'null') as { uri: string; key: string; offset: number; count?: number } | null
+      if (r && r.uri === server.uri) void undoGuideProgress(server, r.key, r.offset, r.count ?? 1).then((ok) => { if (ok) localStorage.removeItem(RESTORE_KEY) })
     } catch { /* nothing saved */ }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const orig = useRef<{ key: string; offset: number; count: number }>({ key: '', offset: 0, count: 0 })   // how a title was before the first report (later reloads of its details already include our own)
   const [reported, setReported] = useState(false)   // Plex has accepted the playing reports (shown on the banner)
   useEffect(() => {
     if (!settings.guideSession || mode !== 'native' || status !== 'playing' || !slot || !media || media.ratingKey !== slot.key) return
@@ -293,7 +294,8 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       if (Date.now() - watchSince.current.at < 15 * 60_000) return
       const pos = Number(await mpvGet('time-pos').catch(() => null))
       if (!isFinite(pos) || pos * 1000 > dur * 0.85) return
-      if (!sent) { try { localStorage.setItem(RESTORE_KEY, JSON.stringify({ uri: server.uri, key: media.ratingKey, offset: media.viewOffset ?? 0 })) } catch { /* private mode */ } }   // what to put back, kept in case the app is closed first
+      if (orig.current.key !== media.ratingKey) orig.current = { key: media.ratingKey, offset: media.viewOffset ?? 0, count: media.viewCount ?? 0 }
+      if (!sent) { try { localStorage.setItem(RESTORE_KEY, JSON.stringify({ uri: server.uri, key: orig.current.key, offset: orig.current.offset, count: orig.current.count })) } catch { /* private mode */ } }   // what to put back, kept in case the app is closed first
       last = pos * 1000; sent = true
       void reportProgress(server, media, 'playing', last).then((ok) => setReported(ok))
     }, 10_000)
@@ -303,7 +305,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       // Done reporting: end the stream, then put the resume position back to what it was, so it doesn't sit in Continue Watching.
       void (async () => {
         await reportProgress(server, media, 'stopped', last)
-        await restoreProgress(server, media.ratingKey, media.viewOffset ?? 0)
+        await undoGuideProgress(server, orig.current.key, orig.current.offset, orig.current.count)
         try { if (JSON.parse(localStorage.getItem(RESTORE_KEY) ?? '{}').key === media.ratingKey) localStorage.removeItem(RESTORE_KEY) } catch { /* nothing to clear */ }
       })()
     }
@@ -344,7 +346,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     setNowPlaying({ title: slot.title, subtitle: [channels[idx]?.name, slot.sub].filter(Boolean).join(' · ') })
     setPlayback('playing')
   }, [slot?.key, idx]) // eslint-disable-line react-hooks/exhaustive-deps
-  const close = (idle = false) => { if (leaving) return; setLeaving(true); setTimeout(idle && onIdle ? onIdle : onClose, 300) }
+  const close = (idle = false) => { if (leaving) return; setLeaving(true); const at = idxRef.current; setTimeout(() => (idle && onIdle ? onIdle(at) : onClose(at)), 300) }
   const { asking: askingStill, confirm: stillHere } = useStillWatching(status === 'playing' && !leaving)
 
   const ch = channels[idx]
@@ -381,8 +383,19 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
           <div className="size-full" />
         </Focusable>
 
+        {/* Tuning / error cover: just the word in the middle; the program's details stay in the banner below, the same before and after the picture loads */}
+        <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity duration-300 ${(status === 'playing' || softHold) && !leaving ? 'opacity-0' : 'opacity-100'}`}>
+          {status === 'tuning' && !leaving && (
+            <div className="text-center"><Loader2 className="mx-auto animate-spin text-white/60" size={44} /><div className="mt-4 text-sm uppercase tracking-[0.3em] text-white/50">Tuning</div></div>
+          )}
+          {status === 'error' && !leaving && (
+            <div className="max-w-md -translate-y-10 text-center"><TriangleAlert className="mx-auto text-amber-300" size={44} />
+              <p className="mt-3 text-white/70">This channel isn’t working right now. Still trying; or pick another channel.</p>{why && <p className="mt-2 text-xs text-white/35">{why}</p>}</div>
+          )}
+        </div>
+
         {/* Banner: channel, title, episode */}
-        <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 via-black/50 to-transparent px-12 pb-10 pt-28 transition-opacity duration-500 ${banner && status !== 'tuning' || (status === 'tuning' && banner) ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 via-black/50 to-transparent px-12 pb-10 pt-28 transition-opacity duration-500 ${banner || status !== 'playing' ? 'opacity-100' : 'opacity-0'}`}>
           <div className="flex items-end gap-6">
             <div className="grid min-w-[5.5rem] place-items-center rounded-2xl px-4 py-3 text-center" style={{ background: ch.accent ? hexA(ch.accent, 0.3) : 'rgba(255,255,255,.15)' }}>{ch.seasonal ? <SeasonIcon size={34} /> : <div className="text-3xl font-extrabold leading-none tabular-nums">{ch.number}</div>}</div>
             <div className="min-w-0 flex-1">
@@ -445,20 +458,6 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
           </Layer>
         )}
 
-        {/* Tuning / error cover */}
-        <div className={`pointer-events-none absolute inset-0 grid place-items-center bg-black transition-opacity duration-300 ${(status === 'playing' || softHold) && !leaving ? 'opacity-0' : 'opacity-100'}`}>
-          {status === 'tuning' && !leaving && (
-            <div className="text-center"><Loader2 className="mx-auto animate-spin text-white/60" size={44} />
-              <div className="mt-5 flex justify-center text-4xl font-extrabold tabular-nums">{ch.seasonal ? <SeasonIcon size={44} /> : ch.number}</div><div className="mt-1 font-bold tracking-wide" style={{ color: ch.accent ?? 'rgba(255,255,255,.7)' }}>{ch.name}</div>
-              {slot && <div className="mx-auto mt-4 max-w-xl px-6"><div className="truncate text-2xl font-extrabold">{slot.title}</div>{slot.sub && <div className="mt-0.5 truncate text-base text-white/65">{slot.sub}</div>}</div>}
-              <div className="mt-3 text-sm uppercase tracking-[0.3em] text-white/40">Tuning</div></div>
-          )}
-          {status === 'error' && !leaving && (
-            <div className="max-w-md text-center"><TriangleAlert className="mx-auto text-amber-300" size={44} />
-              <div className="mt-4 text-2xl font-extrabold">{ch.seasonal ? '' : `${ch.number} · `}{ch.name}</div>
-              <p className="mt-2 text-white/70">This channel isn’t working right now. Still trying; or pick another channel.</p>{why && <p className="mt-2 text-xs text-white/35">{why}</p>}</div>
-          )}
-        </div>
       </div>
     </Layer>
   )

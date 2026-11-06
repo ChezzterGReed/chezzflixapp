@@ -30,7 +30,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.10',
+    'X-Plex-Version': '0.6.11',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -666,13 +666,31 @@ export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'p
   return !!r?.ok
 }
 
-/** Sets an item's resume position back (0 = none, so it leaves Continue Watching). Used to undo what reporting a guide stream leaves behind. */
-export async function restoreProgress(server: PlexServer, ratingKey: string, timeMs: number): Promise<boolean> {
+/**
+ * Undoes what reporting a guide stream leaves behind: the title goes back to how it was (not started, part-way at the old position, or watched).
+ * Each step is checked against what the server then says, and the next, firmer one is tried if the entry is still there.
+ */
+export async function undoGuideProgress(server: PlexServer, ratingKey: string, wasOffset: number, wasCount: number): Promise<boolean> {
   if (server.uri === DEMO_URI) return false
-  const p = new URLSearchParams({ key: ratingKey, identifier: 'com.plexapp.plugins.library', time: String(Math.round(timeMs)) })
-  const r = await fetch(`${server.uri}/:/progress?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => null)
+  const call = (path: string, p: Record<string, string>, method = 'GET') => fetch(`${server.uri}${path}?${new URLSearchParams(p)}`, { method, headers: baseHeaders(server.accessToken) }).then((r) => r.ok).catch(() => false)
+  const base = { key: ratingKey, identifier: 'com.plexapp.plugins.library' }
+  const left = async () => { invalidateCache(); invalidateWatchState(); try { return (await getMetadataFresh(server, ratingKey)).viewOffset ?? 0 } catch { return -1 } }
+  const done = (o: number) => (wasOffset > 0 ? Math.abs(o - wasOffset) < 5000 : o === 0)
+  await call('/:/progress', { ...base, time: String(Math.round(wasOffset)) })
+  if (done(await left())) return true
+  if (wasOffset <= 0 && wasCount === 0) {
+    // Never watched before: marking it unwatched clears the position and the Continue Watching entry together.
+    await call('/:/unscrobble', base)
+    if (done(await left())) { await call('/actions/removeFromContinueWatching', { ratingKey }, 'PUT'); return true }
+  } else if (wasOffset <= 0) {
+    // Watched before: marking it watched again clears the position and keeps it watched.
+    await call('/:/scrobble', base)
+    if (done(await left())) return true
+  }
+  await call('/actions/removeFromContinueWatching', { ratingKey }, 'PUT')   // last resort: at least off the Continue Watching row
+  console.warn('[tv guide] could not fully restore', ratingKey, await left())
   invalidateCache(); invalidateWatchState()
-  return !!r?.ok
+  return false
 }
 
 // ---------- Server dashboard (owner) ----------
