@@ -6,7 +6,7 @@ import { StillWatching } from './StillWatching'
 import { Layer } from './Layer'
 import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
-import { DEMO_URI, directPlayUrl, getMetadataFresh, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
+import { DEMO_URI, directPlayUrl, getMetadataFresh, reportProgress, restoreProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
 import { applySubStyle, keepAwake, isAndroid, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, nativeSwap, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
@@ -18,6 +18,7 @@ import { chooseTracks, slotAt, useGuide, type Channel, type Slot } from '../lib/
 
 interface Props { server: PlexServer; channels: Channel[]; start: number; onClose: () => void; /** Nobody answered "Are you still watching?" */ onIdle?: () => void }
 
+const RESTORE_KEY = 'chezzflix_guide_restore'
 const REFRESH_MS = 25 * 60_000   // how often the stream is quietly asked for again
 const TUNE_DELAY = 350   // wait for the remote to settle before loading, so flipping through channels doesn't hammer the server
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -274,6 +275,13 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   }, [status, slot?.key, idx, swapStream]) // eslint-disable-line react-hooks/exhaustive-deps
   // Experimental: after 15 minutes on a program longer than 35, tell Plex we are watching it (like a normal stream); stop reporting at 85% so it is never marked watched.
   const watchSince = useRef({ key: '', at: 0 })
+  // If the app was closed while a guide stream was being reported, put that title's resume position back now.
+  useEffect(() => {
+    try {
+      const r = JSON.parse(localStorage.getItem(RESTORE_KEY) ?? 'null') as { uri: string; key: string; offset: number } | null
+      if (r && r.uri === server.uri) void restoreProgress(server, r.key, r.offset).then((ok) => { if (ok) localStorage.removeItem(RESTORE_KEY) })
+    } catch { /* nothing saved */ }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [reported, setReported] = useState(false)   // Plex has accepted the playing reports (shown on the banner)
   useEffect(() => {
     if (!settings.guideSession || mode !== 'native' || status !== 'playing' || !slot || !media || media.ratingKey !== slot.key) return
@@ -285,10 +293,20 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       if (Date.now() - watchSince.current.at < 15 * 60_000) return
       const pos = Number(await mpvGet('time-pos').catch(() => null))
       if (!isFinite(pos) || pos * 1000 > dur * 0.85) return
+      if (!sent) { try { localStorage.setItem(RESTORE_KEY, JSON.stringify({ uri: server.uri, key: media.ratingKey, offset: media.viewOffset ?? 0 })) } catch { /* private mode */ } }   // what to put back, kept in case the app is closed first
       last = pos * 1000; sent = true
       void reportProgress(server, media, 'playing', last).then((ok) => setReported(ok))
     }, 10_000)
-    return () => { clearInterval(t); setReported(false); if (sent) void reportProgress(server, media, 'stopped', last) }
+    return () => {
+      clearInterval(t); setReported(false)
+      if (!sent) return
+      // Done reporting: end the stream, then put the resume position back to what it was, so it doesn't sit in Continue Watching.
+      void (async () => {
+        await reportProgress(server, media, 'stopped', last)
+        await restoreProgress(server, media.ratingKey, media.viewOffset ?? 0)
+        try { if (JSON.parse(localStorage.getItem(RESTORE_KEY) ?? '{}').key === media.ratingKey) localStorage.removeItem(RESTORE_KEY) } catch { /* nothing to clear */ }
+      })()
+    }
   }, [settings.guideSession, mode, status, slot, media, server])
   // A picture that has silently stopped moving (the connection died without an error) is treated the same way.
   useEffect(() => {

@@ -30,7 +30,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.9',
+    'X-Plex-Version': '0.6.10',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -663,6 +663,15 @@ export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'p
   })
   const r = await fetch(`${server.uri}/:/timeline?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => null)
   invalidateCache()
+  return !!r?.ok
+}
+
+/** Sets an item's resume position back (0 = none, so it leaves Continue Watching). Used to undo what reporting a guide stream leaves behind. */
+export async function restoreProgress(server: PlexServer, ratingKey: string, timeMs: number): Promise<boolean> {
+  if (server.uri === DEMO_URI) return false
+  const p = new URLSearchParams({ key: ratingKey, identifier: 'com.plexapp.plugins.library', time: String(Math.round(timeMs)) })
+  const r = await fetch(`${server.uri}/:/progress?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => null)
+  invalidateCache(); invalidateWatchState()
   return !!r?.ok
 }
 
