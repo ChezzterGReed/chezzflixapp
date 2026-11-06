@@ -6,7 +6,7 @@ import { StillWatching } from './StillWatching'
 import { Layer } from './Layer'
 import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
-import { DEMO_URI, directPlayUrl, getMetadataFresh, type PlexMedia, type PlexServer } from '../lib/plex'
+import { DEMO_URI, directPlayUrl, getMetadataFresh, reportProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
 import { applySubStyle, keepAwake, isAndroid, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, nativeSwap, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
@@ -271,6 +271,23 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     }, REFRESH_MS)
     return () => clearInterval(t)
   }, [status, slot?.key, idx, swapStream]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Experimental: after 25 minutes on a program longer than 30, tell Plex we are watching it (like a normal stream); stop reporting at 85% so it is never marked watched.
+  const watchSince = useRef({ key: '', at: 0 })
+  useEffect(() => {
+    if (!settings.guideSession || mode !== 'native' || status !== 'playing' || !slot || !media || media.ratingKey !== slot.key) return
+    const dur = media.duration ?? 0
+    if (dur < 30 * 60_000) return
+    if (watchSince.current.key !== slot.key) watchSince.current = { key: slot.key, at: Date.now() }
+    let last = 0, sent = false
+    const t = setInterval(async () => {
+      if (Date.now() - watchSince.current.at < 25 * 60_000) return
+      const pos = Number(await mpvGet('time-pos').catch(() => null))
+      if (!isFinite(pos) || pos * 1000 > dur * 0.85) return
+      last = pos * 1000; sent = true
+      void reportProgress(server, media, 'playing', last)
+    }, 10_000)
+    return () => { clearInterval(t); if (sent) void reportProgress(server, media, 'stopped', last) }
+  }, [settings.guideSession, mode, status, slot, media, server])
   // A picture that has silently stopped moving (the connection died without an error) is treated the same way.
   useEffect(() => {
     if (mode !== 'native' || status !== 'playing') return
