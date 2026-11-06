@@ -30,7 +30,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.8',
+    'X-Plex-Version': '0.6.9',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -655,14 +655,15 @@ export function stopTranscode(server: PlexServer, url?: string) {
   fetch(`${server.uri}/video/:/transcode/universal/stop?session=${encodeURIComponent(session)}`, { headers: baseHeaders(server.accessToken) }).catch(() => {})
 }
 
-export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'playing' | 'paused' | 'stopped', timeMs: number) {
-  if (server.uri === DEMO_URI) return
+export async function reportProgress(server: PlexServer, m: PlexMedia, state: 'playing' | 'paused' | 'stopped', timeMs: number): Promise<boolean> {
+  if (server.uri === DEMO_URI) return false
   const p = new URLSearchParams({
     ratingKey: m.ratingKey, key: `/library/metadata/${m.ratingKey}`, state,
     time: String(Math.round(timeMs)), duration: String(m.duration ?? 0),
   })
-  await fetch(`${server.uri}/:/timeline?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => {})
+  const r = await fetch(`${server.uri}/:/timeline?${p}`, { headers: baseHeaders(server.accessToken) }).catch(() => null)
   invalidateCache()
+  return !!r?.ok
 }
 
 // ---------- Server dashboard (owner) ----------

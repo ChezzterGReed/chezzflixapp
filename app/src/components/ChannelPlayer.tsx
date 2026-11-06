@@ -265,28 +265,30 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   useEffect(() => {
     if (status !== 'playing') return
     const t = setInterval(() => {
+      if (settingsRef.current.guideSession && slot && slot.end - slot.start > 35 * 60_000) return   // (reporting to Plex replaces the periodic reload while that experiment is on)
       if (!slot || slot.end - slot.start <= 30 * 60_000) return   // shorter programs are swapped when the next one starts anyway
       if (tracksOpenRef.current || pillRef.current >= 0 || slot.end - Date.now() < 120_000) return
       void swapStream().then((ok) => { if (!ok) tuneRef.current(idxRef.current, true) })
     }, REFRESH_MS)
     return () => clearInterval(t)
   }, [status, slot?.key, idx, swapStream]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Experimental: after 25 minutes on a program longer than 30, tell Plex we are watching it (like a normal stream); stop reporting at 85% so it is never marked watched.
+  // Experimental: after 15 minutes on a program longer than 35, tell Plex we are watching it (like a normal stream); stop reporting at 85% so it is never marked watched.
   const watchSince = useRef({ key: '', at: 0 })
+  const [reported, setReported] = useState(false)   // Plex has accepted the playing reports (shown on the banner)
   useEffect(() => {
     if (!settings.guideSession || mode !== 'native' || status !== 'playing' || !slot || !media || media.ratingKey !== slot.key) return
     const dur = media.duration ?? 0
-    if (dur < 30 * 60_000) return
+    if (dur < 35 * 60_000) return
     if (watchSince.current.key !== slot.key) watchSince.current = { key: slot.key, at: Date.now() }
     let last = 0, sent = false
     const t = setInterval(async () => {
-      if (Date.now() - watchSince.current.at < 25 * 60_000) return
+      if (Date.now() - watchSince.current.at < 15 * 60_000) return
       const pos = Number(await mpvGet('time-pos').catch(() => null))
       if (!isFinite(pos) || pos * 1000 > dur * 0.85) return
       last = pos * 1000; sent = true
-      void reportProgress(server, media, 'playing', last)
+      void reportProgress(server, media, 'playing', last).then((ok) => setReported(ok))
     }, 10_000)
-    return () => { clearInterval(t); if (sent) void reportProgress(server, media, 'stopped', last) }
+    return () => { clearInterval(t); setReported(false); if (sent) void reportProgress(server, media, 'stopped', last) }
   }, [settings.guideSession, mode, status, slot, media, server])
   // A picture that has silently stopped moving (the connection died without an error) is treated the same way.
   useEffect(() => {
@@ -373,7 +375,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
             {mode === 'native' && status === 'playing' && (
               <button onClick={openTracks} className={`${banner ? 'pointer-events-auto' : 'pointer-events-none'} flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition ${inputMode === 'key' && ctl ? 'scale-105 bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}><Captions size={18} />Audio & subtitles{inputMode === 'key' && ctl && <span className="rounded bg-black/10 px-1.5 text-xs font-bold">OK</span>}</button>
             )}
-            {slot && <div className="shrink-0 text-right text-sm text-white/60">{clock(slot.start)} – {clock(slot.end)}<div className="text-xs">{Math.max(0, Math.round((slot.end - now) / 60000))} min left</div></div>}
+            {slot && <div className="shrink-0 text-right text-sm text-white/60">{clock(slot.start)} – {clock(slot.end)}<div className="text-xs">{Math.max(0, Math.round((slot.end - now) / 60000))} min left</div>{reported && <div className="mt-0.5 text-xs text-accent">● Reported to Plex</div>}</div>}
           </div>
         </div>
 
