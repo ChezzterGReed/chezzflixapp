@@ -30,7 +30,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.11',
+    'X-Plex-Version': '0.6.12',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -373,8 +373,8 @@ export async function getCollections(server: PlexServer, sectionKey: string): Pr
     return (c.Metadata ?? []).map((m) => ({ ...m, sectionKey }))
   } catch { return [] }
 }
-export async function getCollectionItems(server: PlexServer, id: string): Promise<PlexMedia[]> {
-  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/collections/${id}/children`)
+export async function getCollectionItems(server: PlexServer, id: string, slim = false): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/collections/${id}/children${slim ? '?' + SLIM.slice(1) : ''}`)
   return c.Metadata ?? []
 }
 
@@ -471,18 +471,21 @@ export const SORTS = {
 } as const
 export type SortKey = keyof typeof SORTS
 
-export async function getSectionItems(server: PlexServer, key: string, sort: SortKey | string, start = 0, size = 120, year?: number, unwatched = false) {
+/** For poster grids: leave out the parts of each title a poster never shows (file and stream details, cast, summary…), so a page is much smaller. Open a title and it loads in full. */
+export const SLIM = '&excludeFields=summary,tagline&excludeElements=Media,Genre,Country,Role,Director,Writer,Producer,Label,Guid,Rating,Image,Similar,Chapter,Marker'
+
+export async function getSectionItems(server: PlexServer, key: string, sort: SortKey | string, start = 0, size = 120, year?: number, unwatched = false, slim = false) {
   const sortQ = (SORTS as Record<string, { q: string }>)[sort]?.q ?? sort
-  const q = `sort=${encodeURIComponent(sortQ)}&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${size}${year ? `&year=${year}` : ''}${unwatched ? '&unwatched=1' : ''}`
+  const q = `sort=${encodeURIComponent(sortQ)}&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${size}${year ? `&year=${year}` : ''}${unwatched ? '&unwatched=1' : ''}${slim ? SLIM : ''}`
   const c = await get<{ Metadata?: PlexMedia[]; totalSize?: number }>(server, `/library/sections/${key}/all?${q}`)
   return { items: c.Metadata ?? [], total: c.totalSize ?? c.Metadata?.length ?? 0 }
 }
 
 /** The whole library (paged in chunks) — used when collections are grouped client-side. */
-export async function getAllSectionItems(server: PlexServer, key: string, sort: SortKey | string, year?: number, cap = 5000, unwatched = false): Promise<PlexMedia[]> {
+export async function getAllSectionItems(server: PlexServer, key: string, sort: SortKey | string, year?: number, cap = 5000, unwatched = false, slim = false): Promise<PlexMedia[]> {
   const out: PlexMedia[] = []
   for (let start = 0; start < cap; start += 500) {
-    const r = await getSectionItems(server, key, sort, start, 500, year, unwatched)
+    const r = await getSectionItems(server, key, sort, start, 500, year, unwatched, slim)
     out.push(...r.items)
     if (out.length >= r.total || r.items.length === 0) break
   }

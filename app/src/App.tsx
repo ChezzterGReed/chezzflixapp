@@ -178,7 +178,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
     if (view.type !== 'list') return undefined
     const src = view.source
     return async (): Promise<PlexMedia[]> => {
-      if (src.kind === 'collection') return getCollectionItems(server, src.id)
+      if (src.kind === 'collection') return getCollectionItems(server, src.id, true)
       if (src.kind === 'seasonal') { const l = seasonalList(src.id); return l ? matchList(server, sections, l) : [] }
       if (src.kind === 'actor') return withActor(server, allSections, settings.hiddenLibraries, { name: src.name, id: src.id })   // everything with this person, from every library
       const anime = await loadAnime(server, sections, 0).catch(() => undefined)
