@@ -130,7 +130,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
 
   // Rail navigation starts fresh; drilling in (browse -> genre -> title) keeps a back stack.
   const spots = useRef<string[]>([])   // where the cursor was on each screen we drilled in from, so Back puts it there again
-  const navigate = (v: View) => { spots.current = []; setView(v); setHistory([]); setDetails([]); window.scrollTo({ top: 0 }) }
+  const beforeSearch = useRef<View | null>(null)   // the screen you were on before opening Search, so Back from Search returns there
+  const navigate = (v: View) => { if (v.type === 'search' && view.type !== 'search') beforeSearch.current = view; spots.current = []; setView(v); setHistory([]); setDetails([]); window.scrollTo({ top: 0 }) }
   const push = (v: View) => { spots.current.push(getCurrentFocusKey() ?? ''); setHistory((h) => [...h, view]); setView(v); setDetails([]); window.scrollTo({ top: 0 }) }
   const back = () => { const k = spots.current.pop(); setView(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); window.scrollTo({ top: 0 }); restoreFocus(k) }
   // Back: go back a screen; with nothing to go back to, a TV remote's Back goes Home, and from Home it opens/closes the side menu.
@@ -138,6 +139,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const toggleRail = () => { const k = getCurrentFocusKey() ?? ''; if (k.startsWith('nav-')) setFocus('MAIN'); else setFocus(doesFocusableExist(railKey()) ? railKey() : 'SIDEBAR') }
   useBack(() => {
     if (history.length > 0) return back()
+    if (view.type === 'search' && !String(getCurrentFocusKey() ?? '').startsWith('nav-')) { navigate(beforeSearch.current ?? { type: 'home' }); return }   // Search: Back returns to whatever you were on before
     if (view.type === 'guide') { navigate({ type: 'home' }); return }   // the guide has no tabs or menu to step through: Back is Home
     if (minimal) {
       // Nothing further back: first the cursor goes up to the tabs; from the tabs, Home; from Home's tabs, a question about closing the app.

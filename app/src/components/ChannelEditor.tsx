@@ -4,9 +4,9 @@ import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { Btn, CheckRow, LetterBar, NameField, Pill, RatingPicker, letterOf, lettersIn } from './AddChannel'
-import { getAllSectionItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
+import { getAllSectionItems, getGenres, getYears, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import { SeasonPicker, SeasonsReview } from './SeasonPicker'
-import { describeSeasons, type Channel } from '../lib/tvguide'
+import { describeSeasons, yearsLabel, type Channel } from '../lib/tvguide'
 
 type ShowEntry = NonNullable<Channel['shows']>[number]
 type MovieEntry = NonNullable<Channel['movieItems']>[number]
@@ -82,13 +82,15 @@ export function ChannelEditor({ channel, server, sections, onChange, onClose }: 
   const [shows, setShows] = useState<ShowEntry[]>(channel.shows ?? [])
   const [movies, setMovies] = useState<MovieEntry[]>(channel.movieItems ?? [])
   const [genres, setGenres] = useState<string[]>(channel.genres ?? [])
+  const [decades, setDecades] = useState<number[]>([])   // decades with at least one movie on the server
+  useEffect(() => { if (channel.kind === 'movies') Promise.all(sections.filter((x) => x.type === 'movie' && !isOtherSection(x)).map((x) => getYears(server, x.key))).then((l) => setDecades([...new Set(l.flat().map((y) => Math.floor(y / 10) * 10))].sort((a, b) => b - a))) }, [server, sections, channel.kind])
   const [adding, setAdding] = useState<'shows' | 'movies' | 'genres'>()
   const [seasonsFor, setSeasonsFor] = useState<ShowEntry>()   // a show whose seasons are being chosen
   const [reviewing, setReviewing] = useState<ShowEntry[]>()   // shows just added, to choose their seasons
   const [note, setNote] = useState('')
 
   const onShows = channel.shows ?? [], onMovies = channel.movieItems ?? [], onGenres = channel.genres ?? []
-  const total = channel.kind === 'shows' ? onShows.length : onGenres.length + onMovies.length
+  const total = channel.kind === 'shows' ? onShows.length : onGenres.length + onMovies.length + (channel.years ? 1 : 0)
   const guard = () => { if (total <= 1) { setNote(`A channel needs at least one ${channel.kind === 'shows' ? 'show' : 'movie or genre'}.`); setTimeout(() => setNote(''), 2600); return true } return false }
 
   const toggleShow = (s: ShowEntry) => { if (onShows.some((x) => x.key === s.key)) { if (!guard()) onChange({ shows: onShows.filter((x) => x.key !== s.key) }) } else onChange({ shows: [...onShows, s] }) }
@@ -138,6 +140,12 @@ export function ChannelEditor({ channel, server, sections, onChange, onClose }: 
           </> : <>
             {heading('How it plays')}
             <div className="flex flex-wrap gap-2 px-1 pb-1"><Pill active={channel.movieOrder === 'release'} onEnter={() => onChange({ movieOrder: 'release' })}>Release date</Pill><Pill active={channel.movieOrder !== 'release'} onEnter={() => onChange({ movieOrder: 'random' })}>Random</Pill></div>
+            {heading(`Released (${channel.years ? yearsLabel(channel.years) : 'any year'})`)}
+            <div className="flex flex-wrap gap-2 px-1 pb-1">
+              <Pill active={!channel.years} onEnter={() => { if (!(onGenres.length + onMovies.length)) guard(); else onChange({ years: undefined }) }}>Any year</Pill>
+              <Pill active={channel.years === 'recent'} onEnter={() => onChange({ years: 'recent' })}>Recently released</Pill>
+              {decades.map((d) => <Pill key={d} active={channel.years === d} onEnter={() => onChange({ years: d })}>{d}s</Pill>)}
+            </div>
             {genres.length > 0 && <>{heading(`Genres (${onGenres.length})`)}{genres.map((g) => <CheckRow key={g} label={g} sub="every movie in it" on={onGenres.includes(g)} onEnter={() => toggleGenre(g)} />)}</>}
             {movies.length > 0 && <>{heading(`Movies added one by one (${onMovies.length})`)}{movies.map((m) => <CheckRow key={m.key} label={m.title} sub={m.year ? String(m.year) : undefined} on={onMovies.some((x) => x.key === m.key)} onEnter={() => toggleMovie(m)} />)}</>}
             {heading(`Ratings (${channel.ratings?.length ? channel.ratings.length + ' chosen' : 'all'})`)}

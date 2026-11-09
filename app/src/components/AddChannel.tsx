@@ -3,9 +3,9 @@ import { ArrowLeft, Check, Film, Loader2, Tv, X } from 'lucide-react'
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
-import { getAllSectionItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
+import { getAllSectionItems, getGenres, getYears, isOtherSection, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import { SeasonsList } from './SeasonPicker'
-import { RATING_OPTIONS, uniqueName, type Channel, type ChannelDraft } from '../lib/tvguide'
+import { RATING_OPTIONS, uniqueName, yearsLabel, type Channel, type ChannelDraft } from '../lib/tvguide'
 
 type Step = 'type' | 'shows' | 'seasons' | 'showOpts' | 'movies' | 'ratings' | 'movieOpts' | 'name'
 const PAGE = 60
@@ -97,6 +97,8 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
   const [limit, setLimit] = useState(PAGE)
   const [genres, setGenres] = useState<string[]>()
   const [pickedGenres, setPickedGenres] = useState<string[]>([])
+  const [decades, setDecades] = useState<number[]>()   // decades with at least one movie on the server
+  const [pickedYears, setPickedYears] = useState<Channel['years']>()
   const [perBlock, setPerBlock] = useState(1)
   const [episodeOrder, setEpisodeOrder] = useState<'ordered' | 'random'>('ordered')
   const [ratings, setRatings] = useState<string[]>([])   // empty = every rating
@@ -116,6 +118,8 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
     if (step === 'movies' && !genres) {
       Promise.all(movieLibs.map((s) => getGenres(server, s.key).catch(() => [])))
         .then((l) => setGenres([...new Set(l.flat().map((g) => g.title))].sort((a, b) => a.localeCompare(b))))
+      Promise.all(movieLibs.map((s) => getYears(server, s.key)))
+        .then((l) => setDecades([...new Set(l.flat().map((y) => Math.floor(y / 10) * 10))].sort((a, b) => b - a)))
     }
   }, [step, shows, genres, server, showLibs, movieLibs])
 
@@ -130,13 +134,13 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
   const toggleGenre = (g: string) => setPickedGenres((p) => (p.includes(g) ? p.filter((x) => x !== g) : [...p, g]))
 
   const suggestedName = step === 'name' && !name
-    ? (movieMode() ? pickedGenres.slice(0, 3).join(' · ') : pickedShows.length === 1 ? `${pickedShows[0].title} 24/7` : pickedShows.slice(0, 2).map((s) => s.title).join(' · '))
+    ? (movieMode() ? [yearsLabel(pickedYears), ...pickedGenres.slice(0, 3)].filter(Boolean).join(' · ') : pickedShows.length === 1 ? `${pickedShows[0].title} 24/7` : pickedShows.slice(0, 2).map((s) => s.title).join(' · '))
     : ''
-  function movieMode() { return pickedGenres.length > 0 && pickedShows.length === 0 }
+  function movieMode() { return (pickedGenres.length > 0 || !!pickedYears) && pickedShows.length === 0 }
 
   const finish = () => {
     const finalName = uniqueName(name.trim() || suggestedName || 'Channel', existing.map((c) => c.name))
-    if (movieMode()) onCreate({ name: finalName, kind: 'movies', genres: pickedGenres, movieOrder, ratings: ratings.length ? ratings : undefined })
+    if (movieMode()) onCreate({ name: finalName, kind: 'movies', genres: pickedGenres, years: pickedYears, movieOrder, ratings: ratings.length ? ratings : undefined })
     else onCreate({ name: finalName, kind: 'shows', shows: pickedShows.map((m) => ({ key: m.ratingKey, title: m.title, thumb: m.thumb, art: m.art, seasons: seasonSel[m.ratingKey] })), perBlock: pickedShows.length > 1 ? perBlock : 1, episodeOrder })
   }
 
@@ -148,7 +152,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
   const letters = useMemo(() => lettersIn((shows ?? []).map((m) => m.title)), [shows])
   // Typing in the filter box takes over from a chosen letter.
   const filtered = (shows ?? []).filter((m) => (filter ? m.title.toLowerCase().includes(filter.toLowerCase()) : letter ? letterOf(m.title) === letter : true))
-  const title = { type: 'Add a channel', shows: 'Choose shows', seasons: 'Which seasons?', showOpts: 'How should it play?', movies: 'Choose genres', ratings: 'Which ratings?', movieOpts: 'How should it play?', name: 'Name your channel' }[step]
+  const title = { type: 'Add a channel', shows: 'Choose shows', seasons: 'Which seasons?', showOpts: 'How should it play?', movies: 'Genres & years', ratings: 'Which ratings?', movieOpts: 'How should it play?', name: 'Name your channel' }[step]
 
   return (
     <Layer onClose={back} scrim="bg-black/70 backdrop-blur-sm" className="absolute left-1/2 top-1/2 flex max-h-[88vh] w-[min(660px,94vw)] -translate-x-1/2 -translate-y-1/2 flex-col">
@@ -161,7 +165,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {step === 'type' && (
             <div className="space-y-3">
-              <Choice focusKey="add-shows" icon={<Tv size={24} />} label="TV shows" hint="Episodes from the shows you pick, one after another" onEnter={() => { setPickedGenres([]); setStep('shows') }} />
+              <Choice focusKey="add-shows" icon={<Tv size={24} />} label="TV shows" hint="Episodes from the shows you pick, one after another" onEnter={() => { setPickedGenres([]); setPickedYears(undefined); setStep('shows') }} />
               <Choice icon={<Film size={24} />} label="Movies" hint="Every movie in the genres you pick" onEnter={() => { setPickedShows([]); setStep('movies') }} />
             </div>
           )}
@@ -196,7 +200,18 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
             <>
               {!genres ? <div className="grid place-items-center py-16"><Loader2 className="animate-spin text-white/50" size={30} /></div>
                 : <>
-                  <p className="px-2 pb-2 text-sm text-white/50">Pick one or two for a focused channel. With several, all their movies are mixed together.</p>
+                  {decades && (
+                    <div className="mb-4 px-1">
+                      <div className="mb-2 font-bold">Released</div>
+                      <div className="flex flex-wrap gap-2">
+                        <Pill active={!pickedYears} onEnter={() => setPickedYears(undefined)}>Any year</Pill>
+                        <Pill active={pickedYears === 'recent'} onEnter={() => setPickedYears('recent')}>Recently released</Pill>
+                        {decades.map((d) => <Pill key={d} active={pickedYears === d} onEnter={() => setPickedYears(d)}>{d}s</Pill>)}
+                      </div>
+                      <p className="mt-2 text-sm text-white/50">{pickedYears === 'recent' ? 'Movies released in the past year, counted from when the guide is built.' : 'Optional. Combine with genres below, or use it on its own.'}</p>
+                    </div>
+                  )}
+                  <p className="px-2 pb-2 text-sm text-white/50">Pick one or two genres for a focused channel. With several, all their movies are mixed together.</p>
                   {genres.map((g) => <CheckRow key={g} label={g} on={pickedGenres.includes(g)} onEnter={() => toggleGenre(g)} right="add-next" />)}
                   {genres.length === 0 && <p className="py-10 text-center text-white/50">No genres found in your movie libraries.</p>}
                 </>}
@@ -222,7 +237,7 @@ export function AddChannel({ server, sections, existing, onClose, onCreate }: Pr
           {step === 'shows' && <Btn focusKey="add-next" primary disabled={!pickedShows.length} onEnter={() => { setSeasonsShown(true); setStep('seasons') }}>Next · {pickedShows.length} selected</Btn>}
           {step === 'seasons' && <Btn focusKey="add-next" primary onEnter={() => setStep('showOpts')}>Next</Btn>}
           {step === 'showOpts' && <Btn focusKey="add-next" primary onEnter={() => { setName(''); setStep('name') }}>Next</Btn>}
-          {step === 'movies' && <Btn focusKey="add-next" primary disabled={!pickedGenres.length} onEnter={() => setStep('ratings')}>Next · {pickedGenres.length} selected</Btn>}
+          {step === 'movies' && <Btn focusKey="add-next" primary disabled={!pickedGenres.length && !pickedYears} onEnter={() => setStep('ratings')}>Next · {pickedGenres.length} genre{pickedGenres.length === 1 ? '' : 's'}{pickedYears ? ` · ${yearsLabel(pickedYears)}` : ''}</Btn>}
           {step === 'ratings' && <Btn focusKey="add-next" primary onEnter={() => setStep('movieOpts')}>Next</Btn>}
           {step === 'movieOpts' && <Btn focusKey="add-next" primary onEnter={() => { setName(''); setStep('name') }}>Next</Btn>}
           {step === 'name' && <Btn focusKey="add-next" primary onEnter={finish}>Create channel</Btn>}

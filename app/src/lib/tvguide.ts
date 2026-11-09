@@ -3,7 +3,7 @@
 // dropped and the future is topped up, so leaving and coming back finds the same channels still "on". Nothing here reports watch progress.
 import { useSyncExternalStore } from 'react'
 import {
-  DEMO_URI, getAllLeaves, getChildren, getGenreItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer,
+  DEMO_URI, getAllLeaves, getAllSectionItems, getChildren, getGenreItems, getGenres, isOtherSection, type PlexMedia, type PlexSection, type PlexServer,
 } from './plex'
 import { shuffled } from './session'
 
@@ -23,6 +23,8 @@ export interface Channel {
   /** Movie channels: only these ratings play (see RATING_OPTIONS). Empty or missing = every rating. */
   ratings?: string[]
   movieOrder?: 'release' | 'random'
+  /** Movie channels: only films from this time: 'recent' (the past year, counted from when the guide is built) or a decade's first year (1990 = the 90s). Missing = any year. */
+  years?: 'recent' | number
   /** Audio and subtitle choices for this channel (they override the guide's defaults). */
   prefs?: ChannelPrefs
   /** A seasonal channel (built by the app for a time of year, not stored with your channels), and the colour it's drawn in. */
@@ -111,7 +113,7 @@ export function cloneChannel(c: Channel, existing: Channel[]): Channel {
 /** What the schedule depends on: when this changes, the channel's schedule is rebuilt. */
 /** Bump when how schedules are built changes, so every device rebuilds its guide once instead of keeping an out-of-date one. */
 export const GUIDE_VERSION = 3
-const signature = (c: Channel) => JSON.stringify([GUIDE_VERSION, c.kind, c.shows?.map((s) => `${s.key}:${s.seasons?.join('.') ?? ''}`), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings])
+const signature = (c: Channel) => JSON.stringify([GUIDE_VERSION, c.kind, c.shows?.map((s) => `${s.key}:${s.seasons?.join('.') ?? ''}`), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings, c.years])
 
 // ---------- Schedule ----------
 export interface Slot {
@@ -189,6 +191,17 @@ async function loadEpisodes(server: PlexServer, showKey: string): Promise<Ep[]> 
   return eps
 }
 
+/** Does a movie fall in the channel's chosen time? "Recent" is the past 12 months from today, by release date (or the year, when there's no date). */
+export function yearAllowed(years: Channel['years'], m: { year?: number; date: string }): boolean {
+  if (!years) return true
+  if (years === 'recent') {
+    const from = new Date(); from.setFullYear(from.getFullYear() - 1)
+    return /^\d{4}-\d{2}-\d{2}/.test(m.date) ? m.date.slice(0, 10) >= from.toISOString().slice(0, 10) : (m.year ?? 0) >= from.getFullYear()
+  }
+  return (m.year ?? 0) >= years && (m.year ?? 0) < years + 10
+}
+export const yearsLabel = (y: Channel['years']) => y === 'recent' ? 'Recently released' : y ? `${y}s` : ''
+
 const movieCache = new Map<string, { at: number; list: Movie[] }>()
 const lower = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
 export async function loadMovies(server: PlexServer, sections: PlexSection[], genres: string[]): Promise<Movie[]> {
@@ -200,6 +213,15 @@ export async function loadMovies(server: PlexServer, sections: PlexSection[], ge
   const best = new Map<string, { m: PlexMedia; rank: number }>()
   await Promise.all(libs.map(async (sec) => {
     const rank = /4k|uhd/i.test(sec.title) ? 1 : 0   // prefer the regular copy over a 4K one
+    if (!genres.length) {   // no genre chosen (a year-only channel): every movie in the library
+      for (const m of await getAllSectionItems(server, sec.key, 'titleAsc', undefined, 5000, false, true).catch(() => [] as PlexMedia[])) {
+        if (m.type !== 'movie') continue
+        const id = m.guid || `${lower(m.title)}:${m.year ?? ''}`
+        const cur = best.get(id)
+        if (!cur || rank < cur.rank) best.set(id, { m, rank })
+      }
+      return
+    }
     const gs = (await getGenres(server, sec.key).catch(() => [])).filter((g) => want.has(lower(g.title)))
     for (const g of gs) {
       for (const m of await getGenreItems(server, sec.key, g.key, 4000).catch(() => [] as PlexMedia[])) {
@@ -228,11 +250,11 @@ async function sources(server: PlexServer, sections: PlexSection[], ch: Channel)
     return { eps }
   }
   const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art, rating: m.rating }))
-  const fromGenres = (ch.genres ?? []).length ? await loadMovies(server, sections, ch.genres ?? []) : []
+  const fromGenres = (ch.genres ?? []).length || ch.years ? await loadMovies(server, sections, ch.genres ?? []) : []
   const seen = new Set(own.map((m) => m.key))
   // One copy of each film: the same title and year from two libraries (say regular and 4K) counts once.
   const byName = new Set<string>()
-  const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))].filter((m) => ratingAllowed(ch.ratings, m.rating)).filter((m) => { const k = `${lower(m.title)}:${m.year ?? ''}`; if (byName.has(k)) return false; byName.add(k); return true })
+  const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))].filter((m) => ratingAllowed(ch.ratings, m.rating)).filter((m) => yearAllowed(ch.years, m)).filter((m) => { const k = `${lower(m.title)}:${m.year ?? ''}`; if (byName.has(k)) return false; byName.add(k); return true })
   return { movies: ch.movieOrder === 'release' ? [...movies].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)) : movies }
 }
 

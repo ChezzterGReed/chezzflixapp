@@ -27,7 +27,8 @@ function groupByCollection(items: PlexMedia[], cols: PlexCollectionRef[]): PlexM
     if (seen.has(tag)) continue
     seen.add(tag)
     const c = real.get(tag)!
-    out.push({ ratingKey: c.ratingKey, type: 'collection', title: c.title, thumb: c.thumb } as PlexMedia)
+    // The tile sits where its first title falls in the list, so it files under that title's letter (not its own name: "The Accountant" collection among the A's).
+    out.push({ ratingKey: c.ratingKey, type: 'collection', title: c.title, thumb: c.thumb, titleSort: (m as { titleSort?: string }).titleSort || m.title } as PlexMedia)
   }
   return out
 }

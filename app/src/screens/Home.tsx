@@ -24,7 +24,7 @@ const TAB_KEY = 'chezzflix_home_tab'
 // everything, quietly in the background, once it's a few minutes old), so returning to Home never starts from a blank screen.
 interface Cached { rows: HomeRow[]; notices: HomeNotice[]; rowsAnime?: AnimeInfo; anime?: AnimeInfo; hero?: PlexMedia[]; recRows: (HomeRow & { subtitle?: string })[]; heroSig: string; at: number; refreshKey: number; watchKey: number }
 const homeCache = new Map<string, Cached>()
-const FRESH_MS = 10 * 60_000
+const FRESH_MS = 60 * 60_000   // Home rows read again after an hour away (Continue Watching is brought up to date on its own, every time)
 /** Forget what Home last showed (switching profile or signing out: the next Home is read fresh, never the previous person's). */
 export const clearHomeCache = () => { homeCache.clear(); try { localStorage.removeItem(SNAP_KEY) } catch { /* ignore */ } }
 
