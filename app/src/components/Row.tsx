@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { reveal, scrollTo } from '../lib/scroll'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { LandscapeCard, PosterCard } from './Card'
 import { Focusable } from './Focusable'
 import { SeasonIcon } from './SeasonIcon'
@@ -24,10 +24,12 @@ interface Props {
   /** A last tile that opens the full list ("See all 42"). */
   onMore?: () => void
   moreLabel?: string
+  /** Focus key that Up jumps to (the top tabs, for the first row on a page). */
+  upKey?: string
 }
 
-export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs, fromContinue, onMore, moreLabel }: Props) {
-  const { ref, focusKey } = useFocusable({ saveLastFocusedChild: true, autoRestoreFocus: false })
+export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs, fromContinue, onMore, moreLabel, upKey }: Props) {
+  const { ref, focusKey } = useFocusable({ saveLastFocusedChild: true, autoRestoreFocus: false, onArrowPress: upKey ? (dir: string) => { if (dir === 'up') { setFocus(upKey); return false } return true } : undefined })
   const track = useRef<HTMLDivElement>(null)
 
   // Keep the focused card centred in the row and the row comfortably in view.

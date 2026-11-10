@@ -56,9 +56,9 @@ export function TabBanner({ tab, server, visible, anime, picks: all, rotate, top
 
       <div className="relative flex items-end justify-between gap-8 px-[var(--gutter)]">
         <div className="fade-up max-w-xl min-w-0">
-          <div className="mb-3 flex items-center gap-2 text-[0.72rem] font-bold uppercase tracking-[0.22em] text-white/70"><span className="text-white">{look.icon}</span>{look.eyebrow}</div>
-          <h1 className="text-[clamp(2.4rem,4.6vw,4.2rem)] font-extrabold leading-[0.98] tracking-[-0.035em]">{title}</h1>
-          <p className="mt-3 text-[1.02rem] text-white/70">{look.tagline}</p>
+          <h1 className="font-display text-[clamp(2.8rem,5.2vw,4.8rem)] uppercase leading-none tracking-[0.12em]">{title}</h1>
+          <div className="mt-4 h-[3px] w-20 rounded-full bg-accent" />
+          <p className="mt-4 text-[1.02rem] text-white/65">{look.tagline}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {shown.map((s) => <span key={s.label} className={`rounded-full px-3.5 py-1.5 text-sm font-semibold ring-1 ${look.chip}`}><b className="font-extrabold tabular-nums">{s.value.toLocaleString()}</b> {s.label}</span>)}
             {tab === 'foryou' && topGenres.slice(0, 3).map((g) => <span key={g} className="rounded-full bg-white/10 px-3.5 py-1.5 text-sm font-semibold text-white/80 ring-1 ring-white/15">{g}</span>)}

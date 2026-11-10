@@ -1,4 +1,3 @@
-import { Flame, TrendingUp } from 'lucide-react'
 import { imageUrl, posterPath, type PlexMedia, type PlexServer } from '../lib/plex'
 
 /** The Trending tab's header: a slim banner with a fan of this week's trending posters (instead of a rotating hero). */
@@ -14,13 +13,10 @@ export function TrendingBanner({ server, posters, count, loading }: { server: Pl
 
       <div className="relative flex items-end justify-between gap-8 px-[var(--gutter)]">
         <div className="fade-up max-w-xl">
-          <div className="mb-3 flex items-center gap-2 text-[0.72rem] font-bold uppercase tracking-[0.22em] text-white/70">
-            <Flame size={15} className="text-accent" />This week
-          </div>
-          <h1 className="text-[clamp(2.4rem,4.6vw,4.2rem)] font-extrabold leading-[0.98] tracking-[-0.035em]">Trending now</h1>
-          <p className="mt-3 flex items-center gap-2 text-[1.02rem] text-white/70">
-            <TrendingUp size={18} className="shrink-0 text-accent" />
-            {loading ? 'Checking what everyone’s watching…' : count > 0 ? `${count} of this week’s trending titles are in your library.` : 'What’s popular right now, matched to your library.'}
+          <h1 className="font-display text-[clamp(2.8rem,5.2vw,4.8rem)] uppercase leading-none tracking-[0.12em]">Trending</h1>
+          <div className="mt-4 h-[3px] w-20 rounded-full bg-accent" />
+          <p className="mt-4 text-[1.02rem] text-white/65">
+            {loading ? 'Checking what everyone’s watching…' : count > 0 ? `${count} of this week’s most-watched titles are on your server.` : 'What’s popular right now, matched to your library.'}
           </p>
         </div>
 

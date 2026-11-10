@@ -195,7 +195,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   )
 
   return (
-    <div className={`relative pb-24 ${minimal ? 'pt-20' : ''}`}>
+    <div className={`relative pb-24 ${minimal && activeTab !== 'trending' ? 'pt-20' : ''}`}>
       {!minimal && <Clock className="pointer-events-none absolute right-[var(--gutter)] top-8 z-20 text-xl font-semibold text-white/85 drop-shadow" />}
       {!minimal && <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
         <div className="flex gap-1 rounded-full bg-black/50 p-1">
@@ -218,7 +218,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
           ? <><RowSkeleton landscape /><RowSkeleton /><RowSkeleton /></>
           : <>
               {merged.length === 0 && recsReady && <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>}
-              {merged.slice(0, shown).map((r) => <Row key={r.id} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
+              {merged.slice(0, shown).map((r, ri) => <Row key={r.id} upKey={activeTab === 'trending' && ri === 0 ? (minimal ? 'mtab-trending' : 'tab-trending') : undefined} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
               {wantsRecs && !recsReady && (activeTab === 'foryou' || shownRecs.length === 0) && <RowSkeleton />}
               {activeTab === 'foryou' && recsReady && recRows.length === 0 && (
                 <div className="mx-[var(--gutter)] mb-8 max-w-3xl rounded-2xl bg-white/6 p-6 ring-1 ring-white/10">

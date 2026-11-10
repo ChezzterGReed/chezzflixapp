@@ -163,7 +163,7 @@ export function Dashboard({ server, onOpen }: { server: PlexServer; onOpen: (m: 
               <div className="flex items-center gap-4 px-5 py-3.5 transition-colors group-hover/f:bg-white/6 group-data-[hl=true]/f:bg-white/15 group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-inset group-data-[hl=true]/f:ring-white">
                 <Avatar name={h.user} thumb={h.userThumb} size={34} />
                 <div className="min-w-0 flex-1"><div className="truncate font-semibold">{h.title}</div><div className="truncate text-sm text-white/50">{h.subtitle}</div></div>
-                <div className="shrink-0 text-right"><div className="text-sm font-semibold text-white/75">{h.user}</div><div className="text-xs text-white/45">{ago(h.viewedAt)}</div></div>
+                <div className="shrink-0 text-right"><div className="text-sm font-semibold text-white/75">{h.user}</div><div className="text-xs text-white/45" title={new Date(h.viewedAt * 1000).toLocaleString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}>{ago(h.viewedAt)}</div></div>
               </div>
             </Focusable>
           ))}
