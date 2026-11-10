@@ -23,10 +23,10 @@ const SLOW_MS = 8000 // after this long, offer to leave while the guide keeps bu
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 const until = (ms: number) => { const m = Math.max(0, Math.round(ms / MIN)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min` }
 
-interface Props { server: PlexServer; sections: PlexSection[]; scope: string; onLeave: () => void; /** Open a scheduled program's page (a movie, or the show at that episode). */ onOpenInfo: (slot: Slot) => void }
+interface Props { server: PlexServer; sections: PlexSection[]; scope: string; /** Start watching this channel (by id) as soon as the guide is ready. */ tune?: string; onLeave: () => void; /** Open a scheduled program's page (a movie, or the show at that episode). */ onOpenInfo: (slot: Slot) => void }
 
 /** The TV Guide: channels built from your library, an endless schedule, and a classic grid to browse it. */
-export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props) {
+export function TVGuide({ server, sections, scope, tune, onLeave, onOpenInfo }: Props) {
   const { settings, update } = useSettings()
   const guide = useGuide()
   const season = useSeason()
@@ -75,6 +75,13 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
     return () => clearInterval(t)
   }, [server, sections, scope, channels, hours])
 
+  const tuned = useRef(false)
+  useEffect(() => {
+    if (!tune || tuned.current || !seasonalReady || !guide.ready) return
+    tuned.current = true
+    const r = channels.findIndex((c) => c.id === tune)
+    if (r >= 0) { setSel({ row: r, t: Date.now() }); setWatching(r) }
+  }, [tune, seasonalReady, guide.ready, channels])
   const loading = !seasonalReady || (channels.length > 0 && !guide.ready)
   useEffect(() => {
     if (!loading) { setSlow(false); return }

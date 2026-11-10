@@ -16,8 +16,9 @@ import type { PlexSection } from '../lib/plex'
 import type { HomeTab } from '../lib/settings'
 
 export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string } | { kind: 'seasonal'; id: string } | { kind: 'actor'; name: string; id?: string }
+import type { HolidayId } from '../lib/holidayEpisodes'
 export type View =
-  | { type: 'home'; tab?: HomeTab } | { type: 'libraries' } | { type: 'search' } | { type: 'watchlist' } | { type: 'guide' } | { type: 'dashboard' } | { type: 'library'; section: PlexSection }
+  | { type: 'home'; tab?: HomeTab } | { type: 'libraries' } | { type: 'search' } | { type: 'watchlist' } | { type: 'guide'; /** Start watching this channel as the guide opens. */ tune?: string } | { type: 'dashboard' } | { type: 'holiday'; id: HolidayId; show?: string } | { type: 'library'; section: PlexSection }
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
   | { type: 'list'; title: string; subtitle?: string; source: ListSource }
 

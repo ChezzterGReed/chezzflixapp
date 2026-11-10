@@ -77,6 +77,8 @@ html[data-season=frost] .orb-b { background: radial-gradient(closest-side, #0369
 html[data-season=frost] .orb-c { background: radial-gradient(closest-side, #38bdf8 0%, transparent 100%); }
 html[data-season=festive] .orb-b { background: radial-gradient(closest-side, #166534 0%, transparent 100%); }
 html[data-season=festive] .orb-c { background: radial-gradient(closest-side, #9f1239 0%, transparent 100%); }
+html[data-season=harvest] .orb-b { background: radial-gradient(closest-side, #7c2d12 0%, transparent 100%); }
+html[data-season=harvest] .orb-c { background: radial-gradient(closest-side, #b45309 0%, transparent 100%); }
 @keyframes drift-a { from { transform: translate(0, 0) scale(1) } to { transform: translate(18vmax, 14vmax) scale(1.3) } }
 @keyframes drift-b { from { transform: translate(0, 0) scale(1.1) } to { transform: translate(-20vmax, 10vmax) scale(.9) } }
 @keyframes drift-c { from { transform: translate(0, 0) scale(1) } to { transform: translate(-14vmax, -16vmax) scale(1.35) } }
@@ -96,6 +98,7 @@ html[data-season=festive] .orb-c { background: radial-gradient(closest-side, #9f
 .mote { position: absolute; bottom: -20px; border-radius: 9999px; background: rgba(255, 255, 255, .35); animation: rise linear infinite; }
 html[data-season=halloween] .mote { background: radial-gradient(circle, #ffb15c 0 40%, rgba(255, 140, 40, .35) 41% 70%, transparent 71%); transform: scale(2.4); }
 /* Christmas: the loading scene's motes are snow, falling instead of rising. */
+html[data-season=harvest] .mote { background: radial-gradient(circle, #e0893a 0 45%, rgba(200, 112, 42, .35) 46% 72%, transparent 73%); transform: scale(2); }
 html[data-season=frost] .mote, html[data-season=festive] .mote { bottom: auto; top: -20px; background: rgba(255, 255, 255, .8); animation-name: snowfall; }
 .mote.ember { opacity: .0; }
 @keyframes rise { 0% { transform: translate(0, 0); opacity: 0 } 12% { opacity: .85 } 100% { transform: translate(var(--drift, 0), -110vh); opacity: 0 } }
@@ -106,6 +109,11 @@ html[data-season=frost] .mote, html[data-season=festive] .mote { bottom: auto; t
 .twinkle { animation: twinkle 2.4s ease-in-out infinite; }
 @keyframes twinkle { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 
+/* ---------- Thanksgiving ambience (very faint) ---------- */
+.leaf { position: absolute; top: -40px; animation: leaffall linear infinite; opacity: .5; }
+@keyframes leaffall { 0% { transform: translate(0, 0) rotate(0); opacity: 0 } 10% { opacity: .55 } 100% { transform: translate(var(--drift, 0), 112vh) rotate(var(--turn, 240deg)); opacity: .1 } }
+html[data-perf=low] .leaf { display: none !important; }
+
 /* ---------- Spooky season ambience (very faint) ---------- */
 .fog { position: absolute; width: 90vmax; height: 40vmax; border-radius: 50%; opacity: .1; }
 .fog-1 { left: -20vmax; bottom: -14vmax; background: radial-gradient(closest-side, #ff7a1a, transparent); animation: fog-move 90s ease-in-out infinite alternate; }
@@ -113,7 +121,7 @@ html[data-season=frost] .mote, html[data-season=festive] .mote { bottom: auto; t
 @keyframes fog-move { from { transform: translateX(0) } to { transform: translateX(14vmax) } }
 
 @media (prefers-reduced-motion: reduce) {
-  .loading-scene .orb, .ring-spin, .logo-breathe, .load-bar, .mote, .fog, .flake, .twinkle { animation-duration: 120s !important; }
+  .loading-scene .orb, .ring-spin, .logo-breathe, .load-bar, .mote, .fog, .flake, .leaf, .twinkle { animation-duration: 120s !important; }
 }
 
 /* ---------- Trending banner ---------- */

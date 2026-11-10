@@ -11,6 +11,8 @@ export function startQueue(items: PlexMedia[]): PlexMedia | undefined {
   queue = a
   return a[0]
 }
+/** Plays these in the order given (a playlist): Next and Previous follow it instead of the show's own order. */
+export const setQueue = (items: PlexMedia[]) => { queue = items.filter((m) => m.type === 'movie' || m.type === 'episode') }
 export const clearQueue = () => { queue = [] }
 export const inQueue = (m: PlexMedia) => queue.some((x) => x.ratingKey === m.ratingKey)
 /** The titles either side of `m` in the shuffle, or null when `m` isn't part of one. */

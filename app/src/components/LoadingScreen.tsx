@@ -25,12 +25,14 @@ const SPOOKY_MESSAGES = [
   'Warning: may contain jump scares…', 'Looking for the Great Pumpkin…', 'Locating the nearest graveyard…', 'Brewing a fresh batch of fog…', 'Guarding the candy bowl…', 'Gathering the coven…',
 ]
 
+const HARVEST_MESSAGES = ['Basting the turkey…', 'Passing the potatoes…', 'Raking up the leaves…', 'Saving room for pie…', 'Counting our blessings…', 'Warming the stuffing…', 'Setting a place at the table…', 'Whisking the gravy…', 'Gathering the harvest…', 'Cooling the pies on the sill…', 'Finding the good tablecloth…', 'Waiting for the oven timer…']
+
 /** Full-screen loading scene: the aurora backdrop, a ringed logo, the service name easing in, and rotating status lines. */
 export function LoadingScreen({ visible }: { visible: boolean }) {
   const [mounted, setMounted] = useState(visible)
   const [i, setI] = useState(0)
   const season = useSeason()
-  const MESSAGES = season === 'halloween' ? ['Connecting to your server…', ...shuffled(SPOOKY_MESSAGES, 12)] : season === 'christmas' ? ['Connecting to your server…', ...shuffled(HOLIDAY_MESSAGES, 12)] : PLAIN_MESSAGES
+  const MESSAGES = season === 'halloween' ? ['Connecting to your server…', ...shuffled(SPOOKY_MESSAGES, 12)] : season === 'thanksgiving' ? ['Connecting to your server…', ...shuffled(HARVEST_MESSAGES, 12)] : season === 'christmas' ? ['Connecting to your server…', ...shuffled(HOLIDAY_MESSAGES, 12)] : PLAIN_MESSAGES
   useEffect(() => {
     if (visible) { setMounted(true); return }
     const t = setTimeout(() => setMounted(false), 800)

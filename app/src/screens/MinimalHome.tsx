@@ -11,6 +11,7 @@ import { SeasonIcon } from '../components/SeasonIcon'
 import { backdropPath, episodeLabel, formatRuntime, getSectionItems, imageUrl, logoPath, posterPath, progressOf, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import type { AnimeInfo, HomeRow, Tab } from '../lib/homeData'
 import { playLabel } from '../components/Hero'
+import { HolidayCard, holidayEntries, type HolidayAction } from '../components/HolidayCards'
 import { pendingFocus, tabDown } from '../lib/layout'
 
 type MRowData = HomeRow & { recs?: boolean; typeTab?: Tab }
@@ -94,7 +95,7 @@ function MCard({ m, server, row, wide, onEnter, onFocus, fromContinue, fromRecs,
   )
 }
 
-function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, onPick, themed }: { themed?: boolean; onPick: (m: PlexMedia, fromContinue?: boolean) => void; idx: number; row: MRowData; active: number; server: PlexServer; continueWide: boolean; onShow: (m: PlexMedia, idx: number) => void; onTitle?: () => void; onUp: () => boolean }) {
+function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, onPick, onHoliday, themed }: { onHoliday: (a: HolidayAction) => void; themed?: boolean; onPick: (m: PlexMedia, fromContinue?: boolean) => void; idx: number; row: MRowData; active: number; server: PlexServer; continueWide: boolean; onShow: (m: PlexMedia, idx: number) => void; onTitle?: () => void; onUp: () => boolean }) {
   const { ref, focusKey } = useFocusable({ focusKey: `mrow-${idx}`, saveLastFocusedChild: true, autoRestoreFocus: false })
   const track = useRef<HTMLDivElement>(null)
   const wide = !!row.continue && continueWide
@@ -111,7 +112,20 @@ function MRow({ idx, row, active, server, continueWide, onShow, onTitle, onUp, o
             : <h2 className={`flex items-center gap-1.5 px-4 text-[1.25rem] font-bold tracking-tight ${themed ? 'text-accent' : 'text-white/90'}`}>{themed && <SeasonIcon size={24} className="-translate-y-px" />}{row.title}</h2>}
         </div>
         <div ref={track} className="m-hide-scroll flex gap-4 overflow-x-auto px-[var(--mg)] py-4 -my-1">
-          {row.items.map((m) => (
+          {row.holiday && holidayEntries(row.holiday).map((e, n) => (
+            <HolidayCard key={e.key} entry={e} row={row.holiday!} server={server} minimal focusKey={`mcard-${idx}-hol-${e.key}`}
+              onUp={idx === 0 && !onTitle ? onUp : undefined}
+              onEnter={() => onHoliday(e.action)}
+              onFocus={(el) => {
+                onShow(row.items[Math.min(n, row.items.length - 1)] ?? row.items[0], idx)
+                const t = track.current
+                if (!t) return
+                const left = el.offsetLeft - t.scrollLeft, right = left + el.offsetWidth
+                if (left < 56) scrollTo(t, 'x', el.offsetLeft - 56)
+                else if (right > t.clientWidth - 140) scrollTo(t, 'x', t.scrollLeft + right - (t.clientWidth - 140))
+              }} />
+          ))}
+          {!row.holiday && row.items.map((m) => (
             <MCard key={m.ratingKey} m={m} server={server} row={idx} wide={wide} fromContinue={row.continue} fromRecs={row.recs}
               onUp={idx === 0 && !onTitle ? onUp : undefined}
               onEnter={() => onPick(m, row.continue)}
@@ -145,11 +159,12 @@ interface Props {
   onType: (tab: Tab) => void
   /** Opens a seasonal list in full. */
   onSeasonal: (id: string) => void
+  onHoliday: (a: HolidayAction) => void
   continueWide: boolean
 }
 
 /** The Minimal look: the picture fills the screen, the title and details sit over it, and one row at a time runs along the bottom. */
-export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, onPlay, onOpen, onType, onSeasonal, continueWide }: Props) {
+export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, onPlay, onOpen, onType, onSeasonal, onHoliday, continueWide }: Props) {
   const { settings } = useSettings()
   const season = useSeason()
   const key = useFocusedKey()
@@ -237,6 +252,7 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
     <div className="fixed inset-0 overflow-hidden bg-bg" style={{ ['--mh' as string]: 'clamp(150px, 22vh, 240px)', ['--mrow' as string]: 'calc(clamp(150px, 22vh, 240px) + 4.3rem)', ['--mg' as string]: '56px' }}>
       {stack.map((s) => <Backdrop key={s.ratingKey} m={s} server={server} />)}
       <div className="absolute inset-0 bg-linear-to-r from-black/75 via-black/25 via-45% to-transparent" />
+      {heroMode && m?.holidaySlide && <div key={`wash-${m.ratingKey}`} className="m-fade absolute inset-0 bg-[radial-gradient(ellipse_at_15%_85%,color-mix(in_srgb,var(--accent)_38%,transparent),transparent_60%)]" />}
       <div className="absolute inset-x-0 bottom-0 h-[34vh] bg-linear-to-t from-black/60 to-transparent" />
       <div className="absolute inset-x-0 top-0 h-36 bg-linear-to-b from-black/55 to-transparent" />
 
@@ -246,7 +262,10 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
           <div className="mb-7 max-w-[min(820px,62vw)] px-[var(--mg)]">
            <div key={m.ratingKey} className="m-fade">
             {heroMode && m.newSeason && <div className="mb-3 inline-flex rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-white">New Season</div>}
-            {logo
+            {heroMode && m.holidaySlide && <div className="mb-3 inline-flex rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-black">{m.holidaySlide.label}</div>}
+            {heroMode && m.holidaySlide?.headline
+              ? <h1 className="mb-3 font-display text-[clamp(2.2rem,4.2vw,3.8rem)] uppercase leading-[1.02] tracking-[0.06em] drop-shadow-2xl">{m.holidaySlide.headline}</h1>
+              : logo
               ? <img src={imageUrl(server, logo, 800, 300)} alt={title} className="mb-4 max-h-32 max-w-[26rem] object-contain object-left drop-shadow-2xl" />
               : <h1 className={`mb-3 text-balance font-extrabold leading-[1.02] tracking-[-0.03em] drop-shadow-2xl ${long ? 'text-[clamp(2rem,3.6vw,3.4rem)]' : 'text-[clamp(2.4rem,4.6vw,4.4rem)]'}`}>{title}</h1>}
             {isEp && <div className="mb-1.5 text-[1.15rem] font-semibold text-white/90">{m.title}</div>}
@@ -259,7 +278,7 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
                   <div className="flex h-13 items-center gap-2.5 rounded-full bg-white px-8 text-[1.05rem] font-bold text-black transition-all duration-200 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Play size={20} fill="currentColor" />{playLabel(m)}</div>
                 </Focusable>
                 <Focusable focusKey="hero-info" onEnter={() => onOpen(m)} title="More info" onArrow={(d) => { if (d === 'up') return toTop(); if (d === 'down') return toRows() }}>
-                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/18 px-7 text-[1.05rem] font-semibold transition-all duration-200 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Info size={20} />More info</div>
+                  <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/18 px-7 text-[1.05rem] font-semibold transition-all duration-200 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]"><Info size={20} />{m.holidaySlide ? m.holidaySlide.explore : 'More info'}</div>
                 </Focusable>
                 {hero!.length > 1 && (
                   <div className="ml-3 flex items-center">
@@ -285,7 +304,7 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
               <div className="transition-transform duration-[380ms] ease-out" style={{ transform: `translateY(calc(var(--mrow) * ${-active}))` }}>
                 {all.length === 0 && <p className="px-[var(--mg)] pt-10 text-white/60">Nothing to show here yet.</p>}
                 {all.map((r, i) => (
-                  <MRow key={r.id} idx={i} row={r} active={active} server={server} continueWide={continueWide}
+                  <MRow key={r.id} onHoliday={onHoliday} idx={i} row={r} active={active} server={server} continueWide={continueWide}
                     onPick={pick} onShow={(it, ri) => { setSeen(it); setActive(ri) }} onUp={upFromFirstRow}
                     themed={season === 'halloween' && r.title === 'Spooky Season'}
                     onTitle={r.typeTab ? () => onType(r.typeTab!) : r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} />

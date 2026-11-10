@@ -125,10 +125,41 @@ function Festive() {
   )
 }
 
+/** An autumn leaf (the leaf shape is drawn once; each use picks its own colour and turn). */
+function Leaf({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg viewBox="0 0 40 40" className={className} style={style} fill="currentColor" aria-hidden>
+      <path d="M20 2c3 5 9 7 13 7-1 6 1 11 4 15-5 1-8 3-9 8-3-2-6-2-8 1-2-3-5-3-8-1-1-5-4-7-9-8 3-4 5-9 4-15 4 0 10-2 13-7z" />
+      <path d="M20 14v24" stroke="rgba(0,0,0,.28)" strokeWidth="1.6" fill="none" />
+    </svg>
+  )
+}
+
+/** Thanksgiving: a few autumn leaves drifting down (switched off in low-power mode), a warm glow along the bottom, and leaves gathered in two corners. */
+function Harvest() {
+  const colours = ['#c8702a', '#a8481b', '#d9a441', '#8c3b17', '#e0893a']
+  return (
+    <>
+      <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        {Array.from({ length: 9 }, (_, n) => (
+          <Leaf key={n} className="leaf" style={{ left: `${(n * 37 + 8) % 100}%`, width: 16 + (n % 3) * 5, height: 16 + (n % 3) * 5, color: colours[n % colours.length], animationDuration: `${24 + (n % 5) * 5}s`, animationDelay: `${-n * 3.4}s`, ['--drift' as string]: `${(n % 2 ? 1 : -1) * (6 + (n % 4) * 3)}vw`, ['--turn' as string]: `${(n % 2 ? 1 : -1) * (200 + n * 40)}deg` }} />
+        ))}
+      </div>
+      <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-[5] h-[26vh] bg-linear-to-t from-[#c8702a]/[.17] via-[#8c3b17]/[.06] to-transparent" />
+      <div aria-hidden className="pointer-events-none fixed top-0 z-[5] flex gap-1 max-md:hidden" style={{ right: '3vw' }}>
+        <Leaf className="-mt-3 w-9 rotate-[18deg] text-[#a8481b]/55" /><Leaf className="w-7 -rotate-[24deg] text-[#d9a441]/50" /><Leaf className="-mt-1 w-6 rotate-[52deg] text-[#c8702a]/55" />
+      </div>
+      <div aria-hidden className="pointer-events-none fixed bottom-1 z-[5] flex items-end gap-1 max-md:hidden" style={{ left: 'calc(var(--rail) + 14px)' }}>
+        <Leaf className="w-8 -rotate-[14deg] text-[#8c3b17]/55" /><Leaf className="mb-1 w-6 rotate-[30deg] text-[#c8702a]/55" /><Leaf className="w-5 -rotate-[60deg] text-[#d9a441]/50" />
+      </div>
+    </>
+  )
+}
+
 /** Seasonal atmosphere: spooky fog and embers in October; snow, frost or garlands in December. All kept faint and mostly still. */
 export function SeasonalAmbient() {
   const { key } = useTheme()
   const minimal = useMinimal()   // (no side rail in Minimal, so the corner decorations sit right in the corner)
-  const art = key === 'halloween' ? <Spooky /> : key === 'frost' ? <Frost /> : key === 'festive' ? <Festive /> : null
+  const art = key === 'halloween' ? <Spooky /> : key === 'frost' ? <Frost /> : key === 'festive' ? <Festive /> : key === 'harvest' ? <Harvest /> : null
   return art && <div className="contents" style={minimal ? { ['--rail' as string]: '0px' } : undefined}>{art}</div>
 }

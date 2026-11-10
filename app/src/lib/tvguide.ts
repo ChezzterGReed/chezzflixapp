@@ -19,7 +19,7 @@ export interface Channel {
   episodeOrder?: 'ordered' | 'random'
   /** Movie channels: genre names (all movies in any of them), movies added one by one, and the order. */
   genres?: string[]
-  movieItems?: { key: string; title: string; year?: number; dur: number; date?: string; thumb?: string; art?: string; rating?: string }[]
+  movieItems?: { key: string; title: string; year?: number; dur: number; date?: string; thumb?: string; art?: string; rating?: string; /** An episode (holiday channels): its show, so it reads and opens as an episode. */ ep?: EpInfo }[]
   /** Movie channels: only these ratings play (see RATING_OPTIONS). Empty or missing = every rating. */
   ratings?: string[]
   movieOrder?: 'release' | 'random'
@@ -31,6 +31,7 @@ export interface Channel {
   seasonal?: boolean
   accent?: string
 }
+export interface EpInfo { show: string; showTitle: string; label: string; title: string; /** The episode's own picture. */ still?: string; /** The show has something watched on this profile. */ w?: boolean; /** How well liked the show is (0-10), to rank shows. */ pop?: number }
 export interface ChannelPrefs { subs?: 'default' | 'on' | 'off'; subLang?: string; audioLang?: string }
 
 // ---------- Content ratings for movie channels ----------
@@ -113,7 +114,7 @@ export function cloneChannel(c: Channel, existing: Channel[]): Channel {
 /** What the schedule depends on: when this changes, the channel's schedule is rebuilt. */
 /** Bump when how schedules are built changes, so every device rebuilds its guide once instead of keeping an out-of-date one. */
 export const GUIDE_VERSION = 3
-const signature = (c: Channel) => JSON.stringify([GUIDE_VERSION, c.kind, c.shows?.map((s) => `${s.key}:${s.seasons?.join('.') ?? ''}`), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key), c.movieOrder, c.ratings, c.years])
+const signature = (c: Channel) => JSON.stringify([GUIDE_VERSION, c.kind, c.shows?.map((s) => `${s.key}:${s.seasons?.join('.') ?? ''}`), c.perBlock, c.episodeOrder, c.genres, c.movieItems?.map((m) => m.key + (m.ep ? 'e' : '')), c.movieOrder, c.ratings, c.years])
 
 // ---------- Schedule ----------
 export interface Slot {
@@ -131,7 +132,7 @@ interface ChanState { rot: number; inBlock: number; shows: Record<string, ShowSt
 interface Stored { sig: string; slots: Slot[]; st: ChanState; /** What the channel could play when this schedule was last built (see fingerprint). */ fp?: string }
 interface Source { eps?: Record<string, Ep[]>; movies?: Movie[] }
 interface Ep { key: string; dur: number; label: string; title: string; season: number }
-interface Movie { key: string; dur: number; title: string; year?: number; date: string; th?: string; ar?: string; rating?: string }
+interface Movie { key: string; dur: number; title: string; year?: number; date: string; th?: string; ar?: string; rating?: string; ep?: EpInfo }
 
 // ---------- Seeded randomness (so a saved position can be resumed exactly) ----------
 function mulberry32(a: number) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
@@ -249,7 +250,7 @@ async function sources(server: PlexServer, sections: PlexSection[], ch: Channel)
     }))
     return { eps }
   }
-  const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art, rating: m.rating }))
+  const own: Movie[] = (ch.movieItems ?? []).map((m) => ({ key: m.key, dur: m.dur > 10 * MIN ? m.dur : 100 * MIN, title: m.title, year: m.year, date: m.date ?? `${m.year ?? 0}`, th: m.thumb, ar: m.art, rating: m.rating, ep: m.ep }))
   const fromGenres = (ch.genres ?? []).length || ch.years ? await loadMovies(server, sections, ch.genres ?? []) : []
   const seen = new Set(own.map((m) => m.key))
   // One copy of each film: the same title and year from two libraries (say regular and 4K) counts once.
@@ -297,7 +298,7 @@ function fill(ch: Channel, src: Source, stored: Stored, now: number, until: numb
     while ((last() < until) && guard++ < 5000) {
       const m = movies[pick(movies.length, ms, ch.movieOrder !== 'release')]
       ms.pos++
-      add({ key: m.key, title: m.title, sub: m.year ? String(m.year) : undefined, th: m.th, ar: m.ar }, m.dur)
+      add(m.ep ? { key: m.key, show: m.ep.show, title: m.ep.showTitle, sub: `${m.ep.label} · ${m.ep.title}`, th: m.th, ar: m.ar } : { key: m.key, title: m.title, sub: m.year ? String(m.year) : undefined, th: m.th, ar: m.ar }, m.dur)
     }
   }
 }

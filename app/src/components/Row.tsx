@@ -6,6 +6,8 @@ import { LandscapeCard, PosterCard } from './Card'
 import { Focusable } from './Focusable'
 import { SeasonIcon } from './SeasonIcon'
 import type { PlexMedia, PlexServer } from '../lib/plex'
+import type { HolidayRowData } from '../lib/holidayEpisodes'
+import { HolidayCard, holidayEntries, type HolidayAction } from './HolidayCards'
 
 interface Props {
   title: string
@@ -26,9 +28,12 @@ interface Props {
   moreLabel?: string
   /** Focus key that Up jumps to (the top tabs, for the first row on a page). */
   upKey?: string
+  /** A holiday episodes row: shows with holiday episodes, then Tune In and Explore all. */
+  holiday?: HolidayRowData
+  onHoliday?: (a: HolidayAction) => void
 }
 
-export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs, fromContinue, onMore, moreLabel, upKey }: Props) {
+export function Row({ title, items, server, variant = 'poster', onSelect, themed, subtitle, fromRecs, fromContinue, onMore, moreLabel, upKey, holiday, onHoliday }: Props) {
   const { ref, focusKey } = useFocusable({ saveLastFocusedChild: true, autoRestoreFocus: false, onArrowPress: upKey ? (dir: string) => { if (dir === 'up') { setFocus(upKey); return false } return true } : undefined })
   const track = useRef<HTMLDivElement>(null)
 
@@ -43,7 +48,8 @@ export function Row({ title, items, server, variant = 'poster', onSelect, themed
         {subtitle && <p className="mb-3 px-[var(--gutter)] text-sm text-white/45">{subtitle}</p>}
         <div className="relative">
           <div ref={track} className="flex gap-4 overflow-x-auto px-[var(--gutter)] py-5 -my-5">
-            {items.map((m, idx) => variant === 'landscape'
+            {holiday && holidayEntries(holiday).map((e, idx) => <HolidayCard key={e.key} entry={e} row={holiday} server={server} onEnter={() => onHoliday?.(e.action)} onFocus={focusReveal} leftEdge={idx === 0} />)}
+            {!holiday && items.map((m, idx) => variant === 'landscape'
               ? <LandscapeCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} />
               : <PosterCard key={m.ratingKey} m={m} server={server} onEnter={() => onSelect(m)} onFocus={focusReveal} leftEdge={idx === 0} fromRecs={fromRecs} fromContinue={fromContinue} />)}
             {onMore && (

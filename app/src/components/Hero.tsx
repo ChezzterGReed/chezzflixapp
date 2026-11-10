@@ -10,6 +10,7 @@ import { backdropPath, episodeLabel, formatRuntime, imageUrl, logoPath, type Ple
 const ROTATE_MS = 8000
 
 export function playLabel(m: PlexMedia): string {
+  if (m.holidaySlide) return 'Play'
   const next = m.type === 'show' ? m.OnDeck?.Metadata : undefined
   if (next) return `${next.viewOffset ? 'Resume' : 'Play'} ${episodeLabel(next)}`.trim()
   return m.viewOffset ? 'Resume' : 'Play'
@@ -75,12 +76,16 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
             className={`absolute inset-0 h-full w-full object-cover object-[50%_20%] transition-opacity duration-[1100ms] ease-in-out ${n === i ? 'opacity-100' : 'opacity-0'}`} />
         ) : null)}
         <div className="absolute inset-0 bg-linear-to-r from-bg via-bg/70 via-35% to-transparent to-75%" />
+        {m.holidaySlide && <div key={`wash-${m.ratingKey}`} className="fade-up absolute inset-0 bg-[radial-gradient(ellipse_at_15%_85%,color-mix(in_srgb,var(--accent)_38%,transparent),transparent_60%)]" />}
         <div className="absolute inset-0 bg-linear-to-t from-bg via-transparent via-40% to-transparent" />
         <div className="absolute inset-x-0 top-0 h-40 bg-linear-to-b from-black/60 to-transparent" />
 
         <div key={m.ratingKey} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="fade-up absolute bottom-[9%] left-[var(--gutter)] max-w-[min(760px,60vw)]">
           {m.newSeason && <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-white shadow-lg [text-shadow:0_1px_2px_rgba(0,0,0,.4)]">New Season<span className="font-semibold normal-case tracking-normal opacity-90">· S{m.newSeason.season}{m.newSeason.count > 1 ? ` · ${m.newSeason.count} new episodes` : ''}</span></div>}
-          {logo
+          {m.holidaySlide && <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-black shadow-lg">{m.holidaySlide.label}</div>}
+          {m.holidaySlide?.headline
+            ? <h1 className="mb-4 font-display text-[clamp(2.2rem,4.4vw,4rem)] uppercase leading-[1.02] tracking-[0.06em] drop-shadow-2xl">{m.holidaySlide.headline}</h1>
+            : logo
             ? <img src={imageUrl(server, logo, 800, 300)} alt={m.title} className="mb-5 max-h-36 max-w-[28rem] object-contain object-left drop-shadow-2xl" />
             : <h1 className={`mb-4 ${titleSize} text-balance font-extrabold leading-[1] tracking-[-0.035em] drop-shadow-2xl`}>{m.title}</h1>}
           <Meta m={m} />
@@ -93,7 +98,7 @@ export function Hero({ items, server, rotate, tabKey, onPlay, onInfo }: Props) {
             </Focusable>
             <Focusable focusKey="hero-info" onEnter={() => onInfo(m)} onFocus={toTop} onArrow={up} title="More info">
               <div className="flex h-13 items-center gap-2.5 rounded-full bg-white/15 px-7 text-[1.05rem] font-semibold transition-all duration-200 group-hover/f:bg-white/25 group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white/30 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">
-                <Info size={20} />More info
+                <Info size={20} />{m.holidaySlide ? m.holidaySlide.explore : 'More info'}
               </div>
             </Focusable>
           </div>

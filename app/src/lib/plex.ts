@@ -30,7 +30,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.15',
+    'X-Plex-Version': '0.6.16',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -55,7 +55,10 @@ export interface PlexServer {
 
 export interface PlexTag { id?: number | string; tag: string; role?: string; thumb?: string }
 
+/** A holiday slide in the Home banner (see holidayHero.ts). */
+export interface HolidaySlide { kind: 'movie' | 'show'; holiday: 'halloween' | 'christmas' | 'thanksgiving'; label: string; headline?: string; /** The second button's wording. */ explore: string; /** Movies: the seasonal list to open. */ listId?: string; /** Shows: the show whose holiday episodes play. */ showKey?: string }
 export interface PlexMedia {
+  holidaySlide?: HolidaySlide
   ratingKey: string
   title: string
   type: 'movie' | 'show' | 'season' | 'episode' | string

@@ -39,9 +39,9 @@ const violentXmas = (m: PlexMedia) => adult(m) && hasDarkGenre(m)
 export const SEASONAL_LISTS: SeasonalList[] = [
   { id: 'spooky', season: 'halloween', title: 'Spooky Season', subtitle: 'Halloween favourites and spooky-season vibes', entries: SPOOKY,
     channels: [{ id: 'family', number: -2, name: 'Spooky Season', keep: family }, { id: 'afterdark', number: -1, name: 'Spooky Season After Dark', keep: adult }] },
-  { id: 'xmas', season: 'christmas', title: 'Holiday Movies', subtitle: 'Christmas favourites for the whole family', entries: CHRISTMAS, keep: family, min: 8,
+  { id: 'xmas', season: 'christmas', title: 'Holiday Movies', subtitle: 'Holiday favourites for the whole family', entries: CHRISTMAS, keep: family, min: 8,
     channels: [{ id: 'a', number: -2, name: 'Holiday Movies' }, { id: 'b', number: -1, name: 'Holiday Movies 2' }] },
-  { id: 'xmas-violent', season: 'christmas', title: 'Violent Night', subtitle: 'Christmas with a bite: slashers, thrillers and action', entries: CHRISTMAS, keep: violentXmas, min: 8 },
+  { id: 'xmas-violent', season: 'christmas', title: 'Violent Night', subtitle: 'The holidays with a bite: slashers, thrillers and action', entries: CHRISTMAS, keep: violentXmas, min: 8 },
 ]
 
 /** The list's movies as currently published (hosted file) or, failing that, as built into this version. */
@@ -125,6 +125,7 @@ export async function seasonalChannels(server: PlexServer, sections: PlexSection
       out.push({ id: `seasonal:${list.id}:${c.id}`, number: c.number, name: c.name, kind: 'movies', genres: [], movieItems: items.map(entry), movieOrder: 'random', seasonal: true, accent })
     }
   }
-  out.push(...await holidayEpisodeChannels(server, sections, season, onHolidayEpisodes).catch(() => [] as Channel[]))   // (episodes about a holiday, from every show)
+  // The holiday's episodes, from every show (only the holiday that is on).
+  if (season) out.push(...(await holidayEpisodeChannels(server, sections, season, (all) => onHolidayEpisodes?.(all.filter((c) => c.id === `seasonal:eps:${season}`))).catch(() => [] as Channel[])).filter((c) => c.id === `seasonal:eps:${season}`))
   return out
 }

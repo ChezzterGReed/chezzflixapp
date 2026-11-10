@@ -4,6 +4,7 @@ import { Hero, HeroSkeleton } from '../components/Hero'
 import { MinimalHome } from './MinimalHome'
 import { useMinimal } from '../lib/layout'
 import { Clock } from '../components/Clock'
+import type { HolidayAction } from '../components/HolidayCards'
 import { TrendingBanner } from '../components/TrendingBanner'
 import { TabBanner, hasTabBanner } from '../components/TabBanner'
 import { Row, RowSkeleton } from '../components/Row'
@@ -15,7 +16,7 @@ import { loadRecs } from '../lib/recsData'
 import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
 import { hidesWatched, useSeason, useSettings } from '../lib/settings'
 
-interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; /** Bumped when you come back to the app: Continue Watching is read again. */ returnKey: number; /** Show this tab (the Minimal layout opens Movies / TV Shows / Anime / Trending directly). */ tabOverride?: Tab; onType: (t: Tab) => void; onPlay: (m: PlexMedia, fromContinue?: boolean) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void }
+interface Props { server: PlexServer; sections: PlexSection[]; /** The person's Plex token (for their Watchlist). */ token: string; /** Their profile name (so "trending with others" leaves out their own viewing). */ profileName: string; refreshKey: number; /** Bumped after something was watched: only Continue Watching needs re-reading. */ watchKey: number; /** Bumped when you come back to the app: Continue Watching is read again. */ returnKey: number; /** Show this tab (the Minimal layout opens Movies / TV Shows / Anime / Trending directly). */ tabOverride?: Tab; onType: (t: Tab) => void; onPlay: (m: PlexMedia, fromContinue?: boolean) => void; onOpen: (m: PlexMedia) => void; onBrowse: (kind: 'genres' | 'collections', tab: Tab) => void; onSeasonal: (id: string) => void; onOpenEpisode: (m: PlexMedia) => void; onOpenSettings: () => void; /** A holiday row's card was chosen (a show, Tune In, or Explore all). */ onHoliday: (a: HolidayAction) => void }
 
 const TABS: { id: Tab; label: string }[] = [{ id: 'all', label: 'Home' }, { id: 'foryou', label: 'For You' }, { id: 'trending', label: 'Trending' }, { id: 'movie', label: 'Movies' }, { id: 'show', label: 'Shows' }, { id: 'anime', label: 'Anime' }]
 const TAB_KEY = 'chezzflix_home_tab'
@@ -42,7 +43,7 @@ const writeSnap = (sig: string, c: Cached) => {
   try { localStorage.setItem(SNAP_KEY, JSON.stringify({ sig, saved: Date.now(), c: { ...c, rows: cut(c.rows), recRows: cut(c.recRows) as Cached['recRows'] } })) } catch { /* full or private mode */ }
 }
 
-export function Home({ server, sections, token, profileName, refreshKey, watchKey, returnKey, tabOverride, onType, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings }: Props) {
+export function Home({ server, sections, token, profileName, refreshKey, watchKey, returnKey, tabOverride, onType, onPlay, onOpen, onBrowse, onSeasonal, onOpenEpisode, onOpenSettings, onHoliday }: Props) {
   const { settings } = useSettings()
   const season = useSeason()
   const minimal = useMinimal()
@@ -58,6 +59,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   const [recsReady, setRecsReady] = useState(false)
   const focusedOnce = useRef(false)
   const heroFor = useRef('')
+  const [holidayTick, setHolidayTick] = useState(0)   // bumped when the holiday scan finishes, so the banner is made again with its holiday slides
   const rowsRef = useRef<HomeRow[] | undefined>(undefined)
   const meta = useRef({ at: 0, refreshKey, watchKey })   // when the rows on screen were fully loaded
   const skipRecs = useRef(false)
@@ -95,6 +97,13 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
       .catch((e) => { if (alive && !hit) { setError(String(e)); setBooted(true) } })
     return () => { alive = false }
   }, [cacheSig, server, sections, refreshKey, season, fullTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The holiday episode scan finishes in the background (the first time): read the rows again so the new shows appear.
+  useEffect(() => {
+    const h = () => { homeCache.delete(cacheSig); setFullTick((n) => n + 1); setHolidayTick((n) => n + 1) }
+    window.addEventListener('chezz-holiday', h)
+    return () => window.removeEventListener('chezz-holiday', h)
+  }, [cacheSig])
 
   // Continue Watching is the one row that changes as you watch: re-read just that when something was watched or its settings changed.
   const contSig = `${watchKey}|${returnKey}|${cacheSig}|${JSON.stringify(settings.dismissedContinue)}|${JSON.stringify(settings.pinned)}|${settings.continueDays}`
@@ -140,16 +149,16 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
     if (!rows) return
     if (!settings.hero || activeTab === 'trending') { setHero([]); return }   // Trending has a banner instead of a hero
     const waitingForRecs = wantsRecs && !recsReady
-    const sig = `${activeTab}|${settings.hiddenLibraries.join(',')}|${refreshKey}|${waitingForRecs ? 'p' : 'r'}`
+    const sig = `${activeTab}|${settings.hiddenLibraries.join(',')}|${refreshKey}|${waitingForRecs ? 'p' : 'r'}|${season}|${holidayTick}`
     if (heroFor.current === sig && hero) return
     heroFor.current = sig
     let alive = true
-    loadHero(server, sections, activeTab, settings, rows, rowsAnime, waitingForRecs ? [] : recItems, !waitingForRecs)
+    loadHero(server, sections, activeTab, settings, rows, rowsAnime, waitingForRecs ? [] : recItems, !waitingForRecs, season)
       .then((h) => { if (alive && !(waitingForRecs && h.length < 3)) setHero(h) })   // too thin to show yet: wait for recommendations
       .catch(() => alive && setHero([]))
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, recsReady, settings.hero])
+  }, [rows, recsReady, settings.hero, holidayTick])
 
   // The loading screen lifts once the first hero is ready (or we know there isn't one).
   useEffect(() => { if (hero || (!settings.hero && rows)) setBooted(true) }, [hero, settings.hero, rows])
@@ -187,11 +196,15 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   }, [shown, rowCount])
   const merged: (HomeRow & { subtitle?: string; recs?: boolean })[] = rows ? [...rows.slice(0, after), ...shownRecs.map((r) => ({ ...r, recs: true })), ...rows.slice(after)] : []
 
+  // Holiday slides: Play, and the second button (the season's movie list, or the shows with holiday episodes).
+  const slidePlay = (m: PlexMedia) => { const h = m.holidaySlide; if (h?.kind === 'show' && h.showKey) onHoliday({ kind: 'play', id: h.holiday, show: h.showKey }); else onPlay(m) }
+  const slideMore = (m: PlexMedia) => { const h = m.holidaySlide; if (!h) return onOpen(m); if (h.kind === 'show') onHoliday({ kind: 'all', id: h.holiday }); else if (h.listId) onSeasonal(h.listId); else onOpen(m) }
+
   if (error) return <div className="grid h-screen place-items-center px-8 text-center text-white/70">Couldn't load your library.<br />{error}</div>
 
   if (minimal && activeTab !== 'trending') return (
     <MinimalHome server={server} sections={visible} anime={rowsAnime ?? anime} tab={activeTab} hero={hero} rows={rows ? merged : undefined} rotate={settings.heroRotate}
-      onPlay={onPlay} onOpen={onOpen} onType={onType} onSeasonal={onSeasonal} continueWide={settings.continueStyle === 'episode'} />
+      onPlay={(m, c) => (m.holidaySlide ? slidePlay(m) : onPlay(m, c))} onOpen={(m) => (m.holidaySlide ? slideMore(m) : onOpen(m))} onType={onType} onSeasonal={onSeasonal} onHoliday={onHoliday} continueWide={settings.continueStyle === 'episode'} />
   )
 
   return (
@@ -211,7 +224,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
         ? <TrendingBanner server={server} posters={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).flatMap((r) => r.items)} count={(rows ?? []).filter((r) => r.id.startsWith('builtin:tmdb')).reduce((n, r) => n + r.items.length, 0)} loading={!rows} />
         : hasTabBanner(activeTab) ? <TabBanner tab={activeTab} server={server} visible={visible} anime={rowsAnime ?? anime} picks={hero ?? []} rotate={settings.heroRotate} topGenres={topGenres} count={recRows.reduce((n, r) => n + r.items.length, 0)} profileName={profileName} tabKey={`tab-${activeTab}`} onPlay={onPlay} onInfo={onOpen} />
         : !settings.hero ? <div className="h-28" />
-        : hero?.length ? <Hero key={activeTab} tabKey={`tab-${activeTab}`} items={hero} server={server} rotate={settings.heroRotate} onPlay={onPlay} onInfo={onOpen} />
+        : hero?.length ? <Hero key={activeTab} tabKey={`tab-${activeTab}`} items={hero} server={server} rotate={settings.heroRotate} onPlay={slidePlay} onInfo={slideMore} />
           : hero ? <div className="h-28" /> : <HeroSkeleton />}
       <div className="relative z-10 pt-2">
         {!rows
