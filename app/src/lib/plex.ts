@@ -30,7 +30,7 @@ function baseHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': '0.6.14',
+    'X-Plex-Version': '0.6.15',
     'X-Plex-Client-Identifier': clientId(),
     'X-Plex-Platform': DEVICE.platform,
     'X-Plex-Device': DEVICE.device,
@@ -488,6 +488,22 @@ export async function getAllSectionItems(server: PlexServer, key: string, sort: 
     const r = await getSectionItems(server, key, sort, start, 500, year, unwatched, slim)
     out.push(...r.items)
     if (out.length >= r.total || r.items.length === 0) break
+  }
+  return out
+}
+
+/** Episodes in a TV library whose title contains `term` (the server does the matching). */
+export async function searchEpisodesByTitle(server: PlexServer, sectionKey: string, term: string, size = 400): Promise<PlexMedia[]> {
+  const c = await get<{ Metadata?: PlexMedia[] }>(server, `/library/sections/${sectionKey}/all?type=4&title=${encodeURIComponent(term)}&X-Plex-Container-Start=0&X-Plex-Container-Size=${size}`, 600_000).catch(() => ({ Metadata: [] as PlexMedia[] }))
+  return c.Metadata ?? []
+}
+/** Ids of the shows in a TV library with at least one watched episode (for this profile). */
+export async function getWatchedShowKeys(server: PlexServer, sectionKey: string): Promise<Set<string>> {
+  const out = new Set<string>()
+  for (let start = 0; start < 5000; start += 500) {
+    const c = await get<{ Metadata?: PlexMedia[]; totalSize?: number }>(server, `/library/sections/${sectionKey}/all?type=2&X-Plex-Container-Start=${start}&X-Plex-Container-Size=500${SLIM}`, 600_000).catch(() => ({ Metadata: [] as PlexMedia[], totalSize: 0 }))
+    for (const m of c.Metadata ?? []) if ((m.viewedLeafCount ?? 0) > 0) out.add(m.ratingKey)
+    if (start + 500 >= (c.totalSize ?? 0)) break
   }
   return out
 }

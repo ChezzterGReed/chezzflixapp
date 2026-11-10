@@ -36,9 +36,8 @@ export function TVGuide({ server, sections, scope, onLeave, onOpenInfo }: Props)
   // In season, the app's own channels (e.g. Spooky Season) come first, in the season's colour; the guide waits until they're worked out.
   useEffect(() => {
     let alive = true
-    if (!season) { setSeasonalBase([]); setSeasonalReady(true); return }
     setSeasonalReady(false)
-    seasonalChannels(server, sections, season, seasonColour ?? undefined).then((c) => { if (alive) { setSeasonalBase(c); setSeasonalReady(true) } }).catch(() => alive && setSeasonalReady(true))
+    seasonalChannels(server, sections, season, seasonColour ?? undefined, (late) => { if (alive) setSeasonalBase((b) => [...b.filter((c) => !c.id.startsWith('seasonal:eps:')), ...late]) }).then((c) => { if (alive) { setSeasonalBase(c); setSeasonalReady(true) } }).catch(() => alive && setSeasonalReady(true))
     return () => { alive = false }
   }, [server, sections, season, seasonColour])
   const seasonalChans = useMemo(() => seasonalBase.map((c) => ({ ...c, prefs: settings.seasonalPrefs[c.id] })), [seasonalBase, settings.seasonalPrefs])

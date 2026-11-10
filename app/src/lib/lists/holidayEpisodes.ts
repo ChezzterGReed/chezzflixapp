@@ -1,0 +1,61 @@
+// Known holiday episodes, by show. Each entry is [show, season, episode, episode title]. An entry with season 0 is matched by title alone
+// (for lists that don't give numbers). An entry matches when the show is on the server and either its season/episode number or its
+// title lines up, so a different numbering order on the server doesn't lose it. Add more lines as lists turn up.
+export type HolidayId = 'thanksgiving' | 'christmas' | 'halloween'
+export type HolidayEntry = [show: string, season: number, episode: number, title?: string]
+
+export const HOLIDAY_EPISODES: Record<HolidayId, HolidayEntry[]> = {
+  thanksgiving: [
+    ['How I Met Your Mother', 1, 9, 'Belly Full of Turkey'], ['How I Met Your Mother', 3, 9, 'Slapsgiving'], ['How I Met Your Mother', 5, 9, 'Slapsgiving 2: Revenge of the Slap'], ['How I Met Your Mother', 6, 10, 'Blitzgiving'],
+    ['Friends', 1, 9, 'The One Where Underdog Gets Away'], ['Friends', 2, 8, 'The One with the List'], ['Friends', 3, 9, 'The One with the Football'], ['Friends', 4, 8, 'The One with Chandler in a Box'],
+    ['Friends', 5, 8, 'The One with All the Thanksgivings'], ['Friends', 6, 9, 'The One Where Ross Got High'], ['Friends', 7, 8, "The One Where Chandler Doesn't Like Dogs"], ['Friends', 8, 9, 'The One with the Rumor'],
+    ['Friends', 9, 8, "The One with Rachel's Other Sister"], ['Friends', 10, 8, 'The One with the Late Thanksgiving'],
+    ['The League', 3, 8, 'Thanksgiving'], ['Brooklyn Nine-Nine', 1, 10, 'Thanksgiving'], ['Brooklyn Nine-Nine', 5, 7, 'Two Turkeys'],
+    ['Will & Grace', 2, 7, 'Homo for the Holidays'], ['Will & Grace', 4, 9, 'Moveable Feast: Part 1'], ['Will & Grace', 4, 10, 'Moveable Feast: Part 2'], ['Will & Grace', 7, 10, 'Queens for a Day: Part 1'], ['Will & Grace', 7, 11, 'Queens for a Day: Part 2'],
+    ['Spin City', 3, 10, 'Gobble the Wonder Turkey Saves the Day'], ['Spin City', 4, 9, 'The Thanksgiving Show'],
+    ['The Goldbergs', 1, 9, 'Stop Arguing & Start Thanking'], ['The Goldbergs', 2, 7, 'A Goldberg Thanksgiving'], ['The Goldbergs', 3, 8, 'In Conclusion, Thanksgiving'], ['The Goldbergs', 4, 7, 'Ho-ly K.I.T.T.'],
+    ['The Goldbergs', 5, 7, 'A Wall Street Thanksgiving'], ['The Goldbergs', 7, 8, 'Angst-Giving'], ['The Goldbergs', 9, 8, 'A Light Thanksgiving Nosh'],
+    ['Just Shoot Me!', 5, 7, 'The First Thanksgiving'], ['Suddenly Susan', 1, 9, 'Cold Turkey'], ['Suddenly Susan', 3, 9, 'The Thanksgiving Episode'],
+    ['The Big Bang Theory', 7, 9, 'The Thanksgiving Decoupling'],
+    ['New Girl', 1, 6, 'Thanksgiving'], ['New Girl', 2, 8, 'Parents'], ['New Girl', 3, 10, 'Thanksgiving III'], ['New Girl', 4, 9, 'Thanksgiving IV'], ['New Girl', 6, 7, 'Last Thanksgiving'],
+    ['Murphy Brown', 4, 11, 'Mission Control'], ['Murphy Brown', 11, 9, 'Thanksgiving and Taking'],
+    ['Dharma & Greg', 1, 10, 'The First Thanksgiving'], ['Dharma & Greg', 3, 10, 'Thanksgiving Until It Hurts'],
+    ['Two Guys and a Girl', 2, 10, 'Two Guys, a Girl and a Thanksgiving'], ['Two Guys and a Girl', 3, 9, 'Talking Turkey'],
+    ['The Fresh Prince of Bel-Air', 1, 12, 'Talking Turkey'], ['The Fresh Prince of Bel-Air', 6, 9, "There's the Rub: Part 1"],
+    ["Who's the Boss?", 2, 9, "Thanksgiving at Mrs. Rossini's"],
+    ['King of the Hill', 3, 7, 'Nine Pretty Darn Angry Men'], ['King of the Hill', 4, 7, "Happy Hank's Giving"], ['King of the Hill', 5, 4, 'Spin the Choice'],
+    ['Full House', 1, 9, 'The Miracle of Thanksgiving'],
+    ['The King of Queens', 2, 10, "Roamin' Holiday"], ['The King of Queens', 5, 10, 'Loaner Car'], ['The King of Queens', 6, 9, 'Thanks, Man'],
+    ['3rd Rock from the Sun', 2, 10, 'Gobble, Gobble, Dick, Dick'], ['Married... with Children', 11, 6, 'A Bundy Thanksgiving'],
+    ['8 Simple Rules', 2, 8, 'The First Thanksgiving'], ['8 Simple Rules', 3, 9, 'Thanksgiving Guest'],
+    ['The New Adventures of Old Christine', 4, 10, "Guess Who's Not Coming to Dinner?"],
+    ['Newhart', 2, 6, "Don't Rain on My Parade"], ['Newhart', 5, 8, 'Thanksgiving for the Memories'],
+    ['Joey', 2, 10, 'Joey and the Bachelor Thanksgiving'], ['The Mindy Project', 1, 6, 'Thanksgiving'],
+    ["Don't Trust the B---- in Apartment 23", 2, 4, "It's a Miracle..."], ['Suburgatory', 2, 5, 'The Wishbone'],
+    ['Cougar Town', 1, 9, 'Here Comes My Girl'], ['Cougar Town', 2, 9, 'When the Time Comes'], ['Go On', 1, 9, 'Dinner Takes All'],
+    ['Happy Days', 6, 12, 'The First Thanksgiving'], ['Son of Zorn', 1, 7, 'The Battle of Thanksgiving'], ['Grace Under Fire', 3, 9, 'Thanks for Nothing'],
+    ['Home Economics', 2, 8, 'Two Thousand Pounds of Sand, $240'], ['Home Economics', 3, 8, 'Wheel of Vegan Brie, $24'],
+    ['Designing Women', 1, 7, "Perky's Visit"], ['The Bob Newhart Show', 4, 11, 'Over the River and Through the Woods'], ['Kate & Allie', 3, 8, 'Thanksgiving'],
+    ['Half & Half', 1, 10, 'The Big Thanks for Forgiving Episode'], ['Half & Half', 3, 9, 'The Big Thanks for Nothing Episode'],
+    ['Girlfriends', 1, 9, 'Fried Turkey'], ['The Jamie Foxx Show', 1, 12, 'A Thanksgiving to Remember'],
+    ['Martin', 2, 13, 'Thanks for Nothing'], ['Martin', 3, 11, 'Feast or Famine'],
+    ['Mike & Molly', 1, 10, 'Molly Gets a Hat'], ['Mike & Molly', 3, 7, 'Thanksgiving Is Canceled'],
+    ['Everybody Hates Chris', 2, 8, 'Everybody Hates Thanksgiving'], ['Black-ish', 3, 7, 'Auntsgiving'], ['All in the Family', 6, 11, 'The Little Atheist'],
+    ['A Man on the Inside', 2, 5, 'Thanksgiving Break'], ['Gary Unmarried', 1, 9, 'Gary Gives Thanks'], ['Living Single', 2, 12, 'Thanks for Giving'],
+    ['Cybill', 2, 8, "They Shoot Turkeys, Don't They?"], ['Man with a Plan', 1, 5, 'Thanksgiving'],
+  ],
+  christmas: [
+    ['Friends', 2, 9, "The One with Phoebe's Dad"], ['Friends', 3, 10, 'The One Where Rachel Quits'], ['Friends', 4, 10, 'The One with the Girl from Poughkeepsie'], ['Friends', 5, 10, 'The One with the Inappropriate Sister'],
+    ['Friends', 6, 10, 'The One with the Routine'], ['Friends', 7, 10, 'The One with the Holiday Armadillo'], ['Friends', 8, 11, "The One with Ross's Step Forward"], ['Friends', 9, 10, 'The One with Christmas in Tulsa'],
+    ['The Office', 2, 10, 'Christmas Party'], ['The Office', 3, 10, 'A Benihana Christmas'], ['The Office', 3, 11, 'A Benihana Christmas'], ['The Office', 5, 11, 'Moroccan Christmas'], ['The Office', 6, 13, 'Secret Santa'],
+    ['The Office', 7, 11, 'Classy Christmas'], ['The Office', 7, 12, 'Classy Christmas'], ['The Office', 8, 10, 'Christmas Wishes'], ['The Office', 9, 9, 'Dwight Christmas'],
+    ['Brooklyn Nine-Nine', 0, 0, 'Christmas'], ['Brooklyn Nine-Nine', 0, 0, 'The Pontiac Bandit Returns'], ['Brooklyn Nine-Nine', 0, 0, 'Yippie Kayak'], ['Brooklyn Nine-Nine', 0, 0, 'Captain Latvia'], ['Brooklyn Nine-Nine', 0, 0, 'Game Night'],
+    ['Full House', 0, 0, 'Our Very First Christmas Show'], ['Full House', 0, 0, 'A Very Tanner Christmas'], ['Full House', 0, 0, 'The Perfect Couple'], ['Full House', 0, 0, 'Arrest Ye Merry Gentlemen'],
+    ['How I Met Your Mother', 0, 0, 'How Lily Stole Christmas'], ['How I Met Your Mother', 0, 0, 'Little Minnesota'], ['How I Met Your Mother', 0, 0, 'False Positive'],
+    ['How I Met Your Mother', 0, 0, 'Symphony of Illumination'], ['How I Met Your Mother', 0, 0, 'The Over-Correction'], ['How I Met Your Mother', 0, 0, 'The Final Page'],
+  ],
+  halloween: [
+    ['Friends', 8, 6, 'The One with the Halloween Party'],
+    ['The Office', 2, 5, 'Halloween'], ['The Office', 5, 6, 'Employee Transfer'], ['The Office', 6, 8, 'Koi Pond'], ['The Office', 7, 6, 'Costume Contest'], ['The Office', 8, 5, 'Spooked'], ['The Office', 9, 5, 'Here Comes Treble'],
+  ],
+}

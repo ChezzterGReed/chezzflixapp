@@ -8,6 +8,7 @@ import type { RequestItem } from './overseerr'
 import type { Season } from './settings'
 import { SPOOKY } from './lists/spooky'
 import { CHRISTMAS } from './lists/christmas'
+import { holidayEpisodeChannels } from './holidayEpisodes'
 import { ensureRemoteLists, entriesFor } from './lists/remote'
 
 /** A channel made from a list: `keep` narrows which of the list's movies it plays (default: all of them). */
@@ -112,7 +113,7 @@ export function hexA(hex: string, a: number): string {
 
 // ---------- Seasonal TV Guide channels ----------
 /** In season, the channels each list asks for, built from its movies (only for lists with enough of them). `accent` is the season's colour. */
-export async function seasonalChannels(server: PlexServer, sections: PlexSection[], season: Season, accent = '#ff7a1a'): Promise<Channel[]> {
+export async function seasonalChannels(server: PlexServer, sections: PlexSection[], season: Season, accent = '#ff7a1a', onHolidayEpisodes?: (c: Channel[]) => void): Promise<Channel[]> {
   const out: Channel[] = []
   for (const list of listsFor(season)) {
     if (!list.channels?.length) continue
@@ -124,5 +125,6 @@ export async function seasonalChannels(server: PlexServer, sections: PlexSection
       out.push({ id: `seasonal:${list.id}:${c.id}`, number: c.number, name: c.name, kind: 'movies', genres: [], movieItems: items.map(entry), movieOrder: 'random', seasonal: true, accent })
     }
   }
+  out.push(...await holidayEpisodeChannels(server, sections, season, onHolidayEpisodes).catch(() => [] as Channel[]))   // (episodes about a holiday, from every show)
   return out
 }
