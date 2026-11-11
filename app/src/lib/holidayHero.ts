@@ -19,7 +19,7 @@ export async function holidaySlides(server: PlexServer, sections: PlexSection[],
   const out: PlexMedia[] = []
 
   // Movies for the season: watched ones first (the most-watched leading), the rest in a random order.
-  if (season) {
+  if (season === 'halloween' || season === 'christmas') {   // (Thanksgiving has no movie list yet)
     const found = new Map<string, { m: PlexMedia; list: string }>()
     for (const list of listsFor(season)) for (const m of await matchList(server, sections, list).catch(() => [] as PlexMedia[])) if (!found.has(m.ratingKey)) found.set(m.ratingKey, { m, list: list.id })
     const all = [...found.values()].filter((x) => x.m.art)

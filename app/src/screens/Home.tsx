@@ -158,7 +158,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
       .catch(() => alive && setHero([]))
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, recsReady, settings.hero, holidayTick])
+  }, [rows, recsReady, settings.hero, holidayTick, season])
 
   // The loading screen lifts once the first hero is ready (or we know there isn't one).
   useEffect(() => { if (hero || (!settings.hero && rows)) setBooted(true) }, [hero, settings.hero, rows])

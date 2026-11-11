@@ -339,7 +339,7 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
     for (const list of listsFor(season)) {
       const have = await matchList(server, visible, list).catch(() => [] as PlexMedia[])
       if (have.length < 3) continue
-      const row: HomeRow = { id: `seasonal:${list.id}`, title: list.title, items: shuffled(have, 9).slice(0, 30), seasonal: { id: list.id, total: have.length } }
+      const row: HomeRow = { id: `seasonal:${list.id}`, title: list.title, items: shuffled(have, 9).slice(0, 15), seasonal: { id: list.id, total: have.length } }
       const at = out.findIndex((r) => r.continue)
       out.splice(at + 1, 0, row)
     }

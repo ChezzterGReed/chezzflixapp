@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Aurora } from './Aurora'
-import { Logo } from './Logo'
 import { useSeason } from '../lib/settings'
 import { shuffled } from '../lib/session'
 import { useLastBrand } from '../lib/brand'
@@ -45,19 +43,15 @@ export function LoadingScreen({ visible }: { visible: boolean }) {
   if (!mounted) return null
   return (
     <div aria-live="polite" className={`fixed inset-0 z-[90] overflow-hidden transition-opacity duration-700 ease-in-out ${visible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
-      <Aurora />
+      <div className="absolute inset-0 bg-[#07070a]" />
+      {/* just a reminder of the theme colour: a soft glow rising from the bottom edge */}
+      <div className="load-glow absolute inset-x-0 bottom-0 h-[78%]" />
       <div className="relative z-10 grid h-full place-items-center">
-        <div className="text-center">
-          <div className="relative mx-auto mb-7 grid size-32 place-items-center">
-            <span className="ring-spin absolute inset-0 rounded-full" />
-            <span className="absolute inset-[5px] rounded-full bg-[#07070a]" />
-            <span className="logo-breathe relative grid place-items-center drop-shadow-[0_0_28px_var(--accent)]"><Logo size={86} /></span>
-          </div>
-          <div className="mb-3 flex justify-center font-display text-[1.7rem] leading-none tracking-[0.26em]">
+        <div className="px-6 text-center">
+          <div className="mb-5 flex justify-center font-display text-[clamp(3rem,10vw,8rem)] uppercase leading-none tracking-[0.14em]">
             <SwapText text={brand} id="loading" intro stagger={70} />
           </div>
           <div key={i} className="fade-in h-5 text-sm tracking-wide text-white/50">{MESSAGES[i]}</div>
-          <div className="mx-auto mt-5 h-[3px] w-44 overflow-hidden rounded-full bg-white/10"><span className="load-bar block h-full w-1/3 rounded-full bg-accent" /></div>
         </div>
       </div>
     </div>

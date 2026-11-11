@@ -120,6 +120,8 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
     if (at >= 0) showIndex(at)
   }, [items.length]) // eslint-disable-line react-hooks/exhaustive-deps
   const sentinel = useRef<HTMLDivElement>(null)
+  const busy = useRef(false)    // a "load more" read is under way
+  const reset = useRef(0)       // bumped whenever the list starts over (a new sort, year or library), so an old read is ignored
   const page = useRef<HTMLDivElement>(null)
   useGridNav(page)
   // Jump-to-letter strip: whenever the list is in A-Z (or Z-A) order and long enough to need it, with any filter on (it then lists the letters that are left).
@@ -159,6 +161,7 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
   // Expanded: page through the server list. Collapsed: load everything once and group it here.
   useEffect(() => {
     let alive = true
+    reset.current++; busy.current = false
     setLoading(true); setItems([])
     // "New episodes": the shows are ordered by their newest episode here (the server can't do that for us).
     const arrange = (list: PlexMedia[]) => (sort === 'newEpisodes' ? orderByNewestEpisode(server, section.key, list) : Promise.resolve(list))
@@ -179,20 +182,21 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
   useEffect(() => {
     const el = sentinel.current
     if (!el || collapse) return
+    // One page at a time, and only ever appended at the offset it was asked for: scroll events can fire many times before the list updates,
+    // and a second request for the same offset must not add the same titles again.
     const more = () => {
-      if (!el || loading || items.length >= total) return
-      setLoading(true)
-      getSectionItems(server, section.key, sort, items.length, PAGE, year, unwatched, true)
-        .then((r) => { if (r.items.length) setItems((x) => [...x, ...r.items]); else setTotal(items.length) })   // (nothing came back: that's all there is)
+      if (busy.current || loading || items.length >= total) return
+      busy.current = true
+      const start = items.length, gen = reset.current
+      getSectionItems(server, section.key, sort, start, PAGE, year, unwatched, true)
+        .then((r) => { if (gen !== reset.current) return; if (r.items.length) setItems((x) => (x.length === start ? [...x, ...r.items] : x)); else setTotal(start) })
         .catch(() => {})
-        .finally(() => setLoading(false))   // (a failed read must never leave loading stuck on, or no more would ever load)
+        .finally(() => { busy.current = false; if (gen === reset.current) setLoading(false) })   // (a failed read must never leave loading stuck on)
+      setLoading(true)
     }
     const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) more() }, { rootMargin: '1400px' })
     io.observe(el)
-    // Also on every scroll: a trackpad can carry on scrolling past the end without the observer firing again.
-    const near = () => { if (el.getBoundingClientRect().top < window.innerHeight + 1400) more() }
-    window.addEventListener('scroll', near, { passive: true })
-    return () => { io.disconnect(); window.removeEventListener('scroll', near) }
+    return () => io.disconnect()
   }, [items.length, total, loading, server, section.key, sort, year, collapse, unwatched])
 
   const noun = section.type === 'movie' ? 'movies' : 'shows'

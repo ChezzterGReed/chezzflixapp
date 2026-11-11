@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
 import { useTheme } from '../lib/settings'
+import { Leaf } from './Leaf'
+import { useArtId } from './Pumpkin'
+import { Bat, Ghost } from './Spooks'
 import { useMinimal } from '../lib/layout'
 
 /** Fixed corner cobweb: a few spokes and curved threads. Drawn once, never animated. */
@@ -9,15 +11,6 @@ function Cobweb({ className = '', style }: { className?: string; style?: React.C
       <path d="M0 0 L160 0 M0 0 L0 160 M0 0 L150 70 M0 0 L120 120 M0 0 L70 150" />
       <path d="M40 0 Q34 34 0 40 M80 0 Q62 62 0 80 M120 0 Q92 92 0 120 M158 0 Q116 116 0 158" />
       <path d="M100 100 m-2 0 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0" strokeWidth="1.4" />
-    </svg>
-  )
-}
-
-/** A tiny bat silhouette. */
-function Bat({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 40 20" className={className} fill="currentColor" aria-hidden>
-      <path d="M20 8c-2-3-5-5-9-5 1 2 1 4 0 6-3 0-7 1-11 4 4-1 7 0 10 3 1-2 3-3 5-3 1 2 3 3 5 3s4-1 5-3c2 0 4 1 5 3 3-3 6-4 10-3-4-3-8-4-11-4-1-2-1-4 0-6-4 0-7 2-9 5z" />
     </svg>
   )
 }
@@ -38,9 +31,10 @@ function Spooky() {
       {/* Still decoration, above the page but never in the way */}
       <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-[5] h-[26vh] bg-linear-to-t from-[#ff7a1a]/[.14] via-[#ff7a1a]/[.045] to-transparent" />
       <Cobweb className="pointer-events-none fixed top-0 z-[5] size-[clamp(90px,11vw,170px)] text-white/[.16] max-md:hidden" style={{ left: "var(--rail)" }} />
-      <div aria-hidden className="pointer-events-none fixed right-[5vw] top-[3.5vh] z-[5] flex items-end gap-2 text-[#ff7a1a]/45 max-md:hidden">
-        <Bat className="mb-3 w-6 -rotate-12" /><Bat className="w-8" /><Bat className="mb-5 w-5 rotate-12" />
+      <div aria-hidden className="pointer-events-none fixed right-[5vw] top-[3vh] z-[5] flex items-end gap-2 max-md:hidden">
+        <Bat size={20} className="mb-3 -rotate-12 opacity-90" /><Bat size={28} className="bat-flap" /><Bat size={16} className="mb-5 rotate-12 opacity-90" />
       </div>
+      <Ghost size={54} className="ghost-float pointer-events-none fixed bottom-3 right-4 z-[5] max-md:hidden" />
     </>
   )
 }
@@ -76,10 +70,7 @@ function FrostCorner({ className = '', style }: { className?: string; style?: Re
   )
 }
 
-/**
- * A garland draped along the whole top edge (rail to edge), with twinkling lights. Wherever the tab bar sits (it has `data-tabs`) the
- * garland is left out, so the lights pass behind the tabs instead of over them.
- */
+/** A garland draped along the whole top edge (rail to edge), with twinkling lights. The tabs sit above it, so it runs on behind them. */
 function Garland() {
   const W = 1600, swag = 200, H = 70
   const colours = ['#ef4444', '#fbbf24', '#60a5fa', '#34d399']
@@ -92,45 +83,32 @@ function Garland() {
     ;[0.2, 0.4, 0.6, 0.8].forEach((t, n) => { const p = at(t); lights.push({ x: p.x, y: p.y, c: colours[(i * 4 + n) % colours.length], dl: ((i * 4 + n) % 5) * 0.4 }) })
     ;[0.5].forEach((t) => berries.push(at(t)))
   }
-  const box = useRef<HTMLDivElement>(null)
-  const [gap, setGap] = useState<[number, number] | null>(null)   // where the tab bar is, in this box's own pixels
-  useEffect(() => {
-    const look = () => {
-      const tabs = document.querySelector('[data-tabs]'), me = box.current
-      if (!tabs || !me) return setGap((g) => (g ? null : g))
-      const t = tabs.getBoundingClientRect(), m = me.getBoundingClientRect()
-      const next: [number, number] = [Math.max(0, Math.round(t.left - m.left - 6)), Math.min(m.width, Math.round(t.right - m.left + 6))]
-      setGap((g) => (g && g[0] === next[0] && g[1] === next[1] ? g : next))
-    }
-    look()
-    const t = setInterval(look, 500)
-    window.addEventListener('resize', look)
-    return () => { clearInterval(t); window.removeEventListener('resize', look) }
-  }, [])
-  const art = (clip?: string) => (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className="absolute inset-0 size-full" style={clip ? { clipPath: clip } : undefined} fill="none">
-      <path d={d} stroke="#14532d" strokeWidth="11" strokeLinecap="round" />
-      <path d={d} stroke="#22803f" strokeWidth="7" strokeLinecap="round" strokeDasharray="2 5" />
-      {berries.map((p, n) => <g key={n}><circle cx={p.x} cy={p.y + 1} r="4.2" fill="#dc2626" /><circle cx={p.x + 6} cy={p.y} r="3.4" fill="#ef4444" /></g>)}
-      {lights.map((l, n) => <g key={n}><path d={`M${l.x} ${l.y}v7`} stroke="#0b3d1d" strokeWidth="1.5" /><circle className="twinkle" cx={l.x} cy={l.y + 10} r="4" fill={l.c} style={{ animationDelay: `${l.dl}s` }} /></g>)}
-    </svg>
-  )
   return (
-    <div ref={box} aria-hidden className="pointer-events-none fixed right-0 top-0 z-[5] h-[clamp(46px,5.5vw,84px)] max-md:hidden" style={{ left: 'var(--rail)' }}>
-      {gap ? <>{art(`inset(0 calc(100% - ${gap[0]}px) 0 0)`)}{art(`inset(0 0 0 ${gap[1]}px)`)}</> : art()}
+    <div aria-hidden className="pointer-events-none fixed right-0 top-0 z-[5] h-[clamp(46px,5.5vw,84px)] max-md:hidden" style={{ left: 'var(--rail)' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className="absolute inset-0 size-full" fill="none">
+        <path d={d} stroke="#14532d" strokeWidth="11" strokeLinecap="round" />
+        <path d={d} stroke="#22803f" strokeWidth="7" strokeLinecap="round" strokeDasharray="2 5" />
+        {berries.map((p, n) => <g key={n}><circle cx={p.x} cy={p.y + 1} r="4.2" fill="#dc2626" /><circle cx={p.x + 6} cy={p.y} r="3.4" fill="#ef4444" /></g>)}
+        {lights.map((l, n) => <g key={n}><path d={`M${l.x} ${l.y}v7`} stroke="#0b3d1d" strokeWidth="1.5" /><circle className="twinkle" cx={l.x} cy={l.y + 10} r="4" fill={l.c} style={{ animationDelay: `${l.dl}s` }} /></g>)}
+      </svg>
     </div>
   )
 }
 
-/** A little stack of presents. */
+/** A little stack of presents, in the same glossy two-tone style as the rest. */
 function Presents({ className = '' }: { className?: string }) {
+  const k = useArtId()
+  const box = (id: string, a: string, b: string) => <linearGradient id={`${id}${k}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a} /><stop offset="1" stopColor={b} /></linearGradient>
   return (
-    <svg viewBox="0 0 120 90" className={className} aria-hidden>
-      <rect x="6" y="40" width="50" height="46" rx="3" fill="#b91c1c" /><rect x="27" y="40" width="8" height="46" fill="#fbbf24" /><rect x="6" y="56" width="50" height="7" fill="#fbbf24" opacity=".9" />
-      <path d="M31 40c-8-14-22-8-14 0zM31 40c8-14 22-8 14 0z" fill="#fbbf24" />
-      <rect x="58" y="52" width="38" height="34" rx="3" fill="#15803d" /><rect x="73" y="52" width="8" height="34" fill="#fca5a5" />
-      <path d="M77 52c-7-11-18-6-12 0zM77 52c7-11 18-6 12 0z" fill="#fca5a5" />
-      <rect x="86" y="66" width="28" height="20" rx="3" fill="#7c3aed" /><rect x="97" y="66" width="6" height="20" fill="#fde68a" />
+    <svg viewBox="0 0 128 96" className={className} aria-hidden>
+      <defs>{box('r', '#f0506b', '#a8123a')}{box('g', '#35b36a', '#13683a')}{box('v', '#9b7bea', '#5b34b0')}</defs>
+      <ellipse cx="64" cy="92" rx="54" ry="3.600" fill="#000" opacity=".2" />
+      <rect x="6" y="40" width="54" height="50" rx="6" fill={`url(#r${k})`} /><rect x="29" y="40" width="9" height="50" fill="#ffe08a" /><rect x="6" y="58" width="54" height="8" fill="#ffe08a" opacity=".92" />
+      <path d="M33.500 40C24 24 10 31 21 40zM33.500 40C43 24 57 31 46 40z" fill="#ffd45e" /><circle cx="33.500" cy="39" r="4" fill="#f5b52c" />
+      <rect x="62" y="54" width="40" height="36" rx="6" fill={`url(#g${k})`} /><rect x="78" y="54" width="8" height="36" fill="#ffc9d4" />
+      <path d="M82 54C74 42 62 47 70 54zM82 54C90 42 102 47 94 54z" fill="#ffc9d4" />
+      <rect x="92" y="68" width="30" height="22" rx="5" fill={`url(#v${k})`} /><rect x="104" y="68" width="6" height="22" fill="#ffe9a8" />
+      <path d="M13 46h10M68 62h6M98 74h4" stroke="#fff" strokeOpacity=".4" strokeWidth="2.400" strokeLinecap="round" />
     </svg>
   )
 }
@@ -159,32 +137,22 @@ function Festive() {
   )
 }
 
-/** An autumn leaf (the leaf shape is drawn once; each use picks its own colour and turn). */
-function Leaf({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} style={style} fill="currentColor" aria-hidden>
-      <path d="M20 2c3 5 9 7 13 7-1 6 1 11 4 15-5 1-8 3-9 8-3-2-6-2-8 1-2-3-5-3-8-1-1-5-4-7-9-8 3-4 5-9 4-15 4 0 10-2 13-7z" />
-      <path d="M20 14v24" stroke="rgba(0,0,0,.28)" strokeWidth="1.6" fill="none" />
-    </svg>
-  )
-}
-
 /** Thanksgiving: a few autumn leaves drifting down (switched off in low-power mode), a warm glow along the bottom, and leaves gathered in two corners. */
 function Harvest() {
-  const colours = ['#c8702a', '#a8481b', '#d9a441', '#8c3b17', '#e0893a']
+  const tones = ['orange', 'red', 'gold', 'brown', 'orange'] as const
   return (
     <>
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         {Array.from({ length: 9 }, (_, n) => (
-          <Leaf key={n} className="leaf" style={{ left: `${(n * 37 + 8) % 100}%`, width: 16 + (n % 3) * 5, height: 16 + (n % 3) * 5, color: colours[n % colours.length], animationDuration: `${24 + (n % 5) * 5}s`, animationDelay: `${-n * 3.4}s`, ['--drift' as string]: `${(n % 2 ? 1 : -1) * (6 + (n % 4) * 3)}vw`, ['--turn' as string]: `${(n % 2 ? 1 : -1) * (200 + n * 40)}deg` }} />
+          <Leaf key={n} tone={tones[n % tones.length]} size={20 + (n % 3) * 6} className="leaf" style={{ left: `${(n * 37 + 8) % 100}%`, animationDuration: `${24 + (n % 5) * 5}s`, animationDelay: `${-n * 3.4}s`, ['--drift' as string]: `${(n % 2 ? 1 : -1) * (6 + (n % 4) * 3)}vw`, ['--turn' as string]: `${(n % 2 ? 1 : -1) * (200 + n * 40)}deg` }} />
         ))}
       </div>
       <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-[5] h-[26vh] bg-linear-to-t from-[#c8702a]/[.17] via-[#8c3b17]/[.06] to-transparent" />
       <div aria-hidden className="pointer-events-none fixed top-0 z-[5] flex gap-1 max-md:hidden" style={{ right: '3vw' }}>
-        <Leaf className="-mt-3 w-9 rotate-[18deg] text-[#a8481b]/55" /><Leaf className="w-7 -rotate-[24deg] text-[#d9a441]/50" /><Leaf className="-mt-1 w-6 rotate-[52deg] text-[#c8702a]/55" />
+        <Leaf size={40} tone="red" className="-mt-3 rotate-[18deg] opacity-80" /><Leaf size={30} tone="gold" className="-rotate-[24deg] opacity-80" /><Leaf size={26} tone="orange" className="-mt-1 rotate-[52deg] opacity-80" />
       </div>
       <div aria-hidden className="pointer-events-none fixed bottom-1 z-[5] flex items-end gap-1 max-md:hidden" style={{ left: 'calc(var(--rail) + 14px)' }}>
-        <Leaf className="w-8 -rotate-[14deg] text-[#8c3b17]/55" /><Leaf className="mb-1 w-6 rotate-[30deg] text-[#c8702a]/55" /><Leaf className="w-5 -rotate-[60deg] text-[#d9a441]/50" />
+        <Leaf size={34} tone="brown" className="-rotate-[14deg] opacity-85" /><Leaf size={26} tone="orange" className="mb-1 rotate-[30deg] opacity-85" /><Leaf size={22} tone="gold" className="-rotate-[60deg] opacity-85" />
       </div>
     </>
   )

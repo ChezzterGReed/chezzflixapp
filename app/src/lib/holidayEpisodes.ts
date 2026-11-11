@@ -179,9 +179,10 @@ function build(found: Found, watched: Set<string> | undefined, season: string | 
 }
 
 const KEEP = 12 * 60 * 60_000
-const LS = 'chezzflix_holiday_eps_v6'
-const readSaved = (server: PlexServer): Channel[] | undefined => { try { const s = JSON.parse(localStorage.getItem(LS) ?? 'null'); if (s && s.uri === server.uri && s.always === ALWAYS_ON && s.watched === ONLY_WATCHED && Date.now() - s.at < KEEP) return s.chans } catch { /* ignore */ } }
-const save = (server: PlexServer, chans: Channel[]) => { try { localStorage.setItem(LS, JSON.stringify({ uri: server.uri, at: Date.now(), always: ALWAYS_ON, watched: ONLY_WATCHED, chans })) } catch { /* ignore */ } }
+const LS = 'chezzflix_holiday_eps_v7'
+const LIST_SIG = `${HOLIDAY_SHOW_NAMES.length}:${Object.values(HOLIDAY_EPISODES).reduce((n, l) => n + l.length, 0)}`   // changes whenever the lists do, so a remembered result made from older lists isn't reused
+const readSaved = (server: PlexServer): Channel[] | undefined => { try { const s = JSON.parse(localStorage.getItem(LS) ?? 'null'); if (s && s.uri === server.uri && s.sig === LIST_SIG && s.always === ALWAYS_ON && s.watched === ONLY_WATCHED && Date.now() - s.at < KEEP) return s.chans } catch { /* ignore */ } }
+const save = (server: PlexServer, chans: Channel[]) => { try { localStorage.setItem(LS, JSON.stringify({ uri: server.uri, sig: LIST_SIG, at: Date.now(), always: ALWAYS_ON, watched: ONLY_WATCHED, chans })) } catch { /* ignore */ } }
 
 let running: Promise<void> | undefined
 let lateCb: ((c: Channel[]) => void) | undefined   // (the newest listener: the guide may have been reopened while the scan runs)

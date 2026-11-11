@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Leaf, Radio } from 'lucide-react'
+import { Radio } from 'lucide-react'
+import { Leaf } from './Leaf'
+import { Bat, Ghost } from './Spooks'
 import { Pumpkin } from './Pumpkin'
 import { Ornament } from './Ornament'
 import { Snowflake } from './Snowflake'
@@ -23,14 +25,15 @@ export function holidayEntries(row: HolidayRowData): { key: string; action: Holi
 function Deco({ id }: { id: HolidayId }) {
   if (id === 'halloween') return (
     <>
-      <svg aria-hidden viewBox="0 0 60 60" className="pointer-events-none absolute left-0 top-0 w-14 text-white/35" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"><path d="M0 0L58 0M0 0L0 58M0 0L52 26M0 0L40 40M0 0L26 52M14 0Q12 12 0 14M28 0Q22 22 0 28M42 0Q32 32 0 42" /></svg>
-      <Pumpkin size={30} className="pointer-events-none absolute right-2 top-2 rotate-12 drop-shadow" />
-      <Pumpkin size={18} className="pointer-events-none absolute bottom-2 left-2 -rotate-12 opacity-80 drop-shadow" />
+      <svg aria-hidden viewBox="0 0 60 60" className="pointer-events-none absolute left-0 top-0 w-14 text-white/30" fill="none" stroke="currentColor" strokeWidth="1.200" strokeLinecap="round"><path d="M0 0L58 0M0 0L0 58M0 0L52 26M0 0L40 40M0 0L26 52M14 0Q12 12 0 14M28 0Q22 22 0 28M42 0Q32 32 0 42" /></svg>
+      <Pumpkin size={34} className="pointer-events-none absolute right-2 top-1.5 rotate-6 drop-shadow-lg" />
+      <Ghost size={30} className="pointer-events-none absolute bottom-2 left-2 -rotate-6 drop-shadow-lg" />
+      <Bat size={14} className="pointer-events-none absolute left-14 top-2 opacity-90" />
     </>
   )
   if (id === 'christmas') return (
     <>
-      <svg aria-hidden viewBox="0 0 200 20" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 top-0 h-5 w-full" fill="none">
+      <svg aria-hidden viewBox="0 -4 200 26" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 top-2 h-6 w-full" fill="none">
         <path d="M0 3Q50 17 100 5T200 3" stroke="#14532d" strokeWidth="3" strokeLinecap="round" /><path d="M0 3Q50 17 100 5T200 3" stroke="#22803f" strokeWidth="1.6" strokeDasharray="1 3" strokeLinecap="round" />
         {[[22, 9, '#ef4444'], [55, 12, '#fbbf24'], [90, 9, '#60a5fa'], [128, 6, '#34d399'], [162, 8, '#ef4444'], [190, 5, '#fbbf24']].map(([x, y, c], n) => <circle key={n} className="twinkle" cx={x as number} cy={(y as number) + 3} r="2.2" fill={c as string} style={{ animationDelay: `${n * 0.35}s` }} />)}
       </svg>
@@ -40,9 +43,9 @@ function Deco({ id }: { id: HolidayId }) {
   )
   return (
     <>
-      <Leaf size={30} fill="currentColor" className="pointer-events-none absolute right-2 top-2 rotate-12 text-[#d9822b] drop-shadow" />
-      <Leaf size={20} fill="currentColor" className="pointer-events-none absolute left-2 top-2 -rotate-[28deg] text-[#a8481b] drop-shadow" />
-      <Leaf size={16} fill="currentColor" className="pointer-events-none absolute bottom-2 right-3 rotate-[70deg] text-[#d9a441] opacity-80" />
+      <Leaf size={34} tone="orange" className="pointer-events-none absolute right-2 top-1.5 rotate-12 drop-shadow-lg" />
+      <Leaf size={22} tone="red" className="pointer-events-none absolute left-2 top-2 -rotate-[28deg] drop-shadow-lg" />
+      <Leaf size={20} tone="gold" className="pointer-events-none absolute bottom-2 right-3 rotate-[70deg] opacity-90 drop-shadow" />
     </>
   )
 }
