@@ -66,16 +66,16 @@ const leavesMemo = new Map<string, Promise<PlexMedia[]>>()
 const leavesOf = (server: PlexServer, showKey: string) => {
   const k = server.uri + showKey
   let p = leavesMemo.get(k)
-  if (!p) { p = getAllLeaves(server, showKey).then((l) => { const eps = l.filter((m) => m.type === 'episode'); if (eps.some((m) => (m.viewCount ?? 0) > 0)) { const cur = showMeta.get(showKey); showMeta.set(showKey, { w: true, pop: cur?.pop ?? 0 }) } return eps }).catch(() => [] as PlexMedia[]); leavesMemo.set(k, p); setTimeout(() => leavesMemo.delete(k), 10 * 60_000) }
+  if (!p) { p = getAllLeaves(server, showKey).then((l) => l.filter((m) => m.type === 'episode')).catch(() => [] as PlexMedia[]); leavesMemo.set(k, p); setTimeout(() => leavesMemo.delete(k), 10 * 60_000) }
   return p
 }
 
 interface Show { key: string; title: string; /** Which listed show this is (see canonOf). */ canon?: string }
-const showMeta = new Map<string, { w: boolean; pop: number }>()   // per show: watched on this profile, and how well liked
+const showMeta = new Map<string, { pop: number }>()   // per show: how well liked
 async function showsOf(server: PlexServer, libs: PlexSection[]): Promise<Show[]> {
   const out: Show[] = [], seen = new Set<string>()
   for (const l of await Promise.all(libs.map((s) => getAllSectionItems(server, s.key, 'titleAsc', undefined, 5000, false, true).catch(() => [] as PlexMedia[])))) {
-    for (const m of l) if (m.type === 'show' && counts(m.title) && !seen.has(m.ratingKey)) { seen.add(m.ratingKey); out.push({ key: m.ratingKey, title: m.title, canon: canonOf(m.title) }); showMeta.set(m.ratingKey, { w: (m.viewedLeafCount ?? 0) > 0, pop: m.audienceRating ?? m.rating ?? 0 }) }
+    for (const m of l) if (m.type === 'show' && counts(m.title) && !seen.has(m.ratingKey)) { seen.add(m.ratingKey); out.push({ key: m.ratingKey, title: m.title, canon: canonOf(m.title) }); showMeta.set(m.ratingKey, { pop: m.audienceRating ?? m.rating ?? 0 }) }
   }
   return out
 }
@@ -94,10 +94,11 @@ async function fromLists(server: PlexServer, shows: Show[], found: Found) {
       for (const key of byName.get(name) ?? []) {
         const eps = await leavesOf(server, key)
         for (const [, s, n, title] of entries) {
-          const byTitle = title ? eps.find((m) => norm(m.title) === norm(title)) : undefined
+          // By title: exact, or (for a distinctive title) the same start, so "The Final Page" also finds its "Part One" and "Part Two".
+          const nt = title ? norm(title) : ''
+          const byTitle = nt ? eps.filter((m) => { const t = norm(m.title); return t === nt || (nt.length >= 9 && t.startsWith(nt)) }) : []
           const byNumber = s > 0 ? eps.find((m) => m.parentIndex === s && m.index === n) : undefined
-          const hit = byTitle ?? byNumber
-          if (hit) found[h.id].set(hit.ratingKey, hit)
+          for (const hit of byTitle.length ? byTitle : byNumber ? [byNumber] : []) found[h.id].set(hit.ratingKey, hit)
         }
       }
     }))
@@ -171,7 +172,7 @@ function build(found: Found, watched: Set<string> | undefined, season: string | 
     const items = eps.map((m) => ({
       key: m.ratingKey, title: `${m.grandparentTitle ?? ''}${m.grandparentTitle ? ': ' : ''}${m.title}`, year: m.year, dur: m.duration && m.duration > 60_000 ? m.duration : 30 * 60_000,
       date: m.originallyAvailableAt, thumb: m.grandparentThumb ?? m.thumb, art: m.grandparentArt ?? m.art,
-      ep: m.grandparentRatingKey ? { show: m.grandparentRatingKey, showTitle: m.grandparentTitle ?? '', label: `S${String(m.parentIndex ?? 0).padStart(2, '0')}E${String(m.index ?? 0).padStart(2, '0')}`, title: m.title, still: m.thumb, w: showMeta.get(m.grandparentRatingKey)?.w, pop: showMeta.get(m.grandparentRatingKey)?.pop } : undefined,
+      ep: m.grandparentRatingKey ? { show: m.grandparentRatingKey, showTitle: m.grandparentTitle ?? '', label: `S${String(m.parentIndex ?? 0).padStart(2, '0')}E${String(m.index ?? 0).padStart(2, '0')}`, title: m.title, still: m.thumb, w: (m.viewCount ?? 0) > 0, pop: showMeta.get(m.grandparentRatingKey)?.pop } : undefined,
     }))
     out.push({ id: `seasonal:eps:${h.id}`, number: n++, name: h.name, kind: 'movies', genres: [], movieItems: items, movieOrder: 'shows', seasonal: true, accent: h.accent })
   }
@@ -179,7 +180,7 @@ function build(found: Found, watched: Set<string> | undefined, season: string | 
 }
 
 const KEEP = 12 * 60 * 60_000
-const LS = 'chezzflix_holiday_eps_v7'
+const LS = 'chezzflix_holiday_eps_v8'
 const LIST_SIG = `${HOLIDAY_SHOW_NAMES.length}:${Object.values(HOLIDAY_EPISODES).reduce((n, l) => n + l.length, 0)}`   // changes whenever the lists do, so a remembered result made from older lists isn't reused
 const readSaved = (server: PlexServer): Channel[] | undefined => { try { const s = JSON.parse(localStorage.getItem(LS) ?? 'null'); if (s && s.uri === server.uri && s.sig === LIST_SIG && s.always === ALWAYS_ON && s.watched === ONLY_WATCHED && Date.now() - s.at < KEEP) return s.chans } catch { /* ignore */ } }
 const save = (server: PlexServer, chans: Channel[]) => { try { localStorage.setItem(LS, JSON.stringify({ uri: server.uri, sig: LIST_SIG, at: Date.now(), always: ALWAYS_ON, watched: ONLY_WATCHED, chans })) } catch { /* ignore */ } }
@@ -224,29 +225,30 @@ async function work(server: PlexServer, sections: PlexSection[], season: string 
 }
 
 // ---------- The Home row and its screens ----------
-export interface HolidayShow { key: string; title: string; thumb?: string; art?: string; still?: string; keys: string[]; count: number; watched: boolean; pop: number }
+export interface HolidayShow { key: string; title: string; thumb?: string; art?: string; still?: string; keys: string[]; count: number; /** Some of this show's holiday episodes are marked watched on this profile. */ watched: boolean; /** How many. */ seen: number; pop: number }
 export interface HolidayRowData { id: HolidayId; title: string; channelId: string; /** The shows to put in the row (at most four). */ shows: HolidayShow[]; /** Every show that qualifies, for "Explore all". */ all: HolidayShow[] }
 export const holidayTitle = (id: HolidayId) => HOLIDAYS.find((h) => h.id === id)?.row ?? ''
 export const holidayAccent = (id: HolidayId) => HOLIDAYS.find((h) => h.id === id)?.accent ?? '#ff7a1a'
 export const holidayName = (id: HolidayId) => HOLIDAYS.find((h) => h.id === id)?.name ?? ''
 const SHOW_MIN = 3, ROW_MAX = 4
 
-/** One holiday's episodes, grouped by show; only shows with at least three of them count. Watched shows first, then the best liked. */
+/** One holiday's episodes, grouped by show; only shows with at least three of them count. Shows with holiday episodes you've watched come first, then the best liked. */
 export function holidayShows(chan: Channel | undefined): HolidayShow[] {
   const by = new Map<string, HolidayShow>()
   for (const m of chan?.movieItems ?? []) {
     if (!m.ep) continue
-    const g = by.get(m.ep.show) ?? { key: m.ep.show, title: m.ep.showTitle, thumb: m.thumb, art: m.art, still: m.ep.still, keys: [], count: 0, watched: !!m.ep.w, pop: m.ep.pop ?? 0 }
+    const g = by.get(m.ep.show) ?? { key: m.ep.show, title: m.ep.showTitle, thumb: m.thumb, art: m.art, still: m.ep.still, keys: [], count: 0, watched: false, seen: 0, pop: m.ep.pop ?? 0 }
     g.keys.push(m.key); g.count++
+    if (m.ep.w) { g.watched = true; g.seen++ }
     if (!g.still && m.ep.still) g.still = m.ep.still
     by.set(m.ep.show, g)
   }
-  return [...by.values()].filter((g) => g.count >= SHOW_MIN).sort((a, b) => Number(b.watched) - Number(a.watched) || b.pop - a.pop || b.count - a.count)
+  return [...by.values()].filter((g) => g.count >= SHOW_MIN).sort((a, b) => Number(b.watched) - Number(a.watched) || b.seen - a.seen || b.pop - a.pop || b.count - a.count)
 }
 
 /** The Home row for the holiday that's on, if it has a show with enough episodes. */
 export async function holidayRows(server: PlexServer, sections: PlexSection[], season: string | null = null): Promise<HolidayRowData[]> {
-  if (!season) return []   // only in season (the preview setting in Settings pretends it's one)
+  if (!season) return []   // only in season
   const chans = await holidayEpisodeChannels(server, sections, season)
   const out: HolidayRowData[] = []
   for (const h of HOLIDAYS) {
@@ -264,4 +266,16 @@ export async function holidayEpisodesOf(server: PlexServer, sections: PlexSectio
   const want = new Set(holidayShows(chan).find((g) => g.key === showKey)?.keys ?? [])
   const eps = (await leavesOf(server, showKey)).filter((m) => want.has(m.ratingKey))
   return eps.sort((a, b) => (a.originallyAvailableAt ?? '').localeCompare(b.originallyAvailableAt ?? '') || (a.parentIndex ?? 0) - (b.parentIndex ?? 0) || (a.index ?? 0) - (b.index ?? 0))
+}
+
+/** The fewest holiday episodes a guide channel needs before it appears. */
+const GUIDE_MIN = 6
+/**
+ * What the TV Guide (and the Home banner) use: only shows you've watched holiday episodes of (all of that show's holiday episodes then play),
+ * and only if there are enough of them to fill a channel. The Home row is more generous: it can also show shows you haven't watched.
+ */
+export function forGuide(c: Channel): Channel | undefined {
+  const seen = new Set((c.movieItems ?? []).filter((m) => m.ep?.w).map((m) => m.ep!.show))
+  const items = (c.movieItems ?? []).filter((m) => m.ep && seen.has(m.ep.show))
+  return items.length >= GUIDE_MIN ? { ...c, movieItems: items } : undefined
 }

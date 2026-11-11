@@ -118,15 +118,6 @@ function Appearance({ profileName, profileThumb }: { profileName: string; profil
       )}
       <Toggle label="Lighter effects" hint="Turns off blur and drifting backgrounds. Uses much less of the graphics chip and battery" on={settings.lightEffects} onChange={(v) => update({ lightEffects: v })} />
       <Toggle label="Seasonal themes" hint={currentSeason() === 'halloween' ? 'It\'s spooky season: a little fog, embers and a Spooky Season row. Turn off for the plain look.' : currentSeason() === 'thanksgiving' ? 'It\'s Thanksgiving: warm autumn colours, drifting leaves, and holiday episodes on Home and in the TV Guide. Turn off for the plain look.' : currentSeason() === 'christmas' ? 'It\'s the holiday season: a seasonal look, holiday movie rows and TV Guide channels. Turn off for the plain look.' : 'Subtle touches for holidays and seasons, when one is on. Season options appear here while the season is on'} on={settings.seasonal} onChange={(v) => update({ seasonal: v })} />
-      {settings.seasonal && (
-        <>
-          <div className="px-4 pt-2 text-sm font-semibold text-white/60">Preview a season</div>
-          <div className="flex flex-wrap gap-2 px-4 py-2">
-            {([['auto', 'Automatic'], ['halloween', 'Halloween'], ['thanksgiving', 'Thanksgiving'], ['christmas', 'Holiday season']] as const).map(([v, label]) => <Pill key={v} active={settings.seasonPreview === v} onEnter={() => update({ seasonPreview: v })}>{label}</Pill>)}
-          </div>
-          <p className="px-4 pb-1 text-sm text-white/45">Pretend it's another time of year to see its look, banner, rows and TV Guide channel. Automatic follows the calendar.</p>
-        </>
-      )}
       {/* Options that belong to one season only show while that season is on (add future ones the same way). */}
       {settings.seasonal && currentSeason() === 'christmas' && (
         <>

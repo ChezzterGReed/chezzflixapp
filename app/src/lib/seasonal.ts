@@ -8,7 +8,7 @@ import type { RequestItem } from './overseerr'
 import type { Season } from './settings'
 import { SPOOKY } from './lists/spooky'
 import { CHRISTMAS } from './lists/christmas'
-import { holidayEpisodeChannels } from './holidayEpisodes'
+import { forGuide, holidayEpisodeChannels } from './holidayEpisodes'
 import { ensureRemoteLists, entriesFor } from './lists/remote'
 
 /** A channel made from a list: `keep` narrows which of the list's movies it plays (default: all of them). */
@@ -136,7 +136,10 @@ export async function seasonalChannels(server: PlexServer, sections: PlexSection
       out.push({ id: `seasonal:${list.id}:${c.id}`, number: c.number, name: c.name, kind: 'movies', genres: [], movieItems: items.map(entry), movieOrder: 'random', seasonal: true, accent })
     }
   }
-  // The holiday's episodes, from every show (only the holiday that is on).
-  if (season) out.push(...(await holidayEpisodeChannels(server, sections, season, (all) => onHolidayEpisodes?.(all.filter((c) => c.id === `seasonal:eps:${season}`))).catch(() => [] as Channel[])).filter((c) => c.id === `seasonal:eps:${season}`))
+  // The holiday's episodes, from the shows you've watched holiday episodes of (only the holiday that is on).
+  if (season) {
+    const mine = (all: Channel[]) => all.filter((c) => c.id === `seasonal:eps:${season}`).map(forGuide).filter((c): c is Channel => !!c)
+    out.push(...mine(await holidayEpisodeChannels(server, sections, season, (all) => onHolidayEpisodes?.(mine(all))).catch(() => [] as Channel[])))
+  }
   return out
 }

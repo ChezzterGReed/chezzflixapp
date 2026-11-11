@@ -6,6 +6,7 @@ import { StillWatching } from './StillWatching'
 import { Layer } from './Layer'
 import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
+import { Clock } from './Clock'
 import { DEMO_URI, directPlayUrl, getMetadataFresh, reportProgress, undoGuideProgress, type PlexMedia, type PlexServer } from '../lib/plex'
 import { planPlayback } from '../lib/playback'
 import { applySubStyle, keepAwake, isAndroid, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, nativeSwap, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
@@ -392,6 +393,11 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
             <div className="max-w-md -translate-y-10 text-center"><TriangleAlert className="mx-auto text-amber-300" size={44} />
               <p className="mt-3 text-white/70">This channel isn’t working right now. Still trying; or pick another channel.</p>{why && <p className="mt-2 text-xs text-white/35">{why}</p>}</div>
           )}
+        </div>
+
+        {/* The time, top right, whenever the info is up (as in the normal player) */}
+        <div className={`pointer-events-none absolute inset-x-0 top-0 flex justify-end bg-linear-to-b from-black/70 to-transparent px-8 pb-14 pt-6 transition-opacity duration-500 ${banner || status !== 'playing' ? 'opacity-100' : 'opacity-0'}`}>
+          <Clock className="text-xl font-semibold text-white/90" />
         </div>
 
         {/* Banner: channel, title, episode */}

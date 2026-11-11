@@ -47,8 +47,6 @@ export interface Settings {
   /** Saved row layout per tab. A tab with no entry uses its built-in default layout. */
   homeRows: Partial<Record<HomeTab, HomeRowCfg[]>>
   seasonal: boolean
-  /** Pretend it's this season (for previewing the themes); 'auto' follows the calendar. */
-  seasonPreview: SeasonPreview
   /** The TV Guide (channels built from your library). */
   tvGuide: boolean
   /** How many hours ahead the guide is built. */
@@ -163,7 +161,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideWatchedTabs: {}, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, seasonPreview: 'auto', tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: false, guideSession: false, layout: 'classic', trackPrefs: {}, levels: {}, libView: {}, showInfo: true, minimalTypeRows: true, guideZap: 'updown', seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: true, dialogueBoost: false, autoplayNext: true, resumePrompt: true, screensaver: true, screensaverMins: 10, waitForScenes: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false, subLift: 0,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: false, guideSession: false, layout: 'classic', trackPrefs: {}, levels: {}, libView: {}, showInfo: true, minimalTypeRows: true, guideZap: 'updown', seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: true, dialogueBoost: false, autoplayNext: true, resumePrompt: true, screensaver: true, screensaverMins: 10, waitForScenes: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false, subLift: 0,
 }
 
 export const PUMPKIN = '#ff7a1a'
@@ -171,19 +169,18 @@ export const FROST_BLUE = '#7dd3fc'
 export const FESTIVE_RED = '#e11d48'
 export const HARVEST = '#c8702a'   // Thanksgiving: a brownish orange
 export type Season = 'halloween' | 'thanksgiving' | 'christmas' | null
-/** A season to pretend it is (Settings > Appearance), for previewing: 'auto' follows the calendar. */
-export type SeasonPreview = 'auto' | 'halloween' | 'thanksgiving' | 'christmas'
-let preview: SeasonPreview = (() => { try { const v = localStorage.getItem('chezzflix_season_preview'); return v === 'halloween' || v === 'thanksgiving' || v === 'christmas' ? v : 'auto' } catch { return 'auto' } })()
-export function setSeasonPreview(v: SeasonPreview) { preview = v; try { localStorage.setItem('chezzflix_season_preview', v) } catch { /* ignore */ } }
 export type HolidayStyle = 'frost' | 'festive'
-/** October is spooky season, November is Thanksgiving, December is the holiday season. `?season=halloween|thanksgiving|christmas` (and `&holiday=frost`) force one for previewing, as does the preview setting. */
+/** October is spooky season, December is the holiday season, and Thanksgiving is the week it falls in (Sunday to Saturday). `?season=halloween|thanksgiving|christmas` (and `&holiday=frost`) force one for previewing. */
 export function currentSeason(): Season {
   const q = new URLSearchParams(location.search)
   const forced = q.get('season')
   if (forced) return forced === 'halloween' || forced === 'thanksgiving' || forced === 'christmas' ? forced : null
-  if (preview !== 'auto') return preview
-  const m = new Date().getMonth()
-  return m === 9 ? 'halloween' : m === 10 ? 'thanksgiving' : m === 11 ? 'christmas' : null
+  const now = new Date(), m = now.getMonth()
+  if (m === 10) {   // Thanksgiving is the fourth Thursday of November: its season runs from the Sunday before to the Saturday after
+    const firstThu = 1 + ((4 - new Date(now.getFullYear(), 10, 1).getDay() + 7) % 7), day = firstThu + 21
+    return now.getDate() >= day - 4 && now.getDate() <= day + 2 ? 'thanksgiving' : null
+  }
+  return m === 9 ? 'halloween' : m === 11 ? 'christmas' : null
 }
 export const forcedHoliday = (): HolidayStyle | null => { const h = new URLSearchParams(location.search).get('holiday'); return h === 'frost' || h === 'festive' ? h : null }
 /** The colour a season imposes on the app (null = your own accent). */
@@ -251,7 +248,6 @@ const saveMeta = (profileKey: string, m: Meta) => { try { localStorage.setItem(m
 export function SettingsProvider({ profileKey, shared: sharedValues, syncAuth, children }: { profileKey: string; shared?: { tmdbKey?: string; overseerrUrl?: string }; /** Who this is, for the sync service (the person's Plex token and the server). */ syncAuth?: SyncAuth; children: ReactNode }) {
   setActiveProfile(profileKey)   // (for the few per-profile things kept outside these settings, like each show's audio / subtitle choice)
   const [settings, setSettings] = useState<Settings>(() => load(profileKey))
-  setSeasonPreview(settings.seasonPreview ?? 'auto')   // (during render, so everything drawn below already sees the pretend season)
   const loadedFor = useRef(profileKey)
   const settingsRef = useRef(settings); settingsRef.current = settings
   const metaRef = useRef<Meta>(loadMeta(profileKey, settings))

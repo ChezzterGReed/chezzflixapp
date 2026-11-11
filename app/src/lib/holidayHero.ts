@@ -41,8 +41,7 @@ export async function holidaySlides(server: PlexServer, sections: PlexSection[],
   // One show with holiday episodes: one you've watched if there is one.
   const rows = await holidayRows(server, sections, season).catch(() => [])
   const shows = rows.find((r) => r.id === holiday)?.all ?? []
-  const seen = shows.filter((s) => s.watched)
-  const pool = seen.length ? shuffled(seen.slice(0, 3), 11) : shows.slice(0, 1)
+  const pool = shuffled(shows.filter((s) => s.watched).slice(0, 3), 11)   // only a show you've watched holiday episodes of (and enough of them)
   const pick = pool[0]
   if (pick) {
     const m = await getMetadata(server, pick.key).catch(() => null)
