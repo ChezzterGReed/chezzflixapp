@@ -32,12 +32,12 @@ export function HolidayCard({ entry, row, server, minimal, focusKey, onEnter, on
     <Focusable focusKey={focusKey} onEnter={onEnter} onFocus={onFocus} title={label} leftToRail={leftEdge} className={minimal ? 'shrink-0' : 'w-[var(--land-w)] shrink-0'}
       onArrow={onUp ? (d) => { if (d === 'up') return onUp() } : undefined}>
       <div className={`${shell} ${s ? 'bg-surface' : entry.action.kind === 'tune' ? 'bg-accent text-black' : 'bg-white/10 ring-1 ring-white/15'}`}>
-        {s && img && <img src={img} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} className={`absolute inset-0 size-full object-cover brightness-[.42] saturate-[.85] transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} />}
-        {s && <div className="absolute inset-0 bg-linear-to-t from-black/85 via-black/20 to-black/10" />}
+        {s && img && <img src={img} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} className={`absolute inset-0 size-full object-cover brightness-[.38] saturate-[.8] transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} />}
+        {s && <div className="absolute inset-0 bg-black/25" />}
         {s && (
-          <div className="absolute inset-x-4 bottom-3.5">
-            <div className="truncate font-display text-[1.35rem] uppercase leading-none tracking-[0.08em] drop-shadow">{s.title}</div>
-            <div className="mt-1.5 text-[0.82rem] font-semibold text-white/75">{s.count} episodes</div>
+          <div className="absolute inset-0 grid place-content-center justify-items-center gap-1.5 px-4 text-center">
+            <div className="line-clamp-2 font-display text-[1.5rem] uppercase leading-[1.05] tracking-[0.08em] drop-shadow-lg">{s.title}</div>
+            <div className="text-[0.8rem] font-semibold text-white/70">{s.count} episodes</div>
           </div>
         )}
         {!s && entry.action.kind === 'tune' && (

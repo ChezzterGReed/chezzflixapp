@@ -75,15 +75,25 @@ function FrostCorner({ className = '', style }: { className?: string; style?: Re
   )
 }
 
-/** A garland draped along the top edge, with a few twinkling lights. */
+/** A garland draped along the whole top edge (rail to edge), with twinkling lights. It sits below the tabs, which float over it. */
 function Garland({ style }: { style?: React.CSSProperties }) {
-  const lights: [number, number, string, number][] = [[70, 33, '#ef4444', 0], [150, 44, '#fbbf24', 0.5], [235, 40, '#60a5fa', 1], [320, 27, '#ef4444', 1.5], [400, 22, '#34d399', 0.8], [480, 29, '#fbbf24', 0.2]]
+  const W = 1600, swag = 200, H = 70
+  const colours = ['#ef4444', '#fbbf24', '#60a5fa', '#34d399']
+  let d = ''
+  const lights: { x: number; y: number; c: string; dl: number }[] = [], berries: { x: number; y: number }[] = []
+  for (let i = 0; i * swag < W; i++) {
+    const x0 = i * swag, y0 = 8, cx = x0 + swag / 2, cy = 60, x2 = x0 + swag, y2 = 8
+    d += `${i ? '' : `M${x0} ${y0}`}Q${cx} ${cy} ${x2} ${y2}`
+    const at = (t: number) => ({ x: (1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t * t * x2, y: (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y2 })
+    ;[0.2, 0.4, 0.6, 0.8].forEach((t, n) => { const p = at(t); lights.push({ x: p.x, y: p.y, c: colours[(i * 4 + n) % colours.length], dl: ((i * 4 + n) % 5) * 0.4 }) })
+    ;[0.5].forEach((t) => berries.push(at(t)))
+  }
   return (
-    <svg style={style} viewBox="0 0 560 70" className="pointer-events-none fixed top-0 z-[5] w-[clamp(280px,42vw,640px)] max-md:hidden" fill="none" aria-hidden>
-      <path d="M0 8Q70 62 140 38T280 28T420 18T560 12" stroke="#14532d" strokeWidth="11" strokeLinecap="round" />
-      <path d="M0 8Q70 62 140 38T280 28T420 18T560 12" stroke="#22803f" strokeWidth="7" strokeLinecap="round" strokeDasharray="2 5" />
-      {[[105, 52], [210, 36], [350, 22], [470, 20]].map(([x, y], n) => <g key={n}><circle cx={x} cy={y} r="4.2" fill="#dc2626" /><circle cx={x + 6} cy={y - 1} r="3.4" fill="#ef4444" /></g>)}
-      {lights.map(([x, y, c, dl], n) => <g key={n}><path d={`M${x} ${y}v7`} stroke="#0b3d1d" strokeWidth="1.5" /><circle className="twinkle" cx={x} cy={y + 10} r="4" fill={c} style={{ animationDelay: `${dl}s` }} /></g>)}
+    <svg style={style} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className="pointer-events-none fixed right-0 top-0 z-[5] h-[clamp(46px,5.5vw,84px)] max-md:hidden" fill="none" aria-hidden>
+      <path d={d} stroke="#14532d" strokeWidth="11" strokeLinecap="round" />
+      <path d={d} stroke="#22803f" strokeWidth="7" strokeLinecap="round" strokeDasharray="2 5" />
+      {berries.map((p, n) => <g key={n}><circle cx={p.x} cy={p.y + 1} r="4.2" fill="#dc2626" /><circle cx={p.x + 6} cy={p.y} r="3.4" fill="#ef4444" /></g>)}
+      {lights.map((l, n) => <g key={n}><path d={`M${l.x} ${l.y}v7`} stroke="#0b3d1d" strokeWidth="1.5" /><circle className="twinkle" cx={l.x} cy={l.y + 10} r="4" fill={l.c} style={{ animationDelay: `${l.dl}s` }} /></g>)}
     </svg>
   )
 }
@@ -119,7 +129,7 @@ function Festive() {
     <>
       <Snow count={8} />
       <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-[5] h-[26vh] bg-linear-to-t from-[#e11d48]/[.15] via-[#15803d]/[.05] to-transparent" />
-      <Garland style={{ left: 'var(--rail)' }} />
+      <Garland style={{ left: 'var(--rail)', width: 'calc(100% - var(--rail))' }} />
       <Presents className="pointer-events-none fixed bottom-2 right-3 z-[5] w-[clamp(60px,7vw,110px)] max-md:hidden" />
     </>
   )

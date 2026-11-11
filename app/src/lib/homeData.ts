@@ -344,6 +344,12 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
       out.splice(at + 1, 0, row)
     }
   }
+  // New Season Available: shows you've watched whose new season (or new episodes in a later season) came out recently. On the TV Shows and Anime tabs, and on
+  // Home when the banner is off (when it's on, they lead the banner instead).
+  if (tab === 'show' || tab === 'anime' || (tab === 'all' && !settings.hero)) {
+    const items = await newSeasonItems(server, visible, tab, anime)
+    if (items.length) out.splice(out.findIndex((r) => r.continue) + 1, 0, { id: 'builtin:newseason', title: 'New Season Available', subtitle: 'New episodes since you last watched', items, newSeason: true })
+  }
   // Holiday episodes: for each holiday with enough episodes on the server (for now all three, all year, for testing), a row of the shows that have them.
   if (tab === 'all' || tab === 'show') {
     const rows = await Promise.race([holidayRows(server, visible, season).catch(() => [] as HolidayRowData[]), new Promise<HolidayRowData[]>((r) => setTimeout(() => r([]), 2500))])   // (the first scan can take a while: Home doesn't wait, and reads again when it's done)
@@ -352,12 +358,6 @@ export async function loadRows(server: PlexServer, sections: PlexSection[], tab:
       const items = h.shows.map((x) => ({ ratingKey: x.key, type: 'show', title: x.title, thumb: x.thumb, art: x.art }) as PlexMedia)
       out.splice(at++, 0, { id: `holiday:${h.id}`, title: h.title, items, holiday: h })
     }
-  }
-  // New Season Available: shows you've watched whose new season (or new episodes in a later season) came out recently. On the TV Shows and Anime tabs, and on
-  // Home when the banner is off (when it's on, they lead the banner instead).
-  if (tab === 'show' || tab === 'anime' || (tab === 'all' && !settings.hero)) {
-    const items = await newSeasonItems(server, visible, tab, anime)
-    if (items.length) out.splice(out.findIndex((r) => r.continue) + 1, 0, { id: 'builtin:newseason', title: 'New Season Available', subtitle: 'New episodes since you last watched', items, newSeason: true })
   }
   if (tab === 'trending' && settings.tmdbKey && !notices.length && !out.some((r) => r.id.startsWith('builtin:tmdb'))) notices.push({ kind: 'tmdb-empty' })
   return { rows: out, notices }
@@ -407,7 +407,7 @@ export async function loadHero(server: PlexServer, sections: PlexSection[], tab:
     picks.push(...fallback.slice(0, HERO_SIZE - picks.length))
   }
   // Holiday slides lead the banner on Home (the first scan can take a while: the banner doesn't wait long, and is made again when it's done).
-  const slides = tab === 'all' ? await Promise.race([holidaySlides(server, visible, season).catch(() => [] as PlexMedia[]), new Promise<PlexMedia[]>((r) => setTimeout(() => r([]), 2500))]) : []
+  const slides = tab === 'all' ? await Promise.race([holidaySlides(server, visible, season).catch(() => [] as PlexMedia[]), new Promise<PlexMedia[]>((r) => setTimeout(() => r([]), 9000))]) : []
   const slideKeys = new Set(slides.map((m) => m.ratingKey))
   const full = await Promise.all(picks.filter((m) => !slideKeys.has(showKey(m))).map((m) => getMetadata(server, showKey(m)).catch(() => null)))
   return [...slides, ...full.filter((m): m is PlexMedia => !!m).map((m) => (nsInfo.get(m.ratingKey) ? { ...m, newSeason: nsInfo.get(m.ratingKey) } : m))]

@@ -25,7 +25,15 @@ export async function holidaySlides(server: PlexServer, sections: PlexSection[],
     const all = [...found.values()].filter((x) => x.m.art)
     const watched = all.filter((x) => (x.m.viewCount ?? 0) > 0).sort((a, b) => (b.m.viewCount ?? 0) - (a.m.viewCount ?? 0))
     const rest = shuffled(all.filter((x) => !(x.m.viewCount ?? 0)), 7)
-    const picks = [...watched.slice(0, 3), ...rest].slice(0, 3)
+    // One film per series: "Harry Potter" and its sequels count once (the same first two words, or a shared collection).
+    const stem = (m: PlexMedia) => m.title.toLowerCase().replace(/^(the|a|an) /, '').replace(/[^a-z0-9 ]/g, '').split(/\s+/).slice(0, 2).join(' ')
+    const taken = new Set<string>(), picks: typeof all = []
+    for (const x of [...watched, ...rest]) {
+      const keys = [stem(x.m), ...(x.m.Collection ?? []).map((c) => 'c:' + c.tag)]
+      if (keys.some((k) => taken.has(k))) continue
+      keys.forEach((k) => taken.add(k)); picks.push(x)
+      if (picks.length === 3) break
+    }
     const full = await Promise.all(picks.map((p) => getMetadata(server, p.m.ratingKey).then((m): PlexMedia => ({ ...m, holidaySlide: { kind: 'movie', holiday, label: w.movieLabel, explore: w.moviesExplore, listId: p.list } as HolidaySlide })).catch(() => null)))
     out.push(...full.filter((m): m is PlexMedia => !!m))
   }

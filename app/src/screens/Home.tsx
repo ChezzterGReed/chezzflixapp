@@ -184,7 +184,8 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   // Home shows the first couple of personalized rows under Continue Watching; the For You tab shows them all.
   const shownRecs = wantsRecs ? recRows.slice(0, activeTab === 'foryou' ? 12 : 2) : []
   const ci = (rows ?? []).findIndex((r) => r.continue)
-  const after = ci + 1 + ((rows ?? [])[ci + 1]?.seasonal ? 1 : 0)   // a seasonal list sits right under Continue Watching, ahead of the recommendations
+  let after = ci + 1   // the holiday and seasonal rows (and New Season) sit right under Continue Watching, ahead of the recommendations
+  while ((rows ?? [])[after] && ((rows ?? [])[after].holiday || (rows ?? [])[after].seasonal || (rows ?? [])[after].newSeason)) after++
   // The first rows appear at once and the rest are added a few at a time right behind them, so a big Home never holds up the first screen.
   const [shown, setShown] = useState(5)
   useEffect(() => { setShown(5) }, [activeTab])
@@ -231,7 +232,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
           ? <><RowSkeleton landscape /><RowSkeleton /><RowSkeleton /></>
           : <>
               {merged.length === 0 && recsReady && <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>}
-              {merged.slice(0, shown).map((r, ri) => <Row key={r.id} upKey={activeTab === 'trending' && ri === 0 ? (minimal ? 'mtab-trending' : 'tab-trending') : undefined} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
+              {merged.slice(0, shown).map((r, ri) => <Row key={r.id} holiday={r.holiday} onHoliday={onHoliday} upKey={activeTab === 'trending' && ri === 0 ? (minimal ? 'mtab-trending' : 'tab-trending') : undefined} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
               {wantsRecs && !recsReady && (activeTab === 'foryou' || shownRecs.length === 0) && <RowSkeleton />}
               {activeTab === 'foryou' && recsReady && recRows.length === 0 && (
                 <div className="mx-[var(--gutter)] mb-8 max-w-3xl rounded-2xl bg-white/6 p-6 ring-1 ring-white/10">

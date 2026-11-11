@@ -21,26 +21,61 @@ const HOLIDAYS: Holiday[] = [
   { id: 'halloween', name: 'Halloween Episodes', row: 'Tricks & Treats: Halloween Episodes', season: 'halloween', titleTerms: ['halloween', 'trick or treat', 'trick-or-treat'], re: /halloween|trick[- ]or[- ]treat/i, accent: '#ff7a1a' },
 ]
 
-const norm = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, 'and').replace(/\(\d{4}\)\s*$/, '').replace(/^(the|a|an) /, '').replace(/[^a-z0-9]/g, '')
+const norm = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, 'and').replace(/\((us|usa|american|\d{4})\)/g, '').replace(/^(the|a|an) /, '').replace(/[^a-z0-9]/g, '')
 const ALLOWED = new Set([...HOLIDAY_SHOW_NAMES, ...Object.values(HOLIDAY_EPISODES).flat().map((e) => e[0])].map((n) => norm(n)))
 const BLOCKED = new Set(HOLIDAY_BLOCKED.map((n) => norm(n)))
-const counts = (title: string) => ALLOWED.has(norm(title)) && !BLOCKED.has(norm(title))
+// How alike two (normalised) names are: 1 = identical. Used so a minor tweak to a show's name on the server still matches, without letting a different show in.
+function sim(a: string, b: string): number {
+  if (a === b) return 1
+  const m = a.length, n = b.length
+  if (!m || !n) return 0
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    prev = cur
+  }
+  return 1 - prev[n] / Math.max(m, n)
+}
+const ALLOWED_LIST = [...ALLOWED]
+const canonMemo = new Map<string, string | undefined>()
+/** The listed show a server show is (by name: exact, or a close match of a longer name, e.g. a stray word or a typo), if it is one. */
+function canonOf(title: string): string | undefined {
+  const n = norm(title)
+  if (canonMemo.has(n)) return canonMemo.get(n)
+  let out: string | undefined
+  if (BLOCKED.has(n)) out = undefined
+  else if (ALLOWED.has(n)) out = n
+  else if (n.length >= 8) {   // short names must match exactly: they're too easy to confuse
+    let best = 0
+    for (const a of ALLOWED_LIST) {
+      if (a.length < 8 || Math.abs(a.length - n.length) > 3 || a[0] !== n[0]) continue
+      const sc = sim(a, n)
+      if (sc >= 0.88 && sc > best) { best = sc; out = a }
+    }
+  }
+  canonMemo.set(n, out)
+  return out
+}
+const counts = (title: string) => !!canonOf(title)
+/** A looser "is this the same show?" than canonOf, for a show that was found through one of its episode titles. */
+const looseSame = (a: string, b: string) => { const x = norm(a), y = norm(b); return (x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x))) || sim(x, y) >= 0.6 }
 const tvLibs = (sections: PlexSection[]) => sections.filter((s) => s.type === 'show' && !isOtherSection(s))
 
 const leavesMemo = new Map<string, Promise<PlexMedia[]>>()
 const leavesOf = (server: PlexServer, showKey: string) => {
   const k = server.uri + showKey
   let p = leavesMemo.get(k)
-  if (!p) { p = getAllLeaves(server, showKey).then((l) => l.filter((m) => m.type === 'episode')).catch(() => [] as PlexMedia[]); leavesMemo.set(k, p); setTimeout(() => leavesMemo.delete(k), 10 * 60_000) }
+  if (!p) { p = getAllLeaves(server, showKey).then((l) => { const eps = l.filter((m) => m.type === 'episode'); if (eps.some((m) => (m.viewCount ?? 0) > 0)) { const cur = showMeta.get(showKey); showMeta.set(showKey, { w: true, pop: cur?.pop ?? 0 }) } return eps }).catch(() => [] as PlexMedia[]); leavesMemo.set(k, p); setTimeout(() => leavesMemo.delete(k), 10 * 60_000) }
   return p
 }
 
-interface Show { key: string; title: string }
+interface Show { key: string; title: string; /** Which listed show this is (see canonOf). */ canon?: string }
 const showMeta = new Map<string, { w: boolean; pop: number }>()   // per show: watched on this profile, and how well liked
 async function showsOf(server: PlexServer, libs: PlexSection[]): Promise<Show[]> {
   const out: Show[] = [], seen = new Set<string>()
   for (const l of await Promise.all(libs.map((s) => getAllSectionItems(server, s.key, 'titleAsc', undefined, 5000, false, true).catch(() => [] as PlexMedia[])))) {
-    for (const m of l) if (m.type === 'show' && counts(m.title) && !seen.has(m.ratingKey)) { seen.add(m.ratingKey); out.push({ key: m.ratingKey, title: m.title }); showMeta.set(m.ratingKey, { w: (m.viewedLeafCount ?? 0) > 0, pop: m.audienceRating ?? m.rating ?? 0 }) }
+    for (const m of l) if (m.type === 'show' && counts(m.title) && !seen.has(m.ratingKey)) { seen.add(m.ratingKey); out.push({ key: m.ratingKey, title: m.title, canon: canonOf(m.title) }); showMeta.set(m.ratingKey, { w: (m.viewedLeafCount ?? 0) > 0, pop: m.audienceRating ?? m.rating ?? 0 }) }
   }
   return out
 }
@@ -51,7 +86,7 @@ const emptyFound = (): Found => ({ thanksgiving: new Map(), christmas: new Map()
 /** Episodes from the known lists: only shows that are on this server are looked at. */
 async function fromLists(server: PlexServer, shows: Show[], found: Found) {
   const byName = new Map<string, string[]>()
-  for (const s of shows) { const k = norm(s.title); byName.set(k, [...(byName.get(k) ?? []), s.key]) }
+  for (const s of shows) { const k = s.canon ?? norm(s.title); byName.set(k, [...(byName.get(k) ?? []), s.key]) }
   for (const h of HOLIDAYS) {
     const wanted = new Map<string, typeof HOLIDAY_EPISODES.christmas>()
     for (const e of HOLIDAY_EPISODES[h.id]) { const k = norm(e[0]); if (byName.has(k)) wanted.set(k, [...(wanted.get(k) ?? []), e]) }
@@ -67,6 +102,43 @@ async function fromLists(server: PlexServer, shows: Show[], found: Found) {
       }
     }))
   }
+}
+
+const GENERIC = new Set(['christmas', 'halloween', 'thanksgiving', 'santaclaus', 'holidayspecial'])
+/**
+ * Listed shows that weren't found by name: look for one of their (distinctive) episode titles on the server, and if an episode with that
+ * title turns up under a show whose name is close enough to the listed one, that show is the one (it's just named a little differently).
+ */
+async function fromTitleCheck(server: PlexServer, libs: PlexSection[], have: Show[]): Promise<Show[]> {
+  const haveCanon = new Set(have.map((s) => s.canon))
+  const todo = new Map<string, { name: string; titles: Set<string> }>()
+  for (const entries of Object.values(HOLIDAY_EPISODES)) for (const [name, , , title] of entries) {
+    const k = norm(name)
+    if (haveCanon.has(k) || BLOCKED.has(k) || !title) continue
+    const t = norm(title)
+    if (t.length < 9 || GENERIC.has(t)) continue
+    const cur = todo.get(k) ?? { name, titles: new Set<string>() }
+    if (cur.titles.size < 2) cur.titles.add(title)
+    todo.set(k, cur)
+  }
+  const jobs = [...todo.entries()]
+  const out: Show[] = [], seen = new Set<string>()
+  let next = 0
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    while (next < jobs.length) {
+      const [canon, { name, titles }] = jobs[next++]
+      search: for (const title of titles) for (const lib of libs) {
+        for (const m of await searchEpisodesByTitle(server, lib.key, title, 60)) {
+          if (m.type !== 'episode' || !m.grandparentRatingKey || norm(m.title) !== norm(title) || !looseSame(m.grandparentTitle ?? '', name)) continue
+          if (BLOCKED.has(norm(m.grandparentTitle ?? '')) || seen.has(m.grandparentRatingKey)) continue
+          seen.add(m.grandparentRatingKey)
+          out.push({ key: m.grandparentRatingKey, title: m.grandparentTitle ?? name, canon })
+          break search
+        }
+      }
+    }
+  }))
+  return out
 }
 
 /** Episodes whose title names the holiday (the server does the searching). */
@@ -107,7 +179,7 @@ function build(found: Found, watched: Set<string> | undefined, season: string | 
 }
 
 const KEEP = 12 * 60 * 60_000
-const LS = 'chezzflix_holiday_eps_v4'
+const LS = 'chezzflix_holiday_eps_v6'
 const readSaved = (server: PlexServer): Channel[] | undefined => { try { const s = JSON.parse(localStorage.getItem(LS) ?? 'null'); if (s && s.uri === server.uri && s.always === ALWAYS_ON && s.watched === ONLY_WATCHED && Date.now() - s.at < KEEP) return s.chans } catch { /* ignore */ } }
 const save = (server: PlexServer, chans: Channel[]) => { try { localStorage.setItem(LS, JSON.stringify({ uri: server.uri, at: Date.now(), always: ALWAYS_ON, watched: ONLY_WATCHED, chans })) } catch { /* ignore */ } }
 
@@ -138,7 +210,11 @@ async function work(server: PlexServer, sections: PlexSection[], season: string 
   await Promise.all([fromLists(server, shows, found), fromTitles(server, libs, found)])
   const quick = build(found, watched, season)
   if (!running) {
-    running = fromSummaries(server, ONLY_WATCHED ? shows.filter((s) => watched?.has(s.key)) : shows, found)
+    running = (async () => {
+      const extra = await fromTitleCheck(server, libs, shows).catch(() => [] as Show[])   // listed shows that are named a little differently here
+      if (extra.length) { shows.push(...extra); await fromLists(server, extra, found) }
+      await fromSummaries(server, ONLY_WATCHED ? shows.filter((s) => watched?.has(s.key)) : shows, found)
+    })()
       .then(() => { const all = build(found, watched, season); save(server, all); done(all); window.dispatchEvent(new Event('chezz-holiday')) })
       .catch(() => {})
       .finally(() => { running = undefined })

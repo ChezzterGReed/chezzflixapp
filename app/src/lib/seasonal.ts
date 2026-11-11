@@ -53,7 +53,16 @@ export const seasonalList = (id: string) => SEASONAL_LISTS.find((l) => l.id === 
 const norm = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, 'and').replace(/^(the|a|an) /, '').replace(/[^a-z0-9]/g, '')
 
 interface LibIndex { byTitle: Map<string, PlexMedia[]>; byHead: Map<string, PlexMedia[]> }
-async function libraryIndex(server: PlexServer, sections: PlexSection[]): Promise<LibIndex> {
+const indexMemo = new Map<string, { at: number; p: Promise<LibIndex> }>()   // (Home's row and its banner both ask for the same library: read it once)
+function libraryIndex(server: PlexServer, sections: PlexSection[]): Promise<LibIndex> {
+  const k = server.uri + '|' + sections.map((x) => x.key).join(',')
+  const hit = indexMemo.get(k)
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.p
+  const p = buildIndex(server, sections)
+  indexMemo.set(k, { at: Date.now(), p })
+  return p
+}
+async function buildIndex(server: PlexServer, sections: PlexSection[]): Promise<LibIndex> {
   const libs = sections.filter((s) => s.type === 'movie' && !isOtherSection(s))
   const all = (await Promise.all(libs.map((s) => getSectionWithGuids(server, s.key).catch(() => [] as PlexMedia[])))).flat()
   const byTitle = new Map<string, PlexMedia[]>(), byHead = new Map<string, PlexMedia[]>()
