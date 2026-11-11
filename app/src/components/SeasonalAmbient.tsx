@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useTheme } from '../lib/settings'
 import { useMinimal } from '../lib/layout'
 
@@ -75,8 +76,11 @@ function FrostCorner({ className = '', style }: { className?: string; style?: Re
   )
 }
 
-/** A garland draped along the whole top edge (rail to edge), with twinkling lights. It sits below the tabs, which float over it. */
-function Garland({ style }: { style?: React.CSSProperties }) {
+/**
+ * A garland draped along the whole top edge (rail to edge), with twinkling lights. Wherever the tab bar sits (it has `data-tabs`) the
+ * garland is left out, so the lights pass behind the tabs instead of over them.
+ */
+function Garland() {
   const W = 1600, swag = 200, H = 70
   const colours = ['#ef4444', '#fbbf24', '#60a5fa', '#34d399']
   let d = ''
@@ -88,13 +92,33 @@ function Garland({ style }: { style?: React.CSSProperties }) {
     ;[0.2, 0.4, 0.6, 0.8].forEach((t, n) => { const p = at(t); lights.push({ x: p.x, y: p.y, c: colours[(i * 4 + n) % colours.length], dl: ((i * 4 + n) % 5) * 0.4 }) })
     ;[0.5].forEach((t) => berries.push(at(t)))
   }
-  return (
-    <svg style={style} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className="pointer-events-none fixed right-0 top-0 z-[5] h-[clamp(46px,5.5vw,84px)] max-md:hidden" fill="none" aria-hidden>
+  const box = useRef<HTMLDivElement>(null)
+  const [gap, setGap] = useState<[number, number] | null>(null)   // where the tab bar is, in this box's own pixels
+  useEffect(() => {
+    const look = () => {
+      const tabs = document.querySelector('[data-tabs]'), me = box.current
+      if (!tabs || !me) return setGap((g) => (g ? null : g))
+      const t = tabs.getBoundingClientRect(), m = me.getBoundingClientRect()
+      const next: [number, number] = [Math.max(0, Math.round(t.left - m.left - 6)), Math.min(m.width, Math.round(t.right - m.left + 6))]
+      setGap((g) => (g && g[0] === next[0] && g[1] === next[1] ? g : next))
+    }
+    look()
+    const t = setInterval(look, 500)
+    window.addEventListener('resize', look)
+    return () => { clearInterval(t); window.removeEventListener('resize', look) }
+  }, [])
+  const art = (clip?: string) => (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMin slice" className="absolute inset-0 size-full" style={clip ? { clipPath: clip } : undefined} fill="none">
       <path d={d} stroke="#14532d" strokeWidth="11" strokeLinecap="round" />
       <path d={d} stroke="#22803f" strokeWidth="7" strokeLinecap="round" strokeDasharray="2 5" />
       {berries.map((p, n) => <g key={n}><circle cx={p.x} cy={p.y + 1} r="4.2" fill="#dc2626" /><circle cx={p.x + 6} cy={p.y} r="3.4" fill="#ef4444" /></g>)}
       {lights.map((l, n) => <g key={n}><path d={`M${l.x} ${l.y}v7`} stroke="#0b3d1d" strokeWidth="1.5" /><circle className="twinkle" cx={l.x} cy={l.y + 10} r="4" fill={l.c} style={{ animationDelay: `${l.dl}s` }} /></g>)}
     </svg>
+  )
+  return (
+    <div ref={box} aria-hidden className="pointer-events-none fixed right-0 top-0 z-[5] h-[clamp(46px,5.5vw,84px)] max-md:hidden" style={{ left: 'var(--rail)' }}>
+      {gap ? <>{art(`inset(0 calc(100% - ${gap[0]}px) 0 0)`)}{art(`inset(0 0 0 ${gap[1]}px)`)}</> : art()}
+    </div>
   )
 }
 
@@ -129,7 +153,7 @@ function Festive() {
     <>
       <Snow count={8} />
       <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-[5] h-[26vh] bg-linear-to-t from-[#e11d48]/[.15] via-[#15803d]/[.05] to-transparent" />
-      <Garland style={{ left: 'var(--rail)', width: 'calc(100% - var(--rail))' }} />
+      <Garland />
       <Presents className="pointer-events-none fixed bottom-2 right-3 z-[5] w-[clamp(60px,7vw,110px)] max-md:hidden" />
     </>
   )

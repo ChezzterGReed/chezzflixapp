@@ -212,7 +212,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
     <div className={`relative pb-24 ${minimal && activeTab !== 'trending' ? 'pt-20' : ''}`}>
       {!minimal && <Clock className="pointer-events-none absolute right-[var(--gutter)] top-8 z-20 text-xl font-semibold text-white/85 drop-shadow" />}
       {!minimal && <div className="absolute left-[var(--gutter)] top-7 z-20 flex items-center gap-3">
-        <div className="flex gap-1 rounded-full bg-black/50 p-1">
+        <div data-tabs className="flex gap-1 rounded-full bg-black/50 p-1">
           {TABS.filter((t) => (t.id !== 'anime' || showAnime) && (t.id !== 'foryou' || settings.recs) && (t.id !== 'trending' || !!settings.tmdbKey)).map((t) => (
             <Focusable key={t.id} focusKey={`tab-${t.id}`} onEnter={() => switchTab(t.id)} title={t.label} leftToRail={t.id === 'all'} onArrow={(d) => { if (d === 'down' && hero?.length && activeTab !== 'trending') { setFocus('hero-play'); return false } }}>
               <div className={`rounded-full px-5 py-2 text-[0.92rem] font-semibold transition-colors group-hover/f:bg-white/15 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${activeTab === t.id ? 'bg-accent text-black' : 'text-white/65'}`}>{t.label}</div>
@@ -232,7 +232,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
           ? <><RowSkeleton landscape /><RowSkeleton /><RowSkeleton /></>
           : <>
               {merged.length === 0 && recsReady && <p className="px-[var(--gutter)] py-16 text-white/55">Nothing to show here yet. Try another tab, or turn rows back on in Settings → Home.</p>}
-              {merged.slice(0, shown).map((r, ri) => <Row key={r.id} holiday={r.holiday} onHoliday={onHoliday} upKey={activeTab === 'trending' && ri === 0 ? (minimal ? 'mtab-trending' : 'tab-trending') : undefined} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={season === 'halloween' && r.title === 'Spooky Season'} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
+              {merged.slice(0, shown).map((r, ri) => <Row key={r.id} holiday={r.holiday} onHoliday={onHoliday} upKey={activeTab === 'trending' && ri === 0 ? (minimal ? 'mtab-trending' : 'tab-trending') : undefined} title={r.title} subtitle={r.subtitle} fromRecs={r.recs} fromContinue={r.continue} items={r.items} server={server} variant={r.continue && settings.continueStyle === 'episode' ? 'landscape' : 'poster'} themed={!!r.holiday || !!r.seasonal || (season === 'halloween' && r.title === 'Spooky Season')} onMore={r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} moreLabel={r.seasonal ? `See all ${r.seasonal.total}` : undefined} onSelect={(m) => r.continue ? (settings.continueOpen === 'episode' && m.type === 'episode' ? onOpenEpisode(m) : onPlay(m, true)) : onOpen(m)} />)}
               {wantsRecs && !recsReady && (activeTab === 'foryou' || shownRecs.length === 0) && <RowSkeleton />}
               {activeTab === 'foryou' && recsReady && recRows.length === 0 && (
                 <div className="mx-[var(--gutter)] mb-8 max-w-3xl rounded-2xl bg-white/6 p-6 ring-1 ring-white/10">

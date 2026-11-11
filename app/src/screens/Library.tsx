@@ -179,14 +179,20 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
   useEffect(() => {
     const el = sentinel.current
     if (!el || collapse) return
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && !loading && items.length < total) {
-        setLoading(true)
-        getSectionItems(server, section.key, sort, items.length, PAGE, year, unwatched, true).then((r) => { setItems((x) => [...x, ...r.items]); setLoading(false) })
-      }
-    }, { rootMargin: '1400px' })
+    const more = () => {
+      if (!el || loading || items.length >= total) return
+      setLoading(true)
+      getSectionItems(server, section.key, sort, items.length, PAGE, year, unwatched, true)
+        .then((r) => { if (r.items.length) setItems((x) => [...x, ...r.items]); else setTotal(items.length) })   // (nothing came back: that's all there is)
+        .catch(() => {})
+        .finally(() => setLoading(false))   // (a failed read must never leave loading stuck on, or no more would ever load)
+    }
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) more() }, { rootMargin: '1400px' })
     io.observe(el)
-    return () => io.disconnect()
+    // Also on every scroll: a trackpad can carry on scrolling past the end without the observer firing again.
+    const near = () => { if (el.getBoundingClientRect().top < window.innerHeight + 1400) more() }
+    window.addEventListener('scroll', near, { passive: true })
+    return () => { io.disconnect(); window.removeEventListener('scroll', near) }
   }, [items.length, total, loading, server, section.key, sort, year, collapse, unwatched])
 
   const noun = section.type === 'movie' ? 'movies' : 'shows'

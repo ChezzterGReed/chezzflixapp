@@ -43,6 +43,7 @@ export const HOLIDAY_EPISODES: Record<HolidayId, HolidayEntry[]> = {
     ['Everybody Hates Chris', 2, 8, 'Everybody Hates Thanksgiving'], ['Black-ish', 3, 7, 'Auntsgiving'], ['All in the Family', 6, 11, 'The Little Atheist'],
     ['A Man on the Inside', 2, 5, 'Thanksgiving Break'], ['Gary Unmarried', 1, 9, 'Gary Gives Thanks'], ['Living Single', 2, 12, 'Thanks for Giving'],
     ['Cybill', 2, 8, "They Shoot Turkeys, Don't They?"], ['Man with a Plan', 1, 5, 'Thanksgiving'],
+    ['Superstore', 2, 8, 'Black Friday'],
   ],
   christmas: [
     ['Friends', 2, 9, "The One with Phoebe's Dad"], ['Friends', 3, 10, 'The One Where Rachel Quits'], ['Friends', 4, 10, 'The One with the Girl from Poughkeepsie'], ['Friends', 5, 10, 'The One with the Inappropriate Sister'],
@@ -53,9 +54,13 @@ export const HOLIDAY_EPISODES: Record<HolidayId, HolidayEntry[]> = {
     ['Full House', 0, 0, 'Our Very First Christmas Show'], ['Full House', 0, 0, 'A Very Tanner Christmas'], ['Full House', 0, 0, 'The Perfect Couple'], ['Full House', 0, 0, 'Arrest Ye Merry Gentlemen'],
     ['How I Met Your Mother', 0, 0, 'How Lily Stole Christmas'], ['How I Met Your Mother', 0, 0, 'Little Minnesota'], ['How I Met Your Mother', 0, 0, 'False Positive'],
     ['How I Met Your Mother', 0, 0, 'Symphony of Illumination'], ['How I Met Your Mother', 0, 0, 'The Over-Correction'], ['How I Met Your Mother', 0, 0, 'The Final Page'],
+    ['Abbott Elementary', 2, 10, 'Holiday Hookah'], ['Abbott Elementary', 4, 7, 'Winter Show'], ['Abbott Elementary', 4, 8, 'Winter Break'], ['Abbott Elementary', 5, 8, 'Birthday'],
+    ['Superstore', 2, 8, 'Black Friday'], ['Superstore', 2, 9, 'Seasonal Help'], ['Superstore', 3, 7, 'Christmas Eve'], ['Superstore', 4, 8, "Manager's Conference"], ['Superstore', 5, 8, 'Toy Drive'], ['Superstore', 5, 10, 'Negotiations'], ['Superstore', 6, 11, 'Deep Cleaning'],
   ],
   halloween: [
     ['Friends', 8, 6, 'The One with the Halloween Party'],
+    ['Abbott Elementary', 2, 6, 'Candy Zombies'], ['Abbott Elementary', 4, 4, 'Costume Contest'], ['Abbott Elementary', 5, 5, 'Camping'],
+    ['Superstore', 2, 7, 'Halloween Theft'], ['Superstore', 3, 5, "Sal's Dead"], ['Superstore', 4, 4, 'Costume Competition'], ['Superstore', 5, 6, 'Trick-or-Treat'],
     ['The Office', 2, 5, 'Halloween'], ['The Office', 5, 6, 'Employee Transfer'], ['The Office', 6, 8, 'Koi Pond'], ['The Office', 7, 6, 'Costume Contest'], ['The Office', 8, 5, 'Spooked'], ['The Office', 9, 5, 'Here Comes Treble'],
   ],
 }

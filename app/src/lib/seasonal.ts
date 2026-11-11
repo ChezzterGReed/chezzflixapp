@@ -31,15 +31,17 @@ const FAMILY = /^(g|pg|tv-y|tv-y7|tv-y7-fv|tv-g|tv-pg)$/i
 const rating = (m: PlexMedia) => (m.contentRating ?? '').replace(/^[a-z]{2}\//i, '').trim()
 const family = (m: PlexMedia) => FAMILY.test(rating(m))
 const adult = (m: PlexMedia) => !family(m)
+// The holiday movie list is for the whole family, which here includes PG-13.
+const familyPG13 = (m: PlexMedia) => family(m) || /^pg-13$/i.test(rating(m))
 // Christmas: the "Violent Night" list is the grown-up side that is also horror, thriller, crime, action or mystery.
 const DARK = /horror|thriller|crime|action|mystery|suspense/i
 const hasDarkGenre = (m: PlexMedia) => !m.Genre?.length || m.Genre.some((g) => DARK.test(g.tag))
-const violentXmas = (m: PlexMedia) => adult(m) && hasDarkGenre(m)
+const violentXmas = (m: PlexMedia) => !familyPG13(m) && hasDarkGenre(m)
 
 export const SEASONAL_LISTS: SeasonalList[] = [
   { id: 'spooky', season: 'halloween', title: 'Spooky Season', subtitle: 'Halloween favourites and spooky-season vibes', entries: SPOOKY,
     channels: [{ id: 'family', number: -2, name: 'Spooky Season', keep: family }, { id: 'afterdark', number: -1, name: 'Spooky Season After Dark', keep: adult }] },
-  { id: 'xmas', season: 'christmas', title: 'Holiday Movies', subtitle: 'Holiday favourites for the whole family', entries: CHRISTMAS, keep: family, min: 8,
+  { id: 'xmas', season: 'christmas', title: 'Holiday Movies', subtitle: 'Holiday favourites for the whole family', entries: CHRISTMAS, keep: familyPG13, min: 8,
     channels: [{ id: 'a', number: -2, name: 'Holiday Movies' }, { id: 'b', number: -1, name: 'Holiday Movies 2' }] },
   { id: 'xmas-violent', season: 'christmas', title: 'Violent Night', subtitle: 'The holidays with a bite: slashers, thrillers and action', entries: CHRISTMAS, keep: violentXmas, min: 8 },
 ]

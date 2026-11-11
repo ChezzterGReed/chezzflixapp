@@ -173,7 +173,7 @@ function build(found: Found, watched: Set<string> | undefined, season: string | 
       date: m.originallyAvailableAt, thumb: m.grandparentThumb ?? m.thumb, art: m.grandparentArt ?? m.art,
       ep: m.grandparentRatingKey ? { show: m.grandparentRatingKey, showTitle: m.grandparentTitle ?? '', label: `S${String(m.parentIndex ?? 0).padStart(2, '0')}E${String(m.index ?? 0).padStart(2, '0')}`, title: m.title, still: m.thumb, w: showMeta.get(m.grandparentRatingKey)?.w, pop: showMeta.get(m.grandparentRatingKey)?.pop } : undefined,
     }))
-    out.push({ id: `seasonal:eps:${h.id}`, number: n++, name: h.name, kind: 'movies', genres: [], movieItems: items, movieOrder: 'release', seasonal: true, accent: h.accent })
+    out.push({ id: `seasonal:eps:${h.id}`, number: n++, name: h.name, kind: 'movies', genres: [], movieItems: items, movieOrder: 'shows', seasonal: true, accent: h.accent })
   }
   return out
 }

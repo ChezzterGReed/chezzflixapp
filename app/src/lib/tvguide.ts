@@ -22,7 +22,8 @@ export interface Channel {
   movieItems?: { key: string; title: string; year?: number; dur: number; date?: string; thumb?: string; art?: string; rating?: string; /** An episode (holiday channels): its show, so it reads and opens as an episode. */ ep?: EpInfo }[]
   /** Movie channels: only these ratings play (see RATING_OPTIONS). Empty or missing = every rating. */
   ratings?: string[]
-  movieOrder?: 'release' | 'random'
+  /** 'shows': holiday channels, one episode of each show in turn (the show order is shuffled once), each show's own episodes in airing order. */
+  movieOrder?: 'release' | 'random' | 'shows'
   /** Movie channels: only films from this time: 'recent' (the past year, counted from when the guide is built) or a decade's first year (1990 = the 90s). Missing = any year. */
   years?: 'recent' | number
   /** Audio and subtitle choices for this channel (they override the guide's defaults). */
@@ -256,7 +257,21 @@ async function sources(server: PlexServer, sections: PlexSection[], ch: Channel)
   // One copy of each film: the same title and year from two libraries (say regular and 4K) counts once.
   const byName = new Set<string>()
   const movies = [...own, ...fromGenres.filter((m) => !seen.has(m.key))].filter((m) => ratingAllowed(ch.ratings, m.rating)).filter((m) => yearAllowed(ch.years, m)).filter((m) => { const k = `${lower(m.title)}:${m.year ?? ''}`; if (byName.has(k)) return false; byName.add(k); return true })
-  return { movies: ch.movieOrder === 'release' ? [...movies].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)) : movies }
+  return { movies: ch.movieOrder === 'release' ? [...movies].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)) : ch.movieOrder === 'shows' ? rotateByShow(movies, ch.id) : movies }
+}
+
+/** One episode of a show, then the next show, and so on around; each show's episodes in airing order. The show order is shuffled, but the same way each time (so the schedule is stable). */
+function rotateByShow(movies: Movie[], seed: string): Movie[] {
+  const by = new Map<string, Movie[]>()
+  for (const m of movies) { const k = m.ep?.show ?? m.key; by.set(k, [...(by.get(k) ?? []), m]) }
+  const lists = [...by.values()].map((l) => l.sort((a, b) => a.date.localeCompare(b.date) || (a.ep?.label ?? '').localeCompare(b.ep?.label ?? '')))
+  let h = 2166136261
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
+  const rnd = mulberry32(h >>> 0)
+  for (let i = lists.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [lists[i], lists[j]] = [lists[j], lists[i]] }
+  const out: Movie[] = []
+  for (let round = 0; lists.some((l) => l.length > round); round++) for (const l of lists) if (l[round]) out.push(l[round])
+  return out
 }
 
 /** A short fingerprint of everything a channel could play right now: it changes when episodes or movies are added to (or removed from) what the channel draws on. */
@@ -296,7 +311,7 @@ function fill(ch: Channel, src: Source, stored: Stored, now: number, until: numb
     if (!movies.length) return
     const ms = (st.movie ??= freshState(movies.length))
     while ((last() < until) && guard++ < 5000) {
-      const m = movies[pick(movies.length, ms, ch.movieOrder !== 'release')]
+      const m = movies[pick(movies.length, ms, ch.movieOrder !== 'release' && ch.movieOrder !== 'shows')]
       ms.pos++
       add(m.ep ? { key: m.key, show: m.ep.show, title: m.ep.showTitle, sub: `${m.ep.label} · ${m.ep.title}`, th: m.th, ar: m.ar } : { key: m.key, title: m.title, sub: m.year ? String(m.year) : undefined, th: m.th, ar: m.ar }, m.dur)
     }

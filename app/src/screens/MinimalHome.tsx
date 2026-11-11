@@ -306,7 +306,7 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
                 {all.map((r, i) => (
                   <MRow key={r.id} onHoliday={onHoliday} idx={i} row={r} active={active} server={server} continueWide={continueWide}
                     onPick={pick} onShow={(it, ri) => { setSeen(it); setActive(ri) }} onUp={upFromFirstRow}
-                    themed={season === 'halloween' && r.title === 'Spooky Season'}
+                    themed={!!r.holiday || !!r.seasonal || (season === 'halloween' && r.title === 'Spooky Season')}
                     onTitle={r.typeTab ? () => onType(r.typeTab!) : r.seasonal ? () => onSeasonal(r.seasonal!.id) : undefined} />
                 ))}
               </div>
