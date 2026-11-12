@@ -85,7 +85,7 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
       rowsRef.current = hit.rows
       setRows(hit.rows); setNotices(hit.notices); setRowsAnime(hit.rowsAnime); setAnime(hit.anime); setRecRows(hit.recRows); setRecsReady(true); setHero(hit.hero)
       heroFor.current = hit.heroSig; meta.current = { at: hit.at, refreshKey: hit.refreshKey, watchKey: hit.watchKey }
-      setBooted(true)
+      if (hit.hero || !settings.hero) setBooted(true)   // (the rows are here; with a banner on, the loading screen stays until that is ready too)
     }
     const needFull = !hit || Date.now() - hit.at > FRESH_MS || hit.refreshKey !== refreshKey
     skipRecs.current = !needFull && !!hit && hit.watchKey === watchKey   // (after watching something, the recommendations are worked out again from the new history)
@@ -163,8 +163,8 @@ export function Home({ server, sections, token, profileName, refreshKey, watchKe
   // The loading screen lifts once the first hero is ready (or we know there isn't one).
   useEffect(() => { if (hero || (!settings.hero && rows)) setBooted(true) }, [hero, settings.hero, rows])
   useEffect(() => { const t = setTimeout(() => setBooted(true), 20_000); return () => clearTimeout(t) }, [])
-  // Once the rows are in, the loading screen waits only a moment longer for the banner (it settles in behind, with a placeholder) instead of holding everything for it.
-  useEffect(() => { if (!rows) return; const t = setTimeout(() => setBooted(true), 2500); return () => clearTimeout(t) }, [!!rows]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Once the rows are in, the loading screen waits a little longer for the banner (up to 9 seconds, then it lifts and the banner settles in behind with a placeholder) so the first thing you see is a finished Home.
+  useEffect(() => { if (!rows) return; const t = setTimeout(() => setBooted(true), 9000); return () => clearTimeout(t) }, [!!rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'trending' && rows && !focusedOnce.current) { focusedOnce.current = true; setTimeout(() => setFocus(minimal ? 'mtab-trending' : 'tab-trending'), 60) }
