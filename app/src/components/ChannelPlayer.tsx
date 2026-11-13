@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Captions, Check, Loader2, RotateCw, TriangleAlert } from 'lucide-react'
 import { useInputMode } from '../lib/input'
-import { useStillWatching } from '../lib/stillWatching'
-import { StillWatching } from './StillWatching'
+import { askStill, useStillWatching } from '../lib/stillWatching'
 import { Layer } from './Layer'
 import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
@@ -349,13 +348,19 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   }, [slot?.key, idx]) // eslint-disable-line react-hooks/exhaustive-deps
   const close = (idle = false) => { if (leaving) return; setLeaving(true); const at = idxRef.current; setTimeout(() => (idle && onIdle ? onIdle(at) : onClose(at)), 300) }
   const { asking: askingStill, confirm: stillHere } = useStillWatching(status === 'playing' && !leaving)
+  // Four hours of watching: leave the channel as Back would, and let the guide ask "Are you still watching?" (Resume tunes back in).
+  useEffect(() => {
+    if (!askingStill || leaving || !slot) return
+    const c = channelsRef.current[idxRef.current]
+    askStill({ item: { ratingKey: slot.key, type: slot.show ? 'episode' : 'movie', title: slot.title, thumb: slot.th, grandparentThumb: slot.th } as PlexMedia, title: slot.title, sub: slot.sub ? `${c?.name ?? ''} · ${slot.sub}` : c?.name, channelId: c?.id })
+    stillHere(); close()
+  }, [askingStill]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const ch = channels[idx]
   const now = Date.now()
   return (
     <Layer player onClose={() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (ctlRef.current) { setCtl(false); setBanner(false) } else close() }} scrim="bg-transparent">
       <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
-        {askingStill && !leaving && <StillWatching onStay={stillHere} onTimeout={() => close(true)} />}
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { clearTimeout(loadWatch.current); setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => recover('video')} />}
         {/* Receives the remote: Up / Down (or Left / Right, per the Guide setting) flip channels, OK shows the banner */}
         <Focusable focusKey="channel-surface" title="Channel"

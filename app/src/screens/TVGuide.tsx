@@ -76,6 +76,7 @@ export function TVGuide({ server, sections, scope, tune, onLeave, onOpenInfo }: 
   }, [server, sections, scope, channels, hours])
 
   const tuned = useRef(false)
+  useEffect(() => { tuned.current = false }, [tune])   // (a new tune request, e.g. Resume from "Are you still watching?", starts over)
   useEffect(() => {
     if (!tune || tuned.current || !seasonalReady || !guide.ready) return
     tuned.current = true

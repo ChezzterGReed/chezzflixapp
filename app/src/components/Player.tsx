@@ -11,8 +11,7 @@ import { saveResume } from '../lib/resume'
 import { Layer } from './Layer'
 import { Focusable } from './Focusable'
 import { activeProfile } from '../lib/profile'
-import { useStillWatching } from '../lib/stillWatching'
-import { StillWatching } from './StillWatching'
+import { askStill, useStillWatching } from '../lib/stillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, stopTranscode, type PlexMedia, type PlexServer } from '../lib/plex'
@@ -109,7 +108,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const offered = useRef(false)
   const [offer, setOffer] = useState(false)
   const [versions, setVersions] = useState<Version[]>([])
-  const { asking: askingStill, confirm: stillHere } = useStillWatching(!paused && ready && !closing)
+  const { asking: askingStill, confirm: stillHere } = useStillWatching(!paused && ready && !closing, paused && ready && !closing)
   const exitStyle = useRef<'none' | 'iris' | 'fade'>('none')
   const volumeRef = useRef(1)
   const [revealing, setRevealing] = useState(false)
@@ -339,6 +338,9 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       setTimeout(() => finishClose(homeRef.current), 720)
     }
   }, [mode, finishClose])
+
+  // Four hours of playback: close the stream, exactly as Back would, and let the screen it returns to ask "Are you still watching?".
+  useEffect(() => { if (askingStill && !closing) { askStill({ item: media }); stillHere(); close() } }, [askingStill]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // A movie ending (or its credits skipped): offer what to watch next, if that's switched on; otherwise just leave.
   const finish = useCallback(() => {
@@ -1056,7 +1058,6 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
           </div>
         </Layer>
       )}
-      {askingStill && !closing && <StillWatching onStay={stillHere} onTimeout={() => { homeRef.current = true; close() }} />}
       {suggest && <NextMovies server={server} media={media} onClose={close} onPlay={(m) => fadeOut(() => { continuing = true; onPlayNext(m) })} />}
     </div>
   )

@@ -12,12 +12,14 @@ import { reveal } from '../lib/scroll'
 import { searchTmdb } from '../lib/tmdb'
 import { useSettings } from '../lib/settings'
 import { getWatchlist, matchLibrary, setOnWatchlist, type WatchItem } from '../lib/watchlist'
-import type { PlexMedia, PlexSection, PlexServer } from '../lib/plex'
+import { formatRuntime, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
+import { useMinimal } from '../lib/layout'
 
-type SortKey = 'added' | 'name' | 'released'
+type SortKey = 'added' | 'name' | 'released' | 'length'
 /** Each sort has a usual direction (dir 1) and its reverse (dir -1); choosing the active sort again flips it. */
 const SORTS: { id: SortKey; label: string; ways: [string, string] }[] = [
   { id: 'added', label: 'Date added', ways: ['Newest', 'Oldest'] }, { id: 'name', label: 'Name', ways: ['A–Z', 'Z–A'] }, { id: 'released', label: 'Release date', ways: ['Newest', 'Oldest'] },
+  { id: 'length', label: 'Length', ways: ['Shortest', 'Longest'] },
 ]
 const sortName = (t: string) => t.replace(/^(the|a|an)\s+/i, '').toLowerCase()
 
@@ -31,7 +33,7 @@ function MenuItem({ icon, label, onEnter, danger }: { icon: React.ReactNode; lab
 
 
 /** A Watchlist title that isn't in the library. */
-function RemoteCard({ item, onEnter, onLongPress, selecting, checked }: { item: WatchItem; onEnter: () => void; onLongPress?: () => void; selecting?: boolean; checked?: boolean }) {
+function RemoteCard({ item, extra, onEnter, onLongPress, selecting, checked }: { extra?: string; item: WatchItem; onEnter: () => void; onLongPress?: () => void; selecting?: boolean; checked?: boolean }) {
   return (
     <Focusable onEnter={onEnter} onLongPress={onLongPress ?? onEnter} onFocus={(el) => reveal(el)} title={`${item.title} — not in your library`} className="w-full shrink-0">
       <div className={`relative aspect-[2/3] overflow-hidden rounded-xl bg-surface ${focusRing} ${selecting && checked ? 'ring-4 ring-accent' : ''}`}>
@@ -45,7 +47,7 @@ function RemoteCard({ item, onEnter, onLongPress, selecting, checked }: { item: 
       </div>
       <div className="mt-2.5 px-0.5 opacity-70 transition-opacity group-data-[hl=true]/f:opacity-100 group-hover/f:opacity-100">
         <div className="truncate text-[0.95rem] font-semibold leading-tight">{item.title}</div>
-        <div className="mt-0.5 truncate text-[0.8rem] text-white/60">{[item.year, item.type === 'show' ? 'Series' : 'Movie'].filter(Boolean).join(' · ')}</div>
+        <div className="mt-0.5 truncate text-[0.8rem] text-white/60">{[item.year, item.type === 'show' ? 'Series' : 'Movie', extra].filter(Boolean).join(' · ')}</div>
       </div>
     </Focusable>
   )
@@ -56,6 +58,7 @@ interface Props { server: PlexServer; token: string; sections: PlexSection[]; on
 /** Your Plex Watchlist: titles you saved on Plex. Ones in your library open directly; others can be requested. Hold OK on a title to remove it. */
 export function Watchlist({ server, token, sections, onOpen }: Props) {
   const { settings } = useSettings()
+  const minimal = useMinimal()
   const canRequest = settings.requests && !!settings.tmdbKey && !!settings.overseerrUrl
   const [items, setItems] = useState<WatchItem[]>()
   const [local, setLocal] = useState<Map<string, PlexMedia>>(new Map())
@@ -104,6 +107,9 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
   // Genres and release date come from your library's copy when you have it, otherwise from Plex's own record of the title.
   const genresOf = (i: WatchItem) => local.get(i.key)?.Genre?.map((g) => g.tag) ?? i.genres ?? []
   const releasedOf = (i: WatchItem) => local.get(i.key)?.originallyAvailableAt ?? i.released ?? (i.year ? `${i.year}-01-01` : '')
+  // A movie's running time: from your library's copy when you have it, otherwise from Plex's record of the title (shows have none here).
+  const runtimeOf = (i: WatchItem) => (i.type === 'movie' ? local.get(i.key)?.duration ?? i.duration : undefined)
+  const runtimeText = (i: WatchItem) => { const r = runtimeOf(i); return r ? formatRuntime(r) : undefined }
   const ofType = (items ?? []).filter((x) => tab === 'all' || x.type === tab)
   const genreCounts = new Map<string, number>()
   for (const i of ofType) for (const g of new Set(genresOf(i))) genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1)
@@ -116,6 +122,11 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
       added: (a, b) => a.pos - b.pos,   // (Plex lists the Watchlist newest first)
       name: (a, b) => sortName(a.i.title).localeCompare(sortName(b.i.title)),
       released: (a, b) => releasedOf(b.i).localeCompare(releasedOf(a.i)),
+      length: (a, b) => (runtimeOf(a.i) ?? 0) - (runtimeOf(b.i) ?? 0),
+    }
+    if (sort === 'length') {   // titles with no running time (shows, or movies Plex gives no length for) go last, whichever way it's sorted
+      const timed = rows.filter((x) => runtimeOf(x.i)), untimed = rows.filter((x) => !runtimeOf(x.i))
+      return [...timed.sort((a, b) => dir * cmp.length(a, b) || a.pos - b.pos), ...untimed].map((x) => x.i)
     }
     return rows.sort((a, b) => dir * cmp[sort](a, b) || a.pos - b.pos).map((x) => x.i)
   })()
@@ -123,21 +134,25 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
 
   const onList = menu ? local.get(menu.key) : undefined
   return (
-    <div ref={page} className="px-[var(--gutter)] pb-24 pt-14">
-      <h1 className="fade-up text-[2.6rem] font-extrabold tracking-[-0.03em]">Watchlist</h1>
-      <p className="mb-5 mt-1 text-white/55">{items ? `${items.length} title${items.length === 1 ? '' : 's'} on your Plex Watchlist · hold OK on one for options, or choose Select to pick several` : ' '}</p>
-      <div className="mb-7 flex gap-2">
-        {([['all', 'All'], ['movie', 'Movies'], ['show', 'TV Shows']] as const).map(([id, label], n) => (
-          <Focusable key={id} focusKey={`wl-tab-${id}`} onEnter={() => setTab(id)} title={label} leftToRail={n === 0}>
-            <div className={`rounded-full px-5 py-2 text-[0.95rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${tab === id ? 'bg-accent text-black' : 'bg-white/10 text-white/70'}`}>{label}{items ? <span className="ml-2 opacity-60">{id === 'all' ? items.length : items.filter((x) => x.type === id).length}</span> : null}</div>
-          </Focusable>
-        ))}
+    <div ref={page} className={`px-[var(--gutter)] pb-24 ${minimal ? 'pt-0' : 'pt-8'}`}>
+      <div className="fade-up mb-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="text-[2rem] font-extrabold leading-tight tracking-[-0.03em]">Watchlist</h1>
+          <span className="truncate text-[0.95rem] text-white/50">{items ? `${items.length} title${items.length === 1 ? '' : 's'} · hold OK on one for options` : ' '}</span>
+        </div>
+        <div className="flex gap-2">
+          {([['all', 'All'], ['movie', 'Movies'], ['show', 'TV Shows']] as const).map(([id, label], n) => (
+            <Focusable key={id} focusKey={`wl-tab-${id}`} onEnter={() => setTab(id)} title={label} leftToRail={n === 0}>
+              <div className={`rounded-full px-4 py-1.5 text-[0.9rem] font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${tab === id ? 'bg-accent text-black' : 'bg-white/10 text-white/70'}`}>{label}</div>
+            </Focusable>
+          ))}
+        </div>
       </div>
       {matched && items && items.length > 1 && (
-        <div className="mb-7 flex flex-wrap items-center gap-2">
+        <div className="mb-5 flex flex-wrap items-center gap-2">
           {SORTS.map((o, n) => (
             <Focusable key={o.id} leftToRail={n === 0} focusKey={`wl-sort-${o.id}`} onEnter={() => pickSort(o.id)} title={sort === o.id ? `${o.label}: ${o.ways[dir === 1 ? 0 : 1]}. Choose again to reverse.` : `Sort by ${o.label.toLowerCase()}`}>
-              <div className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${sort === o.id ? 'bg-white/90 text-black' : 'bg-white/10 text-white/70'}`}>
+              <div className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors group-hover/f:bg-white/20 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${sort === o.id ? 'bg-white/90 text-black' : 'bg-white/10 text-white/70'}`}>
                 {o.label}{sort === o.id && <span className="flex items-center gap-0.5 opacity-70">{dir === 1 ? <ArrowDown size={14} /> : <ArrowUp size={14} />}<span className="text-xs">{o.ways[dir === 1 ? 0 : 1]}</span></span>}
               </div>
             </Focusable>
@@ -154,8 +169,8 @@ export function Watchlist({ server, token, sections, onOpen }: Props) {
           : shown.map((i) => {
             const m = local.get(i.key)
             return <div key={i.key} data-grid-cell className="[--card-w:100%]">
-              {m ? <PosterCard m={m} server={server} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : onOpen(m))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} onFocus={(el) => reveal(el)} />
-                : <RemoteCard item={i} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : setMenu(i))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} />}
+              {m ? <PosterCard m={m} server={server} extra={runtimeText(i)} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : onOpen(m))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} onFocus={(el) => reveal(el)} />
+                  : <RemoteCard item={i} extra={runtimeText(i)} selecting={selecting} checked={picked.has(i.key)} onEnter={() => (selecting ? togglePick(i.key) : setMenu(i))} onLongPress={() => (selecting ? togglePick(i.key) : setMenu(i))} />}
             </div>
           })}
       </div>

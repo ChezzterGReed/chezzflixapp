@@ -3,7 +3,7 @@ import { clientId, DEMO_URI, getMetadata, getSectionWithGuids, type PlexMedia, t
 
 const DISCOVER = 'https://discover.provider.plex.tv'
 
-export interface WatchItem { key: string; title: string; year?: number; type: 'movie' | 'show'; poster?: string; summary?: string; genres?: string[]; released?: string }
+export interface WatchItem { key: string; title: string; year?: number; type: 'movie' | 'show'; poster?: string; summary?: string; genres?: string[]; released?: string; /** Running time in ms (movies), when Plex says. */ duration?: number }
 
 const headers = (token: string) => ({ Accept: 'application/json', 'X-Plex-Token': token, 'X-Plex-Client-Identifier': clientId(), 'X-Plex-Product': 'Chezzflix' })
 
@@ -32,7 +32,7 @@ export async function getWatchlist(token: string, fresh = false): Promise<WatchI
     const md = c.Metadata ?? []
     items.push(...md.filter((m) => m.type === 'movie' || m.type === 'show').map((m) => ({
       key: m.ratingKey, title: m.title, year: m.year, type: m.type as 'movie' | 'show', summary: m.summary,
-      genres: m.Genre?.map((g) => g.tag), released: m.originallyAvailableAt,
+      genres: m.Genre?.map((g) => g.tag), released: m.originallyAvailableAt, duration: m.duration,
       poster: m.thumb?.startsWith('http') ? m.thumb : undefined,
     })))
     start += md.length

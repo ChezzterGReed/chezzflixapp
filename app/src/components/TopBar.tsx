@@ -54,7 +54,7 @@ export function TopBar({ view, tvGuide, trending, watchlist, onGo, onSettings }:
       const y = (n: Element) => { const r = n.getBoundingClientRect(); return (r.top + r.bottom) / 2 }
       const me = y(el)
       for (const n of document.querySelectorAll('[data-fk]')) {
-        if (n === el || n.closest('nav')) continue
+        if (n === el || n.closest('nav') || n.getAttribute('data-fk') === 'mprofile') continue   // (the tabs and your picture float over the page: they aren't "above" its content)
         const r = n.getBoundingClientRect()
         if (r.width > 0 && r.height > 0 && y(n) < me - 12) return   // something is still above: the normal move handles it
       }

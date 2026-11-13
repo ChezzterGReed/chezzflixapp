@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FocusContext, GetBoundingClientRectAdapter, doesFocusableExist, getCurrentFocusKey, init, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import {
-  directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getMetadata, getProfiles, getSections, getServers, invalidateCache, invalidateWatchState,
+  directPlayUrl, getCollectionItems, getCollections, getCurrentUser, getGenreItems, getGenres, getMetadata, getMetadataFresh, getProfiles, getSections, getServers, invalidateCache, invalidateWatchState,
   isScanning, isWatched, removeFromContinueWatching, resolvePlayable, scanSection, setWatched, switchProfile, switchProfileFull, type PlexCollectionRef, type PlexMedia, type PlexProfile, type PlexSection, type PlexServer,
 } from './lib/plex'
 import { loadAnime, tabOk } from './lib/homeData'
@@ -20,6 +20,8 @@ import { unseal, type Sealed } from './lib/sealed'
 import sealedKeys from './lib/sealed-keys.json'
 import { useStreamCount } from './lib/streams'
 import { ResumePrompt } from './components/ResumePrompt'
+import { StillWatching } from './components/StillWatching'
+import { clearStill, usePendingStill } from './lib/stillWatching'
 import { Screensaver } from './components/Screensaver'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { GenreSetup, LibrarySetup, ProfilePicker } from './screens/Onboarding'
@@ -228,6 +230,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const [nudge, setNudge] = useState<{ target: PlexMedia; info: NudgeInfo }>()
   // Something partly watched, started from anywhere except Continue Watching: ask whether to continue or start over.
   const [resumeAsk, setResumeAsk] = useState<PlexMedia>()
+  const stillAsk = usePendingStill()   // "Are you still watching?": shown here, on the screen the player closed back to
   /** `how`: true = from Continue Watching (just resume, no question); 'beginning' = start over. */
   const play = async (m: PlexMedia, how?: boolean | 'beginning') => {
     const fromContinue = how === true || how === 'beginning'
@@ -384,6 +387,15 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
         onPlay={() => play(menu.item, !!menu.fromContinue)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)}
         onEdit={canEdit(server) && ['movie', 'show', 'episode'].includes(menu.item.type) ? () => setEditing(menu.item) : undefined} />}
       {editing && <EditInfo server={server} item={editing} onClose={() => setEditing(undefined)} onSaved={edited} />}
+      {stillAsk && !playing && (
+        <StillWatching server={server} ask={stillAsk} onClose={clearStill}
+          onResume={async () => {
+            const t = stillAsk; clearStill()
+            if (t.channelId) { navigate({ type: 'guide', tune: t.channelId }); return }   // a guide channel: tune back in
+            let fresh = t.item; try { fresh = await getMetadataFresh(server, t.item.ratingKey) } catch { /* use what we have */ }   // (the stop was just reported: ask for the new position)
+            void play(fresh, true)   // the same as pressing Resume on the title itself
+          }} />
+      )}
       {resumeAsk && <ResumePrompt server={server} item={resumeAsk} onClose={() => setResumeAsk(undefined)}
         onContinue={() => { const t = resumeAsk; setResumeAsk(undefined); void startNow(t) }}
         onRestart={() => { const t = { ...resumeAsk, viewOffset: 0 }; setResumeAsk(undefined); void startNow(t) }} />}

@@ -16,7 +16,9 @@ import { doesFocusableExist, setFocus } from '@noriginmedia/norigin-spatial-navi
 const PAGE = 120
 
 /** Collapse a library into collection tiles: one tile per collection, plus every title that isn't in one. */
-function groupByCollection(items: PlexMedia[], cols: PlexCollectionRef[]): PlexMedia[] {
+const stripArticle = (t: string) => t.replace(/^(the|a|an)\s+/i, '')
+const sortKey = (m: PlexMedia) => ((m as { titleSort?: string }).titleSort || stripArticle(m.title)).toLowerCase()
+function groupByCollection(items: PlexMedia[], cols: PlexCollectionRef[], sort?: string): PlexMedia[] {
   // Collections named with a leading underscore (e.g. "_Trending Movies") are housekeeping lists, not groupings.
   const real = new Map(cols.filter((c) => !c.title.startsWith('_')).map((c) => [c.title, c]))
   const seen = new Set<string>()
@@ -27,8 +29,19 @@ function groupByCollection(items: PlexMedia[], cols: PlexCollectionRef[]): PlexM
     if (seen.has(tag)) continue
     seen.add(tag)
     const c = real.get(tag)!
-    // The tile sits where its first title falls in the list, so it files under that title's letter (not its own name: "The Accountant" collection among the A's).
-    out.push({ ratingKey: c.ratingKey, type: 'collection', title: c.title, thumb: c.thumb, titleSort: (m as { titleSort?: string }).titleSort || m.title } as PlexMedia)
+    // The tile is filed under the collection's own name (a "Sex and the City" collection goes among the S's, not under its first show).
+    out.push({ ratingKey: c.ratingKey, type: 'collection', title: c.title, thumb: c.thumb, titleSort: stripArticle(c.title) } as PlexMedia)
+  }
+  // In an A-Z (or Z-A) order the tiles are put in their place by name (the titles keep the server's order); in the other orders a tile sits where its first title falls.
+  if (sort === 'titleAsc' || sort === 'titleDesc') {
+    const dir = sort === 'titleAsc' ? 1 : -1
+    const cmp = (a: PlexMedia, b: PlexMedia) => dir * sortKey(a).localeCompare(sortKey(b), undefined, { numeric: true, sensitivity: 'base' })
+    const titles = out.filter((m) => m.type !== 'collection'), tiles = out.filter((m) => m.type === 'collection').sort(cmp)
+    const merged: PlexMedia[] = []
+    let t = 0
+    for (const m of titles) { while (t < tiles.length && cmp(tiles[t], m) <= 0) merged.push(tiles[t++]); merged.push(m) }
+    while (t < tiles.length) merged.push(tiles[t++])
+    return merged
   }
   return out
 }
@@ -168,7 +181,7 @@ export function Library({ server, token, section, onOpen, onShuffle, onBrowse, o
     if (collapse) {
       Promise.all([getAllSectionItems(server, section.key, sort, year, 5000, unwatched, true).then(arrange), getCollections(server, section.key)]).then(([all, cols]) => {
         if (!alive) return
-        const grouped = groupByCollection(all, cols).filter((m) => !unwatched || m.type === 'collection' || !isWatched(m))
+        const grouped = groupByCollection(all, cols, sort).filter((m) => !unwatched || m.type === 'collection' || !isWatched(m))
         setItems(grouped); setTotal(grouped.length); setLoading(false)
       })
     } else if (sort === 'newEpisodes') {
