@@ -7,8 +7,8 @@ import { SeasonIcon } from './SeasonIcon'
 import { Focusable } from './Focusable'
 import { Clock } from './Clock'
 import { DEMO_URI, directPlayUrl, getMetadataFresh, reportProgress, undoGuideProgress, type PlexMedia, type PlexServer } from '../lib/plex'
-import { planPlayback } from '../lib/playback'
-import { applySubStyle, keepAwake, isAndroid, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, nativeSwap, onMpv, setNativeVideoActive, type MpvTrack } from '../lib/native'
+import { planPlayback, streamsOf } from '../lib/playback'
+import { applySubStyle, keepAwake, isAndroid, mpvCmd, mpvGet, mpvSet, mpvTracks, nativeStart, nativeSwap, onMpv, setExternalSubs, setNativeVideoActive, trackName, type MpvTrack } from '../lib/native'
 import { useSettings } from '../lib/settings'
 import { hexA } from '../lib/seasonal'
 import { setNowPlaying, setPlayback, startNowPlaying } from '../lib/nowPlaying'
@@ -21,6 +21,8 @@ interface Props { server: PlexServer; channels: Channel[]; start: number; /** Cl
 const RESTORE_KEY = 'chezzflix_guide_restore'
 const REFRESH_MS = 25 * 60_000   // how often the stream is quietly asked for again
 const TUNE_DELAY = 350   // wait for the remote to settle before loading, so flipping through channels doesn't hammer the server
+/** Subtitle files that sit beside the movie (Plex lists them as external streams): the player has to be given them, they aren't inside the video file. */
+const sidecarSubs = (server: PlexServer, m: PlexMedia) => streamsOf(m, 3).filter((s) => s.key).map((s) => ({ url: `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, lang: s.languageCode, name: s.displayTitle && !/X-Plex-Token|[?&=]|^\d+$/.test(s.displayTitle) ? s.displayTitle : undefined }))
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
 /**
@@ -105,6 +107,12 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     } catch { /* keep the file's own defaults */ }
   }, [channels])
 
+  // Sidecar subtitles on the desktop engine: added once the file has loaded, then the guide's subtitle choice is applied again.
+  const addSidecars = useCallback(() => {
+    if (isAndroid || !sidecars.current.length) return
+    sidecars.current.forEach((x) => mpvCmd('sub-add', x.url, 'auto', x.name ?? '', x.lang ?? '').catch(() => {}))
+    setTimeout(() => { void applyTracks() }, 900)
+  }, [applyTracks])
   useEffect(() => { nativeStart().then((ok) => setMode(ok ? 'native' : 'web')) }, [])
   useEffect(() => { keepAwake(true); return () => { keepAwake(false) } }, [])
   useEffect(() => { if (mode === 'native') applySubStyle(settings).catch(() => {}) }, [mode, status, settings.subSize, settings.subFont, settings.subColor, settings.subEdge, settings.subBackground, settings.subLift])
@@ -129,10 +137,11 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     else mpvSet(t.type === 'audio' ? 'aid' : 'sid', t.id).catch(() => {})
     setTracksOpen(false); flash()
   }
-  const trackLabel = (t: MpvTrack) => [t.title || t.lang?.toUpperCase(), t.codec?.toUpperCase(), t.channels ? `${t.channels}ch` : '', t.external ? 'external' : ''].filter(Boolean).join(' · ') || 'Track'
+  const trackLabel = (t: MpvTrack) => trackName(t)
 
   // Tune: find what's on now, jump into it part-way through, and line up the next switch for when it ends.
   const loadWatch = useRef(0)   // a load that never answers (a dead connection that doesn't even report an error) is treated as a failure too
+  const sidecars = useRef<ReturnType<typeof sidecarSubs>>([])   // the sidecar subtitle files of what's loading
   const quietLoad = useRef(false)   // the next 'loaded' is a refresh of what's already playing: no fade-up, nothing else to redo
   const tune = useCallback(async (i: number, quiet = false) => {
     const my = ++seq.current
@@ -158,6 +167,8 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       if (modeRef.current === 'native') {
         const url = directPlayUrl(server, media)
         if (!url) throw new Error('no file')
+        sidecars.current = sidecarSubs(server, media)
+        setExternalSubs(sidecars.current)   // (Android needs them as the file loads; the others add them once it has)
         await mpvCmd('loadfile', url, 'replace', '-1', `start=${offset.toFixed(1)},pause=no`)
       } else {
         const v = video.current
@@ -227,7 +238,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
     let off: (() => void) | undefined, dead = false
     onMpv((p) => { if (!warming.current && p.name === 'eof-reached' && p.value === true) tune(idxRef.current) }, (e) => {
       if (warming.current) return
-      if (e.event === 'loaded') { clearTimeout(loadWatch.current); if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); if (quietLoad.current) { quietLoad.current = false; applyTracks() } else { flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() } }
+      if (e.event === 'loaded') { addSidecars(); clearTimeout(loadWatch.current); if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); if (quietLoad.current) { quietLoad.current = false; applyTracks() } else { flash(); applyTracks(); setLoadedTick((n) => n + 1); fadeIn() } }
       if ((e.event === 'end' && e.reason === 4) || e.event === 'error') recover(`player ${e.message ?? ''}`.trim())
     }).then((u) => { if (dead) u(); else off = u })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
@@ -255,7 +266,8 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
       if (!url) return false
       const dur = (m.duration ?? s.end - s.start) / 1000
       const offset = Math.max(0, Math.min(Math.max(0, now - s.start) / 1000, Math.max(0, dur - 8)))
-      const ok = await nativeSwap(url, Math.round(offset * 1000))
+      sidecars.current = sidecarSubs(serverRef.current, m)
+      const ok = await nativeSwap(url, Math.round(offset * 1000), sidecars.current)
       if (ok) applyTracks()
       return ok
     } catch { return false } finally { swapping.current = false }

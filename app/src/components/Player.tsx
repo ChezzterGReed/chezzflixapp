@@ -15,7 +15,7 @@ import { askStill, useStillWatching } from '../lib/stillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
 import { planPlayback, streamsOf, type PlaybackPlan, type TrackChoice } from '../lib/playback'
 import { backdropPath, DEMO_URI, directPlayUrl, episodeLabel, getNextEpisode, getPreviousEpisode, imageUrl, isSpoilerRisk, reportProgress, stopTranscode, type PlexMedia, type PlexServer } from '../lib/plex'
-import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, type MpvTrack } from '../lib/native'
+import { applySubStyle, isAndroid, keepAwake, mpvCmd, mpvSet, mpvTracks, nativeStart, onMpv, setExternalSubs, setNativeVideoActive, trackName, type MpvTrack } from '../lib/native'
 import { NextMovies } from './NextMovies'
 import { useBack } from '../lib/back'
 import { useSettings } from '../lib/settings'
@@ -127,7 +127,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const plexSubs = streamsOf(media, 3)
   // A sidecar subtitle's name can come through as a file address (".../199833?X-Plex-Token=..."): never show that, the language will do.
   const cleanName = (s?: string | null) => (s && !/X-Plex-Token|[?&=]|^\d+$/.test(s) ? s : undefined)
-  const trackLabel = (t: MpvTrack) => [cleanName(t.title) || t.lang?.toUpperCase(), t.codec?.toUpperCase(), t.channels ? `${t.channels}ch` : '', t.external ? 'external' : ''].filter(Boolean).join(' · ') || 'Track'
+  const trackLabel = (t: MpvTrack) => trackName(t, cleanName(t.title))
   type Row = { id: number; label: string; on: boolean }
   const audio: Row[] = mode === 'native'
     ? nTracks.filter((t) => t.type === 'audio').map((t) => ({ id: t.id, label: trackLabel(t), on: t.selected }))
@@ -239,7 +239,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         setBuffering(false); setReady(true); refreshTracks(); setLoadedTick((n) => n + 1)
         applyPrefs(); setTimeout(applyPrefs, 1100); setTimeout(applyPrefs, 4000)   // (the last one catches choices that arrived from another device just after starting)
         // Sidecar subtitles Plex knows about (embedded ones are already in mpv's track list).
-        plexSubs.filter((s) => s.key).forEach((s) => mpvCmd('sub-add', `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, 'auto').catch(() => {}))
+        plexSubs.filter((s) => s.key).forEach((s) => mpvCmd('sub-add', `${server.uri}${s.key}?X-Plex-Token=${server.accessToken}`, 'auto', cleanName(s.displayTitle) ?? '', s.languageCode ?? '').catch(() => {}))
         setTimeout(refreshTracks, 800)
       }
       // On Android a TV may lack a decoder for something (an unusual codec): before anything has played, hand over to the web player,

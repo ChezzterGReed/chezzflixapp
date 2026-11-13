@@ -29,6 +29,29 @@ export function setMediaInfo(i: { title: string; subtitle?: string; artwork?: st
 /** Sidecar subtitle files for the NEXT file loaded (Android needs them at load time; mpv adds them afterwards). */
 export function setExternalSubs(subs: { url: string; lang?: string; name?: string }[]) { externalSubs = subs }
 
+// ---- Naming tracks: the language first ----
+const LANG3: Record<string, string> = { eng: 'en', spa: 'es', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de', ita: 'it', por: 'pt', jpn: 'ja', kor: 'ko', chi: 'zh', zho: 'zh', rus: 'ru', ara: 'ar', hin: 'hi', dut: 'nl', nld: 'nl', swe: 'sv', nor: 'no', dan: 'da', fin: 'fi', pol: 'pl', tur: 'tr', heb: 'he', tha: 'th', vie: 'vi', ind: 'id', ukr: 'uk', cze: 'cs', ces: 'cs', gre: 'el', ell: 'el', hun: 'hu', rum: 'ro', ron: 'ro', cat: 'ca', per: 'fa', fas: 'fa', ice: 'is', isl: 'is', may: 'ms', msa: 'ms' }
+/** "English" from "eng" / "en" / "en-US" (undefined for "und" and nothing). */
+export function languageName(code?: string): string | undefined {
+  const c = (code ?? '').toLowerCase().split(/[-_]/)[0]
+  if (!c || c === 'und' || c === 'unk') return undefined
+  const two = c.length === 2 ? c : LANG3[c]
+  if (two) { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(two) ?? undefined } catch { /* fall through */ } }
+  return c.length >= 3 ? c.toUpperCase() : undefined
+}
+/** An audio or subtitle track's name for a menu, starting with the language ("Spanish · Commentary · AC3 · 5.1ch · external"). `title` replaces the track's own title (when the caller has cleaned it). */
+export function trackName(t: MpvTrack, title: string | undefined = t.title): string {
+  const lang = languageName(t.lang)
+  const name = (title ?? '').trim()
+  const parts: string[] = []
+  if (lang) parts.push(name && !/^(und|unknown|track \d+)$/i.test(name) && !name.toLowerCase().includes(lang.toLowerCase()) ? `${lang} · ${name}` : name && name.toLowerCase().includes(lang.toLowerCase()) ? name : lang)
+  else if (name) parts.push(name)
+  if (t.codec) parts.push(t.codec.toUpperCase())
+  if (t.channels) parts.push(`${t.channels}ch`)
+  if (t.external) parts.push('external')
+  return parts.join(' · ') || 'Track'
+}
+
 const yes = (v: string | number | boolean) => v === true || v === 'yes' || v === 'true' || v === 1
 
 /** Starts the engine (once). Resolves false where it isn't available (browser, Windows for now). */
@@ -148,7 +171,7 @@ export async function exitApp(): Promise<void> {
  * Android only: asks for the same program again with a second player that loads out of sight and then takes over (see PlayerPlugin.prepareSwap).
  * Resolves true once it has swapped, false when it couldn't (the caller then reloads the usual way).
  */
-export async function nativeSwap(url: string, startMs: number): Promise<boolean> {
+export async function nativeSwap(url: string, startMs: number, subs?: { url: string; lang?: string; name?: string }[]): Promise<boolean> {
   if (!isAndroid) return false
-  try { await droid('prepareSwap', { url, startMs, pause: false, title: mediaInfo?.title, subtitle: mediaInfo?.subtitle, artwork: mediaInfo?.artwork }); return true } catch (e) { console.warn('[native swap]', e); return false }
+  try { await droid('prepareSwap', { url, startMs, pause: false, subs, title: mediaInfo?.title, subtitle: mediaInfo?.subtitle, artwork: mediaInfo?.artwork }); return true } catch (e) { console.warn('[native swap]', e); return false }
 }

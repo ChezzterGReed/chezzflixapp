@@ -253,7 +253,12 @@ class PlayerPlugin(private val activity: Activity) : Plugin(activity) {
       val bView = makeView(b, true)
       parent.addView(bView, parent.indexOfChild(oldView), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
       b.volume = 0f
-      b.setMediaItem(MediaItem.Builder().setUri(a.url).setMediaMetadata(MediaMetadata.Builder().setTitle(a.title).setArtist(a.subtitle).setArtworkUri(a.artwork?.let { android.net.Uri.parse(it) }).build()).build(), a.startMs)
+      b.setMediaItem(MediaItem.Builder().setUri(a.url).setMediaMetadata(MediaMetadata.Builder().setTitle(a.title).setArtist(a.subtitle).setArtworkUri(a.artwork?.let { android.net.Uri.parse(it) }).build()).apply {
+        val subs = a.subs?.map { s ->
+          MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url)).setMimeType(guessSubMime(s.url)).setLanguage(s.lang).setLabel(s.name).build()
+        }
+        if (!subs.isNullOrEmpty()) setSubtitleConfigurations(subs)
+      }.build(), a.startMs)
       b.playWhenReady = true
       var done = false
       var frame = false
