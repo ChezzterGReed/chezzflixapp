@@ -8,8 +8,6 @@ import { StallOffer } from './StallOffer'
 import { VolumePill } from './VolumePill'
 import { queueNeighbors } from '../lib/shuffleQueue'
 import { saveResume } from '../lib/resume'
-import { Layer } from './Layer'
-import { Focusable } from './Focusable'
 import { activeProfile } from '../lib/profile'
 import { askStill, useStillWatching } from '../lib/stillWatching'
 import { getTrackPref, pickTracks, saveTrackPref, webChoice } from '../lib/trackPrefs'
@@ -108,7 +106,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const offered = useRef(false)
   const [offer, setOffer] = useState(false)
   const [versions, setVersions] = useState<Version[]>([])
-  const { asking: askingStill, confirm: stillHere } = useStillWatching(!paused && ready && !closing, paused && ready && !closing)
+  const { asking: askingStill, confirm: stillHere } = useStillWatching(!paused && ready && !closing)
   const exitStyle = useRef<'none' | 'iris' | 'fade'>('none')
   const volumeRef = useRef(1)
   const [revealing, setRevealing] = useState(false)
@@ -402,9 +400,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     return () => clearInterval(t)
   }, [lighter])
   // Left paused for 20 minutes: the stream is let go (it holds a connection and a decoder) and the person is asked whether they're still there.
-  const [idleAsk, setIdleAsk] = useState(false)
   const idleRef = useRef(false)   // the stream was let go on purpose: its "error" is not one
-  const modalOpen = (askingStill || offer || idleAsk) && !closing
+  const modalOpen = (askingStill || offer) && !closing
   const modalRef = useRef(false); modalRef.current = modalOpen
   useEffect(() => { if (modalOpen) { resumeNav(); return () => pauseNav() } }, [modalOpen])
 
@@ -472,19 +469,17 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     return () => clearTimeout(sleepTimer.current)
   }, [sleepIdx, sleepNow])
   const wakeFromSleep = () => { setSleepDone(false); if (mode === 'native') mpvSet('pause', false).catch(() => {}); else video.current?.play().catch(() => {}); setPaused(false) }
+  // Paused for twenty minutes: let the stream go, exactly as Back would, and ask "Were you still watching?" on the screen it returns to (Resume plays on from here).
   useEffect(() => {
-    if (!paused || !ready || closing || sleepDone || error || idleAsk) return
+    if (!paused || !ready || closing || sleepDone || error) return
     const t = setTimeout(() => {
-      if (!pausedRef.current) return
-      reportProgress(server, media, 'stopped', timeRef.current * 1000).catch(() => {})
-      saveResume({ ratingKey: media.ratingKey, versionIndex: media.versionIndex, offsetMs: Math.round(timeRef.current * 1000), paused: true, at: Date.now(), profile: activeProfile() })
+      if (!pausedRef.current || closingRef.current) return
       idleRef.current = true
-      if (mode === 'native') mpvCmd('stop').catch(() => {})
-      else { const v = video.current; if (v) { v.pause(); v.removeAttribute('src'); v.load() } }
-      setIdleAsk(true)
-    }, 20 * 60_000)
+      askStill({ item: media, idle: true })
+      close()
+    }, (() => { try { const v = import.meta.env.DEV ? Number(localStorage.getItem('chezzflix_pause_ms')) : 0; return v > 0 ? v : 20 * 60_000 } catch { return 20 * 60_000 } })())
     return () => clearTimeout(t)
-  }, [paused, ready, closing, sleepDone, error, idleAsk]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paused, ready, closing, sleepDone, error]) // eslint-disable-line react-hooks/exhaustive-deps
   // ----- fast-forward / rewind, like a TV: holding the key starts a smooth glide at one speed (a fast-forward icon); each further press of the same
   // direction goes faster (one more triangle each time, up to three steps); the opposite direction slows it a step at a time, back to normal playing; Play ends it -----
   const scrubbing = useRef(false)
@@ -1039,24 +1034,6 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
           <p className="mt-2 text-sm text-white/65">Playback was paused. Press OK to keep watching, or Back to leave.</p>
           <button onClick={wakeFromSleep} className="mt-5 rounded-full bg-white px-8 py-2.5 font-bold text-black transition hover:scale-105">Keep watching</button>
         </div>
-      )}
-      {idleAsk && !closing && (
-        <Layer player z="z-[90]" onClose={() => close()} scrim="bg-black/80 backdrop-blur-sm" className="absolute left-1/2 top-1/2 w-[min(520px,92vw)] -translate-x-1/2 -translate-y-1/2">
-          <div data-nopause className="pop rounded-3xl bg-[#17171c]/95 p-8 text-center shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-white/10">
-            <div className="text-[0.75rem] font-bold uppercase tracking-[0.2em] text-white/45">Were you still watching?</div>
-            <div className="mt-3 text-2xl font-extrabold tracking-tight">{title}</div>
-            {subtitle && <div className="mt-1 text-white/65">{subtitle}</div>}
-            <div className="mt-2 text-sm text-white/45">Paused at {fmt(time)}{duration ? ` of ${fmt(duration)}` : ''}. The stream was closed to save bandwidth.</div>
-            <div className="mt-7 flex justify-center gap-3">
-              <Focusable focusKey="idle-resume" onEnter={() => fadeOut(() => { continuing = true; onSwitch({ ...media, viewOffset: Math.round(timeRef.current * 1000) }) })} title="Resume">
-                <div className="rounded-full bg-white px-8 py-3 text-[1.02rem] font-bold text-black transition-all group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:shadow-[0_0_0_3px_var(--accent)]">Resume</div>
-              </Focusable>
-              <Focusable focusKey="idle-exit" onEnter={() => close()} title="Exit">
-                <div className="rounded-full bg-white/12 px-8 py-3 text-[1.02rem] font-semibold transition-all group-data-[hl=true]/f:scale-105 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Exit</div>
-              </Focusable>
-            </div>
-          </div>
-        </Layer>
       )}
       {suggest && <NextMovies server={server} media={media} onClose={close} onPlay={(m) => fadeOut(() => { continuing = true; onPlayNext(m) })} />}
     </div>

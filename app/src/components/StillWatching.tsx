@@ -18,7 +18,7 @@ export function StillWatching({ server, ask, onResume, onClose }: { server: Plex
       <div className="pop flex gap-6 overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--accent)_22%,#0b0b10)] p-6 shadow-[0_30px_80px_-10px_rgba(0,0,0,.9)] ring-1 ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]">
         {poster && <img src={imageUrl(server, poster, 300, 450)} alt="" draggable={false} className="aspect-[2/3] w-[34%] max-w-[170px] shrink-0 self-start rounded-xl bg-black/30 object-cover shadow-[0_14px_36px_-8px_rgba(0,0,0,.8)]" />}
         <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <div className="text-[1.65rem] font-extrabold leading-tight tracking-tight text-white">Are you still watching?</div>
+          <div className="text-[1.65rem] font-extrabold leading-tight tracking-tight text-white">{ask.idle ? 'Were you still watching?' : 'Are you still watching?'}</div>
           <div className="mt-3 truncate text-[1.05rem] font-semibold text-white">{title}</div>
           {sub && <div className="truncate text-[0.95rem] text-white/85">{sub}</div>}
           <div className="mt-6 flex flex-wrap gap-3">

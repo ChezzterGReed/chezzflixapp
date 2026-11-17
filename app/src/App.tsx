@@ -10,7 +10,7 @@ import { useBack } from './lib/back'
 import { matchList, missingFromList, seasonalList } from './lib/seasonal'
 import { justMoved, moveCount, settleMs } from './lib/input'
 import { ensureFocus, rescueSoon } from './lib/focusRescue'
-import { exitApp, isAndroid } from './lib/native'
+import { exitApp, isAndroid, mpvCmd, setNativeVideoActive } from './lib/native'
 import { getWatchlist } from './lib/watchlist'
 import { MinimalAccountMenu } from './components/MinimalAccountMenu'
 import { inTauri, startPlayback } from './lib/player'
@@ -392,6 +392,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
           onResume={async () => {
             const t = stillAsk; clearStill()
             if (t.channelId) { navigate({ type: 'guide', tune: t.channelId }); return }   // a guide channel: tune back in
+            // After a long wait the TV may have dropped the old video surface: start from a clean native player (the same state a first play finds).
+            setNativeVideoActive(false); await mpvCmd('stop').catch(() => {}); await new Promise((r) => setTimeout(r, 250))
             let fresh = t.item; try { fresh = await getMetadataFresh(server, t.item.ratingKey) } catch { /* use what we have */ }   // (the stop was just reported: ask for the new position)
             void play(fresh, true)   // the same as pressing Resume on the title itself
           }} />
