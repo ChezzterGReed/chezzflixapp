@@ -62,12 +62,12 @@ export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className =
       if (e.button !== 0) return
       ptrLong.current = false
       clearTimeout(ptrTimer.current)
-      ptrTimer.current = window.setTimeout(() => { ptrLong.current = true; onLongPress() }, LONG_PRESS_MS)
+      ptrTimer.current = window.setTimeout(() => { ptrLong.current = true; focusSelf(); onLongPress() }, LONG_PRESS_MS)
     },
     onPointerUp: () => clearTimeout(ptrTimer.current),
     onPointerLeave: () => clearTimeout(ptrTimer.current),
     onPointerCancel: () => clearTimeout(ptrTimer.current),
-    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); clearTimeout(ptrTimer.current); ptrLong.current = true; onLongPress() },
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); clearTimeout(ptrTimer.current); ptrLong.current = true; focusSelf(); onLongPress() },   // (the menu closes back to the title it was opened on, not to wherever the cursor last was)
   } : {}
 
   return (

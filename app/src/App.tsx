@@ -99,6 +99,8 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const [history, setHistory] = useState<View[]>([])
   const [details, setDetails] = useState<string[]>([])
   const [layer, setLayer] = useState<'profile' | 'account' | 'settings' | null>(null)
+  // The settings, the player and the editor load as separate pieces: fetch them quietly once the app has settled, so opening one is instant (otherwise the whole screen blanks while it arrives).
+  useEffect(() => { const t = setTimeout(() => { void import('./components/SettingsModal'); void import('./components/Player'); void import('./components/EditInfo') }, 4000); return () => clearTimeout(t) }, [])
   const [playing, setPlaying] = useState<PlexMedia>()
   const streams = useStreamCount(server, !!server.owned)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -382,11 +384,11 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
       {layer === 'account' && <MinimalAccountMenu streams={streams} onClose={() => setLayer(null)} onDashboard={() => { setLayer(null); navigate({ type: 'dashboard' }) }} onProfiles={() => setLayer('profile')} />}
       {layer === 'profile' && <ProfileMenu right={minimal} profiles={profiles} currentName={me.name} onClose={() => setLayer(null)} onSwitch={onSwitch}
         onSettings={() => setLayer('settings')} onSignOut={onSignOut} />}
-      {layer === 'settings' && <SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} />}
+      {layer === 'settings' && <Suspense fallback={null}><SettingsModal server={server} token={token} sections={allSections} profileName={me.name} profileThumb={me.thumb} onClose={() => setLayer(null)} /></Suspense>}
       {menu && <ItemMenu item={menu.item} server={server} token={token} say={say} fromContinue={menu.fromContinue} fromRecs={menu.fromRecs} onNotInterested={() => notInterested(menu.item)} onSelect={menu.onSelect} onClose={() => setMenu(undefined)}
         onPlay={() => play(menu.item, !!menu.fromContinue)} onInfo={() => open(menu.item)} onToggleWatched={() => toggleWatched(menu.item)} onRemoveContinue={() => removeContinue(menu.item)}
         onEdit={canEdit(server) && ['movie', 'show', 'episode'].includes(menu.item.type) ? () => setEditing(menu.item) : undefined} />}
-      {editing && <EditInfo server={server} item={editing} onClose={() => setEditing(undefined)} onSaved={edited} />}
+      {editing && <Suspense fallback={null}><EditInfo server={server} item={editing} onClose={() => setEditing(undefined)} onSaved={edited} /></Suspense>}
       {stillAsk && !playing && (
         <StillWatching server={server} ask={stillAsk} onClose={clearStill}
           onResume={async () => {
@@ -405,7 +407,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
         onSkip={() => update({ recapNudgeSkipped: { ...settings.recapNudgeSkipped, [nudge.target.grandparentRatingKey!]: nudge.info.prev.lastViewedAt! } })}
         onNever={() => update({ recapNudgeOff: { ...settings.recapNudgeOff, [nudge.target.grandparentRatingKey!]: true } })}
         onPlay={() => { void startNow(nudge.target) }} onDone={() => setNudge(undefined)} />}
-      {playing && <Player key={`${playing.ratingKey}:${playing.versionIndex ?? 0}`} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} onSwitch={setPlaying} />}
+      {playing && <Suspense fallback={null}><Player key={`${playing.ratingKey}:${playing.versionIndex ?? 0}`} server={server} media={playing} onClose={closePlayer} onPlayNext={playNext} onSwitch={setPlaying} /></Suspense>}
 
       {exitAsk && <ExitConfirm onStay={() => setExitAsk(false)} onExit={() => { setExitAsk(false); void exitApp() }} />}
       {toast && <div className="pop fixed bottom-8 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black shadow-2xl">{toast}</div>}

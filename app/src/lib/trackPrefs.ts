@@ -4,7 +4,8 @@ import { LANGS } from './tvguide'
 import { activeProfile } from './profile'
 import type { PlexMedia, PlexStream } from './plex'
 
-interface TrackRef { lang?: string; title?: string; forced?: boolean }
+/** A remembered audio or subtitle choice: its language, and what kind of track it was (codec, and whether it was a sidecar file) so the same kind is picked next time. */
+interface TrackRef { lang?: string; title?: string; forced?: boolean; codec?: string; ext?: boolean }
 export interface TrackPref { audio?: TrackRef; sub?: 'off' | TrackRef }
 const KEY = 'chezzflix_track_prefs'
 
@@ -41,11 +42,22 @@ export function sameLang(a?: string, b?: string): boolean {
   return !!ix && ix === iy
 }
 
-interface Track { id: number; type: string; lang?: string; title?: string; forced?: boolean; codec?: string; selected?: boolean }
+interface Track { id: number; type: string; lang?: string; title?: string; forced?: boolean; codec?: string; selected?: boolean; external?: boolean }
 
 /** Plain .srt files are the most dependable subtitles: given a choice of the same language, take one of those. */
 export const isSrt = (codec?: string) => !!codec && /^(subrip|srt)$/i.test(codec)
-const srtFirst = <T extends { codec?: string }>(l: T[]) => [...l.filter((t) => isSrt(t.codec)), ...l.filter((t) => !isSrt(t.codec))]
+
+interface Cand { id: number; lang?: string; title?: string; forced?: boolean; codec?: string; ext?: boolean }
+/**
+ * The subtitle track that is most like a remembered one: the same language first (or, for a choice saved with no language, the same kind of
+ * track), then the same forced-ness, title, file type (srt, ass...) and sidecar-or-embedded; plain .srt wins a tie.
+ */
+function bestSub(cands: Cand[], want: TrackRef): number | undefined {
+  const pool = want.lang ? cands.filter((t) => sameLang(t.lang, want.lang)) : cands.filter((t) => want.ext === undefined || !!t.ext === want.ext)
+  if (!pool.length) return undefined
+  const score = (t: Cand) => (!!t.forced === (want.forced ?? false) ? 8 : 0) + (want.title && t.title === want.title ? 4 : 0) + (want.codec && t.codec && t.codec.toLowerCase() === want.codec.toLowerCase() ? 2 : 0) + (want.ext !== undefined && !!t.ext === want.ext ? 1 : 0) + (isSrt(t.codec) ? 0.5 : 0)
+  return pool.reduce((best, t) => (score(t) > score(best) ? t : best), pool[0]).id
+}
 
 /** Which tracks to switch to for this episode (undefined = leave it alone). */
 export function pickTracks(tracks: Track[], pref: TrackPref | undefined): { aid?: number; sid?: number | 'no' } {
@@ -58,11 +70,7 @@ export function pickTracks(tracks: Track[], pref: TrackPref | undefined): { aid?
   }
   const sp = pref.sub
   if (!sp || sp === 'off') out.sid = 'no'
-  else if (sp?.lang) {
-    const c = srtFirst(tracks.filter((t) => t.type === 'sub' && sameLang(t.lang, sp.lang)))
-    const want = sp.forced ?? false
-    out.sid = (c.find((t) => !!t.forced === want && (!sp.title || t.title === sp.title)) ?? c.find((t) => !!t.forced === want) ?? c[0])?.id
-  }
+  else out.sid = bestSub(tracks.filter((t) => t.type === 'sub').map((t) => ({ id: t.id, lang: t.lang, title: t.title, forced: t.forced, codec: t.codec, ext: t.external })), sp)
   return out
 }
 
@@ -74,6 +82,6 @@ export function webChoice(m: PlexMedia, audio: PlexStream[], subs: PlexStream[])
   const ch: { audioId?: number; subtitleId?: number | null } = {}
   if (pref.audio?.lang) ch.audioId = audio.find((s) => sameLang(lang(s), pref.audio!.lang))?.id
   if (!pref.sub || pref.sub === 'off') ch.subtitleId = null
-  else if (pref.sub?.lang) { const want = pref.sub.forced ?? false; const same = srtFirst(subs.filter((s) => sameLang(lang(s), (pref.sub as TrackRef).lang))); ch.subtitleId = (same.find((s) => !!s.forced === want) ?? same[0])?.id }
+  else ch.subtitleId = bestSub(subs.map((x) => ({ id: x.id, lang: lang(x), title: x.displayTitle, forced: x.forced, codec: x.codec, ext: !!x.key })), pref.sub) ?? null
   return ch
 }

@@ -692,13 +692,15 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
       else {
         mpvSet('sid', idx === 0 ? 'no' : subs[idx - 1].id).then(reread).catch(() => {})
         const t = idx === 0 ? undefined : nTracks.find((x) => x.type === 'sub' && x.id === subs[idx - 1].id)
-        saveTrackPref(media, { sub: idx === 0 ? 'off' : { lang: t?.lang, title: t?.title, forced: t?.forced } })   // for the rest of this show's episodes
+        // (a sidecar subtitle can reach the player without a language: Plex's own record of the file says what it is)
+        const ps = t?.external ? plexSubs.find((x) => x.key && (!t.title || cleanName(x.displayTitle) === t.title)) ?? plexSubs.find((x) => x.key) : undefined
+        saveTrackPref(media, { sub: idx === 0 ? 'off' : { lang: t?.lang ?? ps?.languageCode ?? ps?.language, title: t?.title, forced: t?.forced, codec: t?.codec ?? ps?.codec, ext: !!t?.external } })   // for the rest of this show's episodes
       }
     } else if (col === 0) { setChoice((c) => ({ ...c, audioId: audio[idx].id })); const s = plexAudio.find((x) => x.id === audio[idx].id); if (s) saveTrackPref(media, { audio: { lang: s.languageCode ?? s.language, title: s.displayTitle } }) }
     else {
       setChoice((c) => ({ ...c, subtitleId: idx === 0 ? null : subs[idx - 1].id }))
       const s = idx === 0 ? undefined : plexSubs.find((x) => x.id === subs[idx - 1].id)
-      saveTrackPref(media, { sub: idx === 0 ? 'off' : { lang: s?.languageCode ?? s?.language, title: s?.displayTitle, forced: s?.forced } })
+      saveTrackPref(media, { sub: idx === 0 ? 'off' : { lang: s?.languageCode ?? s?.language, title: s?.displayTitle, forced: s?.forced, codec: s?.codec, ext: !!s?.key } })
     }
     setPanel(null)
   }
