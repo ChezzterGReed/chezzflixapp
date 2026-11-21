@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSeason } from '../lib/settings'
 import { shuffled } from '../lib/session'
 import { useLastBrand } from '../lib/brand'
@@ -31,7 +31,14 @@ export function LoadingScreen({ visible }: { visible: boolean }) {
   const [mounted, setMounted] = useState(visible)
   // Whenever the loading screen appears it stays for at least a moment, even if everything is ready at once: the name has time to arrive and be seen.
   const [held, setHeld] = useState(visible)
-  useEffect(() => { if (!visible) return; setHeld(true); const t = setTimeout(() => setHeld(false), MIN_SHOW_MS); return () => clearTimeout(t) }, [visible])
+  const startedAt = useRef(Date.now())
+  useEffect(() => { if (visible) { startedAt.current = Date.now(); setHeld(true) } }, [visible])
+  // Once the app says it's ready, hold on for whatever is left of the minimum (the timer must survive `visible` changing, so it is its own effect).
+  useEffect(() => {
+    if (visible || !held) return
+    const t = setTimeout(() => setHeld(false), Math.max(0, MIN_SHOW_MS - (Date.now() - startedAt.current)))
+    return () => clearTimeout(t)
+  }, [visible, held])
   const shown = visible || held
   const [i, setI] = useState(0)
   const season = useSeason()
