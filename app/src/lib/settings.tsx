@@ -170,15 +170,15 @@ export const FESTIVE_RED = '#e11d48'
 export const HARVEST = '#c8702a'   // Thanksgiving: a brownish orange
 export type Season = 'halloween' | 'thanksgiving' | 'christmas' | null
 export type HolidayStyle = 'frost' | 'festive'
-/** October is spooky season, December is the holiday season, and Thanksgiving is the week it falls in (Sunday to Saturday). `?season=halloween|thanksgiving|christmas` (and `&holiday=frost`) force one for previewing. */
+/** October is spooky season, December is the holiday season, and Thanksgiving runs from 10 days before the day to the Saturday after. `?season=halloween|thanksgiving|christmas` (and `&holiday=frost`) force one for previewing. */
 export function currentSeason(): Season {
   const q = new URLSearchParams(location.search)
   const forced = q.get('season')
   if (forced) return forced === 'halloween' || forced === 'thanksgiving' || forced === 'christmas' ? forced : null
   const now = new Date(), m = now.getMonth()
-  if (m === 10) {   // Thanksgiving is the fourth Thursday of November: its season runs from the Sunday before to the Saturday after
+  if (m === 10) {   // Thanksgiving is the fourth Thursday of November: its season runs from 10 days before to the Saturday after
     const firstThu = 1 + ((4 - new Date(now.getFullYear(), 10, 1).getDay() + 7) % 7), day = firstThu + 21
-    return now.getDate() >= day - 4 && now.getDate() <= day + 2 ? 'thanksgiving' : null
+    return now.getDate() >= day - 10 && now.getDate() <= day + 2 ? 'thanksgiving' : null
   }
   return m === 9 ? 'halloween' : m === 11 ? 'christmas' : null
 }
