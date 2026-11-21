@@ -85,7 +85,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const [suggest, setSuggest] = useState(false)   // the "what to watch next" screen after a movie
   const suggestRef = useRef(false); suggestRef.current = suggest
   const [nextSel, setNextSel] = useState<0 | 1 | null>(null)   // the remote's cursor on the Up Next card: 0 = Play now, 1 = Stay (null = not on the card yet)
-  const [stayed, setStayed] = useState(false)   // "Stay" was chosen on the Up Next card: hide it and don't move on by itself
+  const [stayed, setStayed] = useState(false)   // "Stay" was chosen on the Up Next card: hide it and don't jump ahead at the end of the countdown (the next episode still starts when this one ends)
   useEffect(() => { setStayed(false) }, [media.ratingKey])
   const stay = () => { setCountdown(null); setStayed(true); setNextSel(null) }   // "Stay": hide the Up Next card and don't move on by itself
   const idle = useRef<number>(0)
@@ -631,7 +631,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const showNext = !!next && !stayed && !sleepEp && duration > 0 && time > (scene ? duration - 15 : credits ? credits.startTimeOffset / 1000 + 3 : duration - 30)
   const goNext = useCallback(() => { if (next) fadeOut(() => { continuing = true; onPlayNext(next) }) }, [next, onPlayNext, fadeOut])
   const goPrev = useCallback(() => { if (prev) fadeOut(() => { continuing = true; onPlayNext(prev) }) }, [prev, onPlayNext, fadeOut])
-  endedRef.current = () => (sleepEp ? close() : next && settings.autoplayNext && !stayed ? goNext() : finish())
+  endedRef.current = () => (sleepEp ? close() : next && settings.autoplayNext ? goNext() : finish())   // ("Stay" only hides the card and stops the countdown: when the episode ends, the next one still follows)
 
   // Now Playing / media keys: what is on, and the keys, headphone buttons and lock-screen controls reaching this player.
   const mediaKey = useRef<(k: MediaKey) => void>(() => {})
