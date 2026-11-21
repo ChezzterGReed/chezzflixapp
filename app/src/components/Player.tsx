@@ -6,7 +6,7 @@ import { Clock } from './Clock'
 import { setNowPlaying, setPlayback, startNowPlaying, type MediaKey } from '../lib/nowPlaying'
 import { StallOffer } from './StallOffer'
 import { VolumePill } from './VolumePill'
-import { queueNeighbors } from '../lib/shuffleQueue'
+import { isUntracked, queueNeighbors } from '../lib/shuffleQueue'
 import { saveResume } from '../lib/resume'
 import { activeProfile } from '../lib/profile'
 import { askStill, useStillWatching } from '../lib/stillWatching'
@@ -353,7 +353,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // ----- progress reporting -----
   useEffect(() => {
-    if (media.type === 'clip') return   // (a trailer or extra: nothing to remember)
+    if (media.type === 'clip' || isUntracked(media)) return   // (a trailer or extra, or a holiday playlist: nothing to remember, so the show's progress stays as it was)
     const t = setInterval(() => { if (timeRef.current > 0) reportProgress(server, media, (mode === 'native' ? pausedRef.current : video.current?.paused) ? 'paused' : 'playing', timeRef.current * 1000) }, 10_000)
     return () => { clearInterval(t); reportProgress(server, media, 'stopped', timeRef.current * 1000); stopTranscode(server, planRef.current?.url) }
   }, [server, media, mode])

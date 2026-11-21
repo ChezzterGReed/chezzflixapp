@@ -232,8 +232,8 @@ export const holidayAccent = (id: HolidayId) => HOLIDAYS.find((h) => h.id === id
 export const holidayName = (id: HolidayId) => HOLIDAYS.find((h) => h.id === id)?.name ?? ''
 const SHOW_MIN = 3, ROW_MAX = 4
 
-/** One holiday's episodes, grouped by show; only shows with at least three of them count. Shows with holiday episodes you've watched come first, then the best liked. */
-export function holidayShows(chan: Channel | undefined): HolidayShow[] {
+/** One holiday's episodes, grouped by show; the Home row only counts shows with at least three of them (the full list and playlists take any). Shows with holiday episodes you've watched come first, then the best liked. */
+export function holidayShows(chan: Channel | undefined, min = SHOW_MIN): HolidayShow[] {
   const by = new Map<string, HolidayShow>()
   for (const m of chan?.movieItems ?? []) {
     if (!m.ep) continue
@@ -243,7 +243,7 @@ export function holidayShows(chan: Channel | undefined): HolidayShow[] {
     if (!g.still && m.ep.still) g.still = m.ep.still
     by.set(m.ep.show, g)
   }
-  return [...by.values()].filter((g) => g.count >= SHOW_MIN).sort((a, b) => Number(b.watched) - Number(a.watched) || b.seen - a.seen || b.pop - a.pop || b.count - a.count)
+  return [...by.values()].filter((g) => g.count >= min).sort((a, b) => Number(b.watched) - Number(a.watched) || b.seen - a.seen || b.pop - a.pop || b.count - a.count)
 }
 
 /** The Home row for the holiday that's on, if it has a show with enough episodes. */
@@ -263,7 +263,7 @@ export async function holidayRows(server: PlexServer, sections: PlexSection[], s
 /** One show's holiday episodes for a holiday, oldest first (the order they play as a playlist). */
 export async function holidayEpisodesOf(server: PlexServer, sections: PlexSection[], id: HolidayId, showKey: string): Promise<PlexMedia[]> {
   const chan = (await holidayEpisodeChannels(server, sections, null)).find((c) => c.id === `seasonal:eps:${id}`)
-  const want = new Set(holidayShows(chan).find((g) => g.key === showKey)?.keys ?? [])
+  const want = new Set(holidayShows(chan, 1).find((g) => g.key === showKey)?.keys ?? [])
   const eps = (await leavesOf(server, showKey)).filter((m) => want.has(m.ratingKey))
   return eps.sort((a, b) => (a.originallyAvailableAt ?? '').localeCompare(b.originallyAvailableAt ?? '') || (a.parentIndex ?? 0) - (b.parentIndex ?? 0) || (a.index ?? 0) - (b.index ?? 0))
 }

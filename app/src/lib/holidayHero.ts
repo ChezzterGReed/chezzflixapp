@@ -7,9 +7,9 @@ import { shuffled } from './session'
 import type { Season } from './settings'
 
 const WORDS: Record<HolidayId, { label: string; headline: (show: string) => string; movieLabel: string; moviesExplore: string; showsExplore: string }> = {
-  halloween: { label: 'Spooky Season', headline: (s) => `Celebrate spooky season with ${s}`, movieLabel: 'Spooky Season pick', moviesExplore: 'Explore Halloween collection', showsExplore: 'Explore Halloween episodes' },
-  christmas: { label: 'Holiday Season', headline: (s) => `Unwrap the holidays with ${s}`, movieLabel: 'Holiday pick', moviesExplore: 'Explore holiday collection', showsExplore: 'Explore holiday episodes' },
-  thanksgiving: { label: 'Thanksgiving', headline: (s) => `Give thanks with ${s}`, movieLabel: 'Thanksgiving pick', moviesExplore: 'Explore Thanksgiving collection', showsExplore: 'Explore Thanksgiving episodes' },
+  halloween: { label: 'Spooky Season', headline: (s) => `Celebrate spooky season with ${s}`, movieLabel: 'Spooky Season pick', moviesExplore: 'Explore', showsExplore: 'Explore' },
+  christmas: { label: 'Holiday Season', headline: (s) => `Unwrap the holidays with ${s}`, movieLabel: 'Holiday pick', moviesExplore: 'Explore', showsExplore: 'Explore' },
+  thanksgiving: { label: 'Thanksgiving', headline: (s) => `Give thanks with ${s}`, movieLabel: 'Thanksgiving pick', moviesExplore: 'Explore', showsExplore: 'Explore' },
 }
 
 export async function holidaySlides(server: PlexServer, sections: PlexSection[], season: Season): Promise<PlexMedia[]> {

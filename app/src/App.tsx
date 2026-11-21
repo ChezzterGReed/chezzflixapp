@@ -141,7 +141,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
   const navigate = (v: View) => { if (v.type === 'search' && view.type !== 'search') beforeSearch.current = view; spots.current = []; setView(v); setHistory([]); setDetails([]); window.scrollTo({ top: 0 }) }
   const push = (v: View) => { spots.current.push(getCurrentFocusKey() ?? ''); setHistory((h) => [...h, view]); setView(v); setDetails([]); window.scrollTo({ top: 0 }) }
   // A holiday playlist: these episodes in order, so Next goes to the next holiday episode (not the show's next episode).
-  const playList = (items: PlexMedia[], from: PlexMedia) => { setQueue(items); play(from) }
+  const playList = (items: PlexMedia[], from: PlexMedia) => { setQueue(items, true); play(from) }   // (untracked: like the TV Guide, it doesn't change where you are in the show)
   const playHoliday = async (id: HolidayAction['id'], showKey: string) => {
     const eps = await holidayEpisodesOf(server, sections, id, showKey).catch(() => [] as PlexMedia[])
     if (!eps.length) return say('No holiday episodes found for that show.')
@@ -363,7 +363,7 @@ function Main({ token, server, allSections, profiles, me, onSwitch, onSignOut }:
           {view.type === 'browse' && <BrowseIndex server={server} sections={sections} tab={view.tab} kind={view.kind} section={view.section} onBack={back}
             onGenre={(genre) => push({ type: 'list', title: genre, subtitle: view.section ? view.section.title : view.tab === 'all' ? undefined : ({ movie: 'Movies', show: 'TV Shows', anime: 'Anime' } as Record<string, string>)[view.tab], source: { kind: 'genre', tab: view.tab, genre, sectionKey: view.section?.key } })}
             onCollection={(c) => push({ type: 'list', title: c.title.replace(/^_+/, ''), subtitle: 'Collection', source: { kind: 'collection', id: c.ratingKey } })} />}
-          {view.type === 'holiday' && <HolidayScreen server={server} sections={sections} id={view.id} show={view.show} onBack={back} onPlay={play} onPlayList={playList} onShuffle={shuffle} onShow={(k) => push({ type: 'holiday', id: view.id, show: k })} onTune={() => holiday({ kind: 'tune', id: view.id })} />}
+          {view.type === 'holiday' && <HolidayScreen server={server} sections={sections} id={view.id} show={view.show} onBack={back} onPlay={play} onPlayList={playList} onShuffle={(items) => { const first = startQueue(items, true); if (first) play(first) }} onShow={(k) => push({ type: 'holiday', id: view.id, show: k })} onTune={() => holiday({ kind: 'tune', id: view.id })} />}
           {view.type === 'list' && listLoader && <ListView server={server} token={token} title={view.title} subtitle={view.subtitle} load={listLoader} missing={missingLoader} onOpen={open} onBack={back} />}
           {view.type === 'library' && <Library server={server} token={token} section={view.section} onOpen={open} onShuffle={shuffle}
             onBrowse={(kind) => push({ type: 'browse', kind, tab: view.section.type === 'movie' ? 'movie' : 'show', section: view.section })}

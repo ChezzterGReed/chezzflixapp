@@ -6,6 +6,7 @@ import { Btn } from '../components/AddChannel'
 import { LandscapeCard } from '../components/Card'
 import { HolidayCard, holidayEntries } from '../components/HolidayCards'
 import { useGridNav } from '../lib/gridNav'
+import { useMinimal } from '../lib/layout'
 import { reveal } from '../lib/scroll'
 import { getAllLeaves, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import { holidayAccent, holidayEpisodeChannels, holidayName, holidayShows, holidayTitle, type HolidayId, type HolidayShow } from '../lib/holidayEpisodes'
@@ -18,13 +19,14 @@ interface Props {
 /** Holiday episodes: every show that has some (Explore all), or one show's holiday episodes to play, shuffle or tune in to. */
 export function HolidayScreen({ server, sections, id, show, onBack, onPlayList, onShuffle, onShow, onTune }: Props) {
   const page = useRef<HTMLDivElement>(null)
+  const up = useMinimal() ? '-top-24' : 'top-0'   // the Minimal layout pads this page below its tabs; the glow still reaches the screen's top
   useGridNav(page)
   const [shows, setShows] = useState<HolidayShow[]>()
   const [eps, setEps] = useState<PlexMedia[]>()
 
   useEffect(() => {
     let alive = true
-    holidayEpisodeChannels(server, sections, null).then((c) => { if (alive) setShows(holidayShows(c.find((x) => x.id === `seasonal:eps:${id}`))) }).catch(() => alive && setShows([]))
+    holidayEpisodeChannels(server, sections, null).then((c) => { if (alive) setShows(holidayShows(c.find((x) => x.id === `seasonal:eps:${id}`), 1)) }).catch(() => alive && setShows([]))
     return () => { alive = false }
   }, [server, sections, id])
 
@@ -53,8 +55,8 @@ export function HolidayScreen({ server, sections, id, show, onBack, onPlayList, 
 
   return (
     <div ref={page} className="relative isolate px-[var(--gutter)] pb-24 pt-10" style={{ ['--accent' as string]: heist ? '#f6c445' : holidayAccent(id) }}>
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[460px] bg-[radial-gradient(ellipse_at_20%_0%,color-mix(in_srgb,var(--accent)_34%,transparent),transparent_65%)]" />
-      {heist && <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[460px] bg-[linear-gradient(135deg,rgba(20,45,110,.55),transparent_60%)]" />}
+      <div className={`pointer-events-none absolute inset-x-0 ${up} -z-10 h-[560px] bg-[radial-gradient(ellipse_at_20%_0%,color-mix(in_srgb,var(--accent)_34%,transparent),transparent_65%)]`} />
+      {heist && <div className={`pointer-events-none absolute inset-x-0 ${up} -z-10 h-[560px] bg-[linear-gradient(135deg,rgba(20,45,110,.55),transparent_60%)]`} />}
       <BackButton onBack={onBack} />
       <div className="fade-up mb-8">
         {heist && <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-accent px-3.5 py-1 text-[0.8rem] font-extrabold uppercase tracking-[0.16em] text-black"><Trophy size={14} />The Halloween Heist</div>}

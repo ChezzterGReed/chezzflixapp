@@ -3,17 +3,21 @@
 import type { PlexMedia } from './plex'
 
 let queue: PlexMedia[] = []
+let untracked = false   // a queue that leaves your watch history alone (holiday episodes, like the TV Guide)
 
 /** Sets up a new random order and returns the first title to play. */
-export function startQueue(items: PlexMedia[]): PlexMedia | undefined {
+export function startQueue(items: PlexMedia[], noTrack = false): PlexMedia | undefined {
+  untracked = noTrack
   const a = items.filter((m) => m.type === 'movie' || m.type === 'episode')
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] }
   queue = a
   return a[0]
 }
 /** Plays these in the order given (a playlist): Next and Previous follow it instead of the show's own order. */
-export const setQueue = (items: PlexMedia[]) => { queue = items.filter((m) => m.type === 'movie' || m.type === 'episode') }
-export const clearQueue = () => { queue = [] }
+export const setQueue = (items: PlexMedia[], noTrack = false) => { untracked = noTrack; queue = items.filter((m) => m.type === 'movie' || m.type === 'episode') }
+export const clearQueue = () => { queue = []; untracked = false }
+/** Is `m` playing from a queue that shouldn't touch watch progress? */
+export const isUntracked = (m: PlexMedia) => untracked && queue.some((x) => x.ratingKey === m.ratingKey)
 export const inQueue = (m: PlexMedia) => queue.some((x) => x.ratingKey === m.ratingKey)
 /** The titles either side of `m` in the shuffle, or null when `m` isn't part of one. */
 export function queueNeighbors(m: PlexMedia): { prev: PlexMedia | null; next: PlexMedia | null; at: number; total: number } | null {
