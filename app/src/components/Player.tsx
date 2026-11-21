@@ -84,8 +84,10 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
   const [countdown, setCountdown] = useState<number | null>(null)
   const [suggest, setSuggest] = useState(false)   // the "what to watch next" screen after a movie
   const suggestRef = useRef(false); suggestRef.current = suggest
+  const [nextSel, setNextSel] = useState<0 | 1 | null>(null)   // the remote's cursor on the Up Next card: 0 = Play now, 1 = Stay (null = not on the card yet)
   const [stayed, setStayed] = useState(false)   // "Stay" was chosen on the Up Next card: hide it and don't move on by itself
   useEffect(() => { setStayed(false) }, [media.ratingKey])
+  const stay = () => { setCountdown(null); setStayed(true); setNextSel(null) }   // "Stay": hide the Up Next card and don't move on by itself
   const idle = useRef<number>(0)
   const fallbackStep = useRef<'none' | 'stream' | 'transcode'>('none')
   // ----- cinematic start: fade to black -> hold a beat while loading -> play as the black lifts -----
@@ -407,7 +409,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
 
   // ----- keep spatial-nav out of the way; the player owns the keys -----
   useEffect(() => { pauseNav(); return () => resumeNav() }, [])
-  useBack(() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (stylePanel !== null) setStylePanel(null); else if (morePanel !== null) setMorePanel(null); else if (sleepDone) { setSleepDone(false); close() } else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })
+  useBack(() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (stylePanel !== null) setStylePanel(null); else if (morePanel !== null) setMorePanel(null); else if (sleepDone) { setSleepDone(false); close() } else if (panel) setPanel(null); else if (levelPanel !== null) setLevelPanel(null); else if (showNext && next) stay(); else if (ctlRow) { setCtlRow(null); setControls(false) } else close() })   // (with the Up Next card showing, Back just dismisses it, as Stay)
   useEffect(() => { poke(); return () => clearTimeout(idle.current) }, [poke])
 
   const seek = useCallback((t: number) => {
@@ -666,6 +668,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
     return () => clearInterval(t)
   }, [showNext, settings.autoplayNext, settings.nextCountdown])
   useEffect(() => { if (countdown !== null && countdown <= 0) goNext() }, [countdown, goNext])
+  useEffect(() => { if (!showNext) setNextSel(null) }, [showNext])
 
   // Skip credits (when there's no next episode to hand over to: movies and series finales)
   const inCredits = !!credits && duration > 0 && time >= credits.startTimeOffset / 1000 && time < credits.endTimeOffset / 1000
@@ -797,6 +800,11 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         else return
         e.preventDefault(); e.stopPropagation(); poke(); return
       }
+      // The Up Next card: any arrow puts the remote on it (Left / Up = Play now, Right / Down = Stay), OK presses the one it is on.
+      if (showNext && next && !ctlRow) {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { setNextSel(e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? 0 : 1); poke(); e.preventDefault(); e.stopPropagation(); return }
+        if (e.key === 'Enter' && nextSel === 1) { stay(); e.preventDefault(); e.stopPropagation(); return }
+      }
       // On-screen actions (skip intro, up next...) answer to OK first.
       if (e.key === 'Enter' && primary && ctlRow !== 'buttons') { primary(); e.preventDefault(); return }
       // Controls up and focused: the remote moves around them.
@@ -810,7 +818,7 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
         } else if (e.key === 'ArrowUp') { if (ctlRow === 'buttons') setCtlRow('seek'); poke() }
         else if (e.key === 'ArrowDown') {
           if (ctlRow === 'seek') { setCtlRow('buttons'); poke() }
-          else if (showNext && countdown !== null) { setCountdown(null); setStayed(true) }
+          else if (showNext && countdown !== null) stay()
           else { setCtlRow(null); setControls(false) }
         } else if (e.key === 'Enter' || e.key === ' ') { if (ctlRow === 'seek') toggle(); else acts[cur]?.(); poke() }
         else if (!['k', 'MediaPlayPause', 'm', 'v', 'f', 'n', 'p', 'c', 's', 'j', 'l'].includes(e.key)) return
@@ -908,8 +916,8 @@ export function Player({ server, media, onClose: finishClose, onPlayNext, onSwit
             <div className="absolute bottom-3 left-4 right-4"><div className="text-xs font-bold uppercase tracking-widest text-white/60">Up next{countdown !== null ? ` · ${Math.max(0, countdown)}s` : ''}</div>
               <div className="truncate font-bold">{[episodeLabel(next), next.title].filter(Boolean).join(' · ')}</div></div></div>
           <div className="flex gap-2 p-3">
-            <button onClick={goNext} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-2.5 text-sm font-bold text-black ring-2 ring-white/40 transition hover:scale-[1.04] hover:bg-accent hover:ring-accent active:scale-95"><Play size={15} fill="currentColor" />Play now</button>
-            <button onClick={() => { setCountdown(null); setStayed(true) }} className="rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/25 active:scale-95">Stay</button>
+            <button onClick={goNext} className={`flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-2.5 text-sm font-bold text-black transition hover:scale-[1.04] hover:bg-accent hover:ring-accent active:scale-95 ${nextSel === 0 ? 'scale-105 ring-4 ring-accent' : 'ring-2 ring-white/40'}`}><Play size={15} fill="currentColor" />Play now</button>
+            <button onClick={stay} className={`rounded-full px-5 py-2.5 text-sm font-semibold transition hover:bg-white/25 active:scale-95 ${nextSel === 1 ? 'scale-105 bg-white text-black ring-4 ring-accent' : 'bg-white/10'}`}>Stay</button>
           </div>
         </div>
       )}

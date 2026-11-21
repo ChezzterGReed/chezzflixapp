@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Radio } from 'lucide-react'
+import { useImgRetry } from '../lib/img'
 import { Leaf } from './Leaf'
 import { Bat, Ghost } from './Spooks'
 import { Pumpkin } from './Pumpkin'
@@ -58,6 +59,7 @@ export function HolidayCard({ entry, row, server, minimal, focusKey, onEnter, on
   const [loaded, setLoaded] = useState(false)
   const s = entry.show
   const img = s ? imageUrl(server, s.still ?? s.art ?? s.thumb, 640, 360) : undefined
+  const retry = useImgRetry(img)
   const shell = minimal
     ? 'relative h-[var(--mh)] aspect-video overflow-hidden rounded-2xl transition-[transform,box-shadow] duration-200 ease-out group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_0_0_3px_#fff,0_18px_40px_-8px_rgba(0,0,0,.8)]'
     : `relative aspect-video overflow-hidden rounded-xl ${focusRing}`
@@ -66,7 +68,7 @@ export function HolidayCard({ entry, row, server, minimal, focusKey, onEnter, on
     <Focusable focusKey={focusKey} onEnter={onEnter} onFocus={onFocus} title={label} leftToRail={leftEdge} className={minimal ? 'shrink-0' : 'w-[var(--land-w)] shrink-0'}
       onArrow={onUp ? (d) => { if (d === 'up') return onUp() } : undefined}>
       <div className={`${shell} ${s ? 'bg-surface' : entry.action.kind === 'tune' ? 'bg-accent text-black' : 'bg-white/10 ring-1 ring-white/15'}`}>
-        {s && img && <img src={img} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} className={`absolute inset-0 size-full object-cover brightness-[.38] saturate-[.8] transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} />}
+        {s && img && <img src={retry.src} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} onError={retry.onError} className={`absolute inset-0 size-full object-cover brightness-[.38] saturate-[.8] transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} />}
         {s && <div className="absolute inset-0 bg-black/25" />}
         {s && <Deco id={row.id} />}
         {s && (

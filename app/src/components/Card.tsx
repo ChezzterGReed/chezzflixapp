@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { LOW_POWER } from '../lib/perf'
+import { useImgRetry } from '../lib/img'
 import { Check, Pin } from 'lucide-react'
 import { Focusable } from './Focusable'
 import { CheckMark } from './SelectionBar'
@@ -9,10 +10,11 @@ import { backdropPath, episodeLabel, formatLeft, imageUrl, prefetchDetail, isSpo
 
 function Img({ src, alt, className = '' }: { src: string; alt: string; className?: string }) {
   const [loaded, setLoaded] = useState(false)
+  const retry = useImgRetry(src)
   return (
     <>
       {!loaded && <div className="skeleton absolute inset-0" />}
-      {src && <img src={src} alt={alt} loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)}
+      {src && <img src={retry.src} alt={alt} loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} onError={retry.onError}
         className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'} ${className}`} />}
     </>
   )

@@ -4,6 +4,7 @@ import { shuffled } from '../lib/session'
 import { useLastBrand } from '../lib/brand'
 import { SwapText } from './SwapText'
 
+const MIN_SHOW_MS = 2200
 const PLAIN_MESSAGES = ['Connecting to your server…', 'Gathering your libraries…', 'Dimming the lights…', 'Cueing up something good…']
 
 // October: spookier status lines (in a different order each launch).
@@ -28,21 +29,25 @@ const HARVEST_MESSAGES = ['Basting the turkey…', 'Passing the potatoes…', 'R
 /** Full-screen loading scene: the aurora backdrop, a ringed logo, the service name easing in, and rotating status lines. */
 export function LoadingScreen({ visible }: { visible: boolean }) {
   const [mounted, setMounted] = useState(visible)
+  // Whenever the loading screen appears it stays for at least a moment, even if everything is ready at once: the name has time to arrive and be seen.
+  const [held, setHeld] = useState(visible)
+  useEffect(() => { if (!visible) return; setHeld(true); const t = setTimeout(() => setHeld(false), MIN_SHOW_MS); return () => clearTimeout(t) }, [visible])
+  const shown = visible || held
   const [i, setI] = useState(0)
   const season = useSeason()
   const MESSAGES = season === 'halloween' ? ['Connecting to your server…', ...shuffled(SPOOKY_MESSAGES, 12)] : season === 'thanksgiving' ? ['Connecting to your server…', ...shuffled(HARVEST_MESSAGES, 12)] : season === 'christmas' ? ['Connecting to your server…', ...shuffled(HOLIDAY_MESSAGES, 12)] : PLAIN_MESSAGES
   useEffect(() => {
-    if (visible) { setMounted(true); return }
+    if (shown) { setMounted(true); return }
     const t = setTimeout(() => setMounted(false), 800)
     return () => clearTimeout(t)
-  }, [visible])
-  useEffect(() => { if (!visible) return; const t = setInterval(() => setI((x) => (x + 1) % MESSAGES.length), 2300); return () => clearInterval(t) }, [visible])
+  }, [shown])
+  useEffect(() => { if (!shown) return; const t = setInterval(() => setI((x) => (x + 1) % MESSAGES.length), 2300); return () => clearInterval(t) }, [shown])
 
   const brand = useLastBrand()
 
   if (!mounted) return null
   return (
-    <div aria-live="polite" className={`fixed inset-0 z-[90] overflow-hidden transition-opacity duration-700 ease-in-out ${visible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+    <div aria-live="polite" className={`fixed inset-0 z-[90] overflow-hidden transition-opacity duration-700 ease-in-out ${shown ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
       <div className="absolute inset-0 bg-[#07070a]" />
       {/* just a reminder of the theme colour: a soft glow rising from the bottom edge */}
       <div className="load-glow absolute inset-x-0 bottom-0 h-[78%]" />

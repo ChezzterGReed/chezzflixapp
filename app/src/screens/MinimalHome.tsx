@@ -11,6 +11,7 @@ import { SeasonIcon } from '../components/SeasonIcon'
 import { backdropPath, episodeLabel, formatRuntime, getSectionItems, imageUrl, logoPath, posterPath, progressOf, type PlexMedia, type PlexSection, type PlexServer } from '../lib/plex'
 import type { AnimeInfo, HomeRow, Tab } from '../lib/homeData'
 import { playLabel } from '../components/Hero'
+import { useImgRetry } from '../lib/img'
 import { HolidayCard, holidayEntries, type HolidayAction } from '../components/HolidayCards'
 import { pendingFocus, tabDown } from '../lib/layout'
 
@@ -82,12 +83,13 @@ function MCard({ m, server, row, wide, onEnter, onFocus, fromContinue, fromRecs,
   const [w, h] = wide ? WIDE : POSTER
   const p = progressOf(m)
   const [loaded, setLoaded] = useState(false)
+  const retry = useImgRetry(art ? imageUrl(server, art, w, h) : undefined)
   return (
     <Focusable focusKey={`mcard-${row}-${m.ratingKey}`} onEnter={onEnter} onFocus={onFocus} title={m.title} className="shrink-0"
       onLongPress={m.type === 'collection' ? undefined : () => openMenu(m, { fromContinue, fromRecs })}
       onArrow={(d) => { if (d === 'up' && onUp) return onUp(); }}>
       <div className={`relative h-[var(--mh)] overflow-hidden rounded-2xl bg-white/8 transition-[transform,box-shadow] duration-200 ease-out group-data-[hl=true]/f:scale-[1.07] group-data-[hl=true]/f:shadow-[0_0_0_3px_#fff,0_18px_40px_-8px_rgba(0,0,0,.8)] ${wide ? 'aspect-video' : 'aspect-[2/3]'}`}>
-        {art && <img src={imageUrl(server, art, w, h)} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} className={`absolute inset-0 size-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} />}
+        {art && <img src={retry.src} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(true)} onError={retry.onError} className={`absolute inset-0 size-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} />}
         {m.newSeason && <div className="absolute left-2 top-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">New</div>}
         {p > 0 && <div className="absolute inset-x-0 bottom-0 h-1.5 bg-white/25"><div className="h-full bg-accent" style={{ width: `${p * 100}%` }} /></div>}
       </div>
