@@ -184,6 +184,11 @@ export function MinimalHome({ server, sections, anime, tab, hero, rows, rotate, 
     if (key.startsWith('mcard-') || key.startsWith('mtitle-') || key === 'mprofile') { setRowsMode(true); if (key !== 'mprofile') lastRow.current = key }
     else if (key.startsWith('hero-')) setRowsMode(false)
   }, [key])
+  // The row in view always follows the cursor: whatever lands on a card or a row title brings its row up, even if that card's own focus callback didn't run in time.
+  useEffect(() => {
+    const r = key?.match(/^m(?:card|title)-(\d+)/)
+    if (r) setActive(Number(r[1]))
+  }, [key])
   const inRows = !toHero && rowsMode
   const hasHero = !!hero?.length
   const heroItem = hasHero ? hero![hi % hero!.length] : undefined

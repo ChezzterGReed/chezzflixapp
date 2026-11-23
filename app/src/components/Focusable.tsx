@@ -46,7 +46,15 @@ export function Focusable({ focusKey, onEnter, onLongPress, onFocus, className =
           keyLong.current = false
         }
       : undefined,
-    onFocus: () => { setFocusedKey(keyRef.current); if (ref.current) { revealInPanel(ref.current as HTMLElement); onFocus?.(ref.current as HTMLElement); edgeSnap(ref.current as HTMLElement) } },
+    onFocus: () => {
+      setFocusedKey(keyRef.current)
+      const el = ref.current as HTMLElement | null
+      if (!el) return
+      // Each step on its own, so one failing can never stop the screen's own reaction (a row sliding into view) from running.
+      try { revealInPanel(el) } catch { /* keep going */ }
+      try { onFocus?.(el) } catch (e) { console.warn('[focus]', e) }
+      try { edgeSnap(el) } catch { /* keep going */ }
+    },
     onArrowPress: (dir) => {
       if (onArrow && onArrow(dir as 'left' | 'right' | 'up' | 'down') === false) return false
       if (dir === 'left' && leftToRail) { if (!justMoved()) setFocus('SIDEBAR'); return false }
