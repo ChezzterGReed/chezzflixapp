@@ -12,6 +12,9 @@ import { nowNext, setLastWatched, useLive, type LiveChannel } from '../lib/live'
 interface Props { channels: LiveChannel[]; start: number; /** Closed; `idx` is the channel that was on screen. */ onClose: (idx: number) => void }
 
 const TUNE_DELAY = 350   // wait for the remote to settle, so flipping through channels doesn't open a connection for each one
+// The player's usual "reconnect" settings (for files) make live streams like Pluto's wait forever; channels use these instead (and the usual ones come back on leaving).
+const LIVE_NET = 'reconnect_streamed=1,reconnect_delay_max=8'
+const FILE_NET = 'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=4xx,5xx,reconnect_delay_max=8'
 const DEFAULT_UA = 'VLC/3.0.20 LibVLC/3.0.20'   // many playlist hosts turn away a player that doesn't introduce itself as a known one
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
@@ -74,7 +77,7 @@ export function LivePlayer({ channels, start, onClose }: Props) {
     try {
       if (modeRef.current === 'native') {
         setMediaInfo({ title: ch.name })
-        if (!isAndroid) { await mpvSet('user-agent', ch.ua || DEFAULT_UA).catch(() => {}); await mpvSet('referrer', ch.referrer ?? '').catch(() => {}) }
+        if (!isAndroid) { await mpvSet('stream-lavf-o', LIVE_NET).catch(() => {}); await mpvSet('user-agent', ch.ua || DEFAULT_UA).catch(() => {}); await mpvSet('referrer', ch.referrer ?? '').catch(() => {}) }
         await mpvCmd('loadfile', ch.url, 'replace', '-1', 'pause=no')
       } else {
         const v = video.current
@@ -114,6 +117,7 @@ export function LivePlayer({ channels, start, onClose }: Props) {
     return () => {
       dead = true; off?.()
       mpvCmd('stop').catch(() => {})
+      if (!isAndroid) mpvSet('stream-lavf-o', FILE_NET).catch(() => {})
       setNativeVideoActive(false)
       document.documentElement.classList.add('ui-fade')
       setTimeout(() => document.documentElement.classList.remove('ui-fade'), 900)
