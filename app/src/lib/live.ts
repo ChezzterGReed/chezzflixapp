@@ -57,22 +57,26 @@ export async function loadLive(url: string, force = false): Promise<void> {
 }
 
 let epgLoading: Promise<void> | null = null
-/** What's on now and next, from the guide (the playlist's own address unless one is given in Settings). Only channels with a guide id are asked for. */
+/** What's on now and next, from the guide(s): the addresses given in Settings, else the ones the playlist names (it may name several). Only channels with a guide id are asked for. */
 export async function loadEpg(override: string, force = false): Promise<void> {
-  const url = (override || state.epgUrl || '').trim()
-  if (!url) { set({ epgStatus: 'none' }); return }
-  if (!inTauri) { set({ epgStatus: 'none' }); return }   // (the guide files are large and gzipped: the app reads them itself)
+  const urls = [...new Set((override.trim() || state.epgUrl || '').split(/[\s,]+/).filter((u) => /^https?:\/\//i.test(u)))]
+  if (!urls.length || !inTauri) { set({ epgStatus: 'none' }); return }   // (the guide files are large and gzipped: the app reads them itself)
   if (!force && state.epgStatus === 'ready' && Date.now() - state.epgAt < EPG_FRESH_MS) return
   if (epgLoading) return epgLoading
-  const ids = [...new Set(state.channels.map((c) => c.epg).filter((x): x is string => !!x))]
+  const ids = [...new Set(state.channels.flatMap((c) => [c.epg, c.epgAlt]).filter((x): x is string => !!x))]
   if (!ids.length) { set({ epgStatus: 'none' }); return }
   if (!state.epg.size) set({ epgStatus: 'loading' })
   epgLoading = (async () => {
     try {
       const now = Date.now()
-      const r = await (await import('@tauri-apps/api/core')).invoke<Record<string, EpgProgram[]>>('live_epg', { url, ids, from: now - 3600_000, to: now + EPG_AHEAD_MS })
+      const { invoke } = await import('@tauri-apps/api/core')
+      const got = await Promise.allSettled(urls.map((url) => invoke<Record<string, EpgProgram[]>>('live_epg', { url, ids, from: now - 3600_000, to: now + EPG_AHEAD_MS })))
       const useful = (p: EpgProgram) => !/^(no (program )?information|no info available|to be announced|tba)$/i.test(p.t.trim())   // (placeholders say nothing: the channel's group shows instead)
-      set({ epg: new Map(Object.entries(r).map(([k, v]) => [k, v.filter(useful)])), epgStatus: 'ready', epgAt: Date.now() })
+      const merged = new Map<string, EpgProgram[]>()
+      for (const g of got) if (g.status === 'fulfilled') for (const [k, v] of Object.entries(g.value)) { const l = v.filter(useful); if (l.length > (merged.get(k)?.length ?? 0)) merged.set(k, l) }
+      const failed = got.every((g) => g.status === 'rejected')
+      if (failed) console.warn('[live] guides failed', got)
+      set({ epg: failed && state.epg.size ? state.epg : merged, epgStatus: failed ? (state.epg.size ? 'ready' : 'error') : 'ready', epgAt: Date.now() })
     } catch (e) { console.warn('[live] guide failed', e); set({ epgStatus: state.epg.size ? 'ready' : 'error' }) } finally { epgLoading = null }
   })()
   return epgLoading
@@ -80,10 +84,15 @@ export async function loadEpg(override: string, force = false): Promise<void> {
 
 /** What's on now and what's next for a channel (from the guide, when there is one). */
 export function nowNext(c: LiveChannel | undefined, at = Date.now()): { now?: EpgProgram; next?: EpgProgram } {
-  const list = c?.epg ? state.epg.get(c.epg) : undefined
-  if (!list?.length) return {}
-  const i = list.findIndex((p) => p.s <= at && p.e > at)
-  return i >= 0 ? { now: list[i], next: list[i + 1] } : { next: list.find((p) => p.s > at) }
+  let upcoming: { next?: EpgProgram } = {}
+  for (const k of [c?.epg, c?.epgAlt]) {
+    const list = k ? state.epg.get(k) : undefined
+    if (!list?.length) continue
+    const i = list.findIndex((p) => p.s <= at && p.e > at)
+    if (i >= 0) return { now: list[i], next: list[i + 1] }
+    if (!upcoming.next) upcoming = { next: list.find((p) => p.s > at) }
+  }
+  return upcoming
 }
 
 /** The groups in a playlist, biggest first. */

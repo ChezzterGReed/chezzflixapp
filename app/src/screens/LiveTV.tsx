@@ -7,7 +7,6 @@ import { groupsOf, lastWatched, loadEpg, loadLive, nowNext, useLive, type LiveCh
 import { reveal } from '../lib/scroll'
 import { useSettings } from '../lib/settings'
 
-const PAGE = 60
 const FAV = '★ Favorites'
 const safe = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, '_')
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -27,7 +26,7 @@ function Row({ c, n, fav, onPlay, onFav, onFocus }: { c: LiveChannel; n: number;
   const pct = now ? Math.max(0, Math.min(100, ((Date.now() - now.s) / (now.e - now.s)) * 100)) : 0
   const [bad, setBad] = useState(false)
   return (
-    <div className="flex items-stretch gap-2">
+    <div className="flex items-stretch gap-2 [contain-intrinsic-size:auto_84px] [content-visibility:auto]">   {/* (rows off screen aren't drawn, so the whole list can be on the page) */}
       <Focusable focusKey={`live-ch-${safe(c.id)}`} onEnter={onPlay} onLongPress={onFav} onFocus={onFocus} title={c.name} className="min-w-0 flex-1">
         <div className="flex items-center gap-4 rounded-2xl bg-white/[0.06] px-4 py-3 ring-1 ring-white/8 transition-all group-hover/f:bg-white/12 group-data-[hl=true]/f:scale-[1.01] group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">
           <span className="w-9 shrink-0 text-right text-sm font-bold tabular-nums opacity-50">{n}</span>
@@ -61,7 +60,6 @@ export function LiveTV() {
   const live = useLive()
   const [group, setGroup] = useState('')
   const [q, setQ] = useState('')
-  const [limit, setLimit] = useState(PAGE)
   const [watching, setWatching] = useState<{ list: LiveChannel[]; idx: number }>()
   const input = useRef<HTMLInputElement>(null)
   const landed = useRef(false)
@@ -75,14 +73,12 @@ export function LiveTV() {
     const needle = q.trim().toLowerCase()
     return live.channels.filter((c) => (!group ? true : group === FAV ? favs.has(c.id) : c.groups.includes(group)) && (!needle || c.name.toLowerCase().includes(needle) || c.groups.some((g) => g.toLowerCase().includes(needle))))
   }, [live.channels, group, q, favs])
-  useEffect(() => { setLimit(PAGE) }, [group, q])
 
   // The cursor starts on the channel you watched last (or the first one).
   useEffect(() => {
     if (landed.current || !list.length) return
     landed.current = true
     const last = lastWatched(), at = last ? list.findIndex((c) => c.id === last) : -1
-    if (at >= limit) setLimit(at + 20)
     // (Arriving from a tab or the side menu, the cursor stays there until you move down.)
     const from = getCurrentFocusKey() ?? ''
     if (from.startsWith('mtab-') || from.startsWith('nav-') || from === 'TOPBAR' || from === 'SIDEBAR') return
@@ -134,12 +130,12 @@ export function LiveTV() {
             {groups.map((g) => <Chip key={g.name} label={g.name} count={g.count} active={group === g.name} onEnter={() => setGroup(group === g.name ? '' : g.name)} />)}
           </div>
           <div className="space-y-2">
-            {list.slice(0, limit).map((c, i) => <Row key={c.id} c={c} n={i + 1} fav={favs.has(c.id)} onPlay={() => open(i)} onFav={() => toggleFav(c)} onFocus={(el) => { reveal(el); if (i >= limit - 12) setLimit((l) => l + PAGE) }} />)}
+            {list.map((c, i) => <Row key={c.id} c={c} n={i + 1} fav={favs.has(c.id)} onPlay={() => open(i)} onFav={() => toggleFav(c)} onFocus={(el) => reveal(el)} />)}
           </div>
           {list.length === 0 && <p className="py-12 text-white/55">{group === FAV ? 'No favorites yet. Hold OK on a channel to add one.' : `No channels match “${q}”.`}</p>}
         </>
       )}
-      {watching && <LivePlayer channels={watching.list} start={watching.idx} onClose={(i) => { if (i >= limit) setLimit(i + 20); back(i) }} />}
+      {watching && <LivePlayer channels={watching.list} start={watching.idx} onClose={(i) => back(i)} />}
     </div>
   )
 }

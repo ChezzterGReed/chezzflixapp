@@ -302,8 +302,8 @@ function LiveSettings() {
       <p className="px-4 pb-3 text-sm text-white/55">Watch channels from an M3U playlist you already have. Live TV appears in the menu once one is added, and goes away if you remove it. Chezzflix doesn’t provide any channels.</p>
       <Heading>Playlist address</Heading>
       <div className="px-4 py-2"><AddressField value={url} onChange={(v) => { setUrl(v); setMsg(undefined) }} placeholder="https://example.com/channels.m3u" /></div>
-      <Heading>Guide address (optional)</Heading>
-      <div className="px-4 py-2"><AddressField value={epg} onChange={(v) => { setEpg(v); setMsg(undefined) }} placeholder={live.epgUrl && has ? 'Using the guide named in the playlist' : 'XMLTV guide, e.g. https://example.com/guide.xml.gz'} /></div>
+      <Heading>Guide addresses (optional)</Heading>
+      <div className="px-4 py-2"><AddressField value={epg} onChange={(v) => { setEpg(v); setMsg(undefined) }} placeholder={live.epgUrl && has ? 'Using the guides named in the playlist' : 'XMLTV guides, separated by spaces, e.g. https://example.com/guide.xml.gz'} /></div>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <Focusable onEnter={() => { if (!busy && url.trim() && (changed || !has)) void save() }} title="Add playlist">
           <div className={`flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold transition-colors group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${url.trim() && (changed || !has) ? 'bg-accent text-black' : 'bg-white/12 text-white/50'}`}>{busy && <Loader2 size={16} className="animate-spin" />}{has && !changed ? 'Saved' : has ? 'Save changes' : 'Add playlist'}</div>

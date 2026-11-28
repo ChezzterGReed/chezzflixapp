@@ -21,6 +21,7 @@ export function LivePlayer({ channels, start, onClose }: Props) {
   useLive()   // (re-reads what's on when the guide arrives)
   const inputMode = useInputMode()
   const [mode, setMode] = useState<'pending' | 'native' | 'web'>('pending')
+  const [listening, setListening] = useState(false)   // the engine's events are being heard: tuning waits for this, so a quick "loaded" can't be missed
   const [idx, setIdx] = useState(start)
   const [status, setStatus] = useState<'tuning' | 'playing' | 'error'>('tuning')
   const [banner, setBanner] = useState(true)
@@ -46,6 +47,7 @@ export function LivePlayer({ channels, start, onClose }: Props) {
   const fails = useRef(0)
   const digitTimer = useRef(0)
   const lastMove = useRef(0)
+  const ptr = useRef({ x: -1, y: -1 })   // (the web view repeats a mouse move when the picture behind it changes: only a real move shows the info)
 
   const flash = useCallback(() => { setBanner(true); clearTimeout(bannerTimer.current); bannerTimer.current = window.setTimeout(() => { if (!tracksOpenRef.current) { setBanner(false); setCtl(false) } }, 5000) }, [])
   // The clock on the banner (and the progress of what's on) moves along.
@@ -107,7 +109,7 @@ export function LivePlayer({ channels, start, onClose }: Props) {
     onMpv((p) => { if (p.name === 'eof-reached' && p.value === true) recover('ended') }, (e) => {
       if (e.event === 'loaded') { clearTimeout(loadWatch.current); fails.current = 0; if (!nativeOn.current) { nativeOn.current = true; setNativeVideoActive(true) } setStatus('playing'); setWhy(''); flash() }
       if ((e.event === 'end' && e.reason === 4) || e.event === 'error') recover(`player ${e.message ?? ''}`.trim())
-    }).then((u) => { if (dead) u(); else off = u })
+    }).then((u) => { if (dead) u(); else { off = u; setListening(true) } })
     mpvSet('volume', 100).catch(() => {}); mpvSet('mute', false).catch(() => {})
     return () => {
       dead = true; off?.()
@@ -131,12 +133,12 @@ export function LivePlayer({ channels, start, onClose }: Props) {
 
   // Tune whenever the channel changes (after a short settle), once the engine is chosen.
   useEffect(() => {
-    if (mode === 'pending') return
+    if (mode === 'pending' || (mode === 'native' && !listening)) return
     clearTimeout(recovering.current); recovering.current = 0; fails.current = 0
     setStatus('tuning'); flash()
     const t = setTimeout(() => tune(idx), idx === start && seq.current === 0 ? 0 : TUNE_DELAY)
     return () => clearTimeout(t)
-  }, [idx, mode, tune, start, flash])
+  }, [idx, mode, listening, tune, start, flash])
 
   const flip = (d: 1 | -1) => setIdx((i) => (i + d + channels.length) % channels.length)
   const flipRef = useRef(flip); flipRef.current = flip
@@ -182,7 +184,7 @@ export function LivePlayer({ channels, start, onClose }: Props) {
   const pct = onNow ? Math.max(0, Math.min(100, ((at - onNow.s) / (onNow.e - onNow.s)) * 100)) : 0
   return (
     <Layer player onClose={() => { if (ctlRef.current) { setCtl(false); setBanner(false) } else close() }} scrim="bg-transparent">
-      <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
+      <div className="absolute inset-0" onMouseMove={(e) => { const t = Date.now(), d = Math.abs(e.clientX - ptr.current.x) + Math.abs(e.clientY - ptr.current.y); ptr.current = { x: e.clientX, y: e.clientY }; if (d > 4 && t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { clearTimeout(loadWatch.current); fails.current = 0; setStatus('playing'); flash() }} onEnded={() => recover('ended')} onError={() => recover('video')} />}
         <Focusable focusKey="live-surface" title="Channel"
           onEnter={() => { if (banner && status === 'playing' && mode === 'native' && inputMode === 'key') openTracks(); else flash() }}

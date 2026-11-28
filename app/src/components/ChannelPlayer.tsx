@@ -127,6 +127,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   // The info banner (channel, title, episode, and the audio & subtitles button): it stays up while the track menu is open.
   const flash = useCallback(() => { setBanner(true); clearTimeout(bannerTimer.current); bannerTimer.current = window.setTimeout(() => { if (!tracksOpenRef.current) { setBanner(false); setCtl(false) } }, 5000) }, [])
   const lastMove = useRef(0)
+  const ptr = useRef({ x: -1, y: -1 })   // (the web view repeats a mouse move when the picture behind it changes: only a real move shows the info)
   const openTracks = useCallback(() => {
     setCtl(false)
     flash()
@@ -372,7 +373,7 @@ export function ChannelPlayer({ server, channels, start, onClose, onIdle }: Prop
   const now = Date.now()
   return (
     <Layer player onClose={() => { if (level.note?.kind === 'offer') level.declineOffer(); else if (level.note) level.closeNote(); else if (ctlRef.current) { setCtl(false); setBanner(false) } else close() }} scrim="bg-transparent">
-      <div className="absolute inset-0" onMouseMove={() => { const t = Date.now(); if (t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
+      <div className="absolute inset-0" onMouseMove={(e) => { const t = Date.now(), d = Math.abs(e.clientX - ptr.current.x) + Math.abs(e.clientY - ptr.current.y); ptr.current = { x: e.clientX, y: e.clientY }; if (d > 4 && t - lastMove.current > 500) { lastMove.current = t; flash() } }}>
         {mode === 'web' && <video ref={video} playsInline className="absolute inset-0 size-full bg-black object-contain" onPlaying={() => { clearTimeout(loadWatch.current); setStatus('playing'); flash() }} onEnded={() => tune(idxRef.current)} onError={() => recover('video')} />}
         {/* Receives the remote: Up / Down (or Left / Right, per the Guide setting) flip channels, OK shows the banner */}
         <Focusable focusKey="channel-surface" title="Channel"

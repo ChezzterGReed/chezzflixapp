@@ -4,6 +4,8 @@ export interface LiveChannel {
   id: string
   /** The guide's id for this channel (tvg-id), when the playlist gives one. */
   epg?: string
+  /** A second guide id, read from the stream address when it names the channel (e.g. a Pluto TV channel id). */
+  epgAlt?: string
   name: string
   logo?: string
   groups: string[]
@@ -56,7 +58,7 @@ export function parseM3U(text: string): LivePlaylist {
         const groups = (attr(cur.line, 'group-title') ?? '').split(/[;|]/).map((g) => g.trim()).filter(Boolean).map((g) => (/^undefined$/i.test(g) ? 'Other' : g))
         const ua = l.includes('|') ? undefined : cur.ua
         out.push({
-          id: n === 1 ? base : `${base}#${n}`, epg: tvg, name: named.name, logo: attr(cur.line, 'tvg-logo'), groups: groups.length ? groups : ['Other'], url: l,
+          id: n === 1 ? base : `${base}#${n}`, epg: tvg, epgAlt: /^https?:\/\/[^/]*jmp2\.uk\/plu-([0-9a-f]{24})/i.exec(l)?.[1], name: named.name, logo: attr(cur.line, 'tvg-logo'), groups: groups.length ? groups : ['Other'], url: l,
           quality: named.quality, notes: named.notes.length ? named.notes : undefined, ua, referrer: cur.referrer,
         })
       }
