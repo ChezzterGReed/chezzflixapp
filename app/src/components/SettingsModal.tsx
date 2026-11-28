@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, Palette, Radio, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Download, Eye, Film, Home, Inbox, Info, Loader2, MonitorPlay, Palette, Radio, Sparkles, Play, Plus, RotateCcw, Trash2, Type, X } from 'lucide-react'
 import { FocusContext, getCurrentFocusKey, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Layer } from './Layer'
 import { resetGuide } from '../lib/tvguide'
@@ -17,6 +17,7 @@ import { RECAP_GAP_MAX, RECAP_GAP_MIN } from '../lib/recapNudge'
 import { UpdateDot, useUpdatePending } from './UpdateDot'
 import { checkForUpdate, fetchReleases, installUpdate, setChannel, useUpdater, type ReleaseInfo } from '../lib/updater'
 import { normalizeBase, testConnection } from '../lib/overseerr'
+import { getLive, loadEpg, loadLive, useLive } from '../lib/live'
 
 const ring = 'group-data-[hl=true]/f:ring-2 group-data-[hl=true]/f:ring-white'
 
@@ -253,6 +254,73 @@ function GuideSettings() {
       <Row label="Reset the guide" hint="Forget the current schedule; the next time you open the guide it builds a fresh one" onEnter={() => { resetGuide(); setDone(true); setTimeout(() => setDone(false), 3000) }}>
         <span className={`rounded-full px-5 py-2.5 text-sm font-semibold ${done ? 'bg-accent text-black' : 'bg-white/12'}`}>{done ? 'Done ✓' : 'Reset'}</span>
       </Row>
+    </>
+  )
+}
+
+/** A line for an address: Enter on it starts typing, Enter / Esc finishes (works with a remote). */
+function AddressField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  const input = useRef<HTMLInputElement>(null)
+  return (
+    <Focusable onEnter={() => input.current?.focus()} title={placeholder}>
+      <div className={`flex items-center gap-3 rounded-xl bg-white/8 px-4 py-3 transition-colors focus-within:bg-white/12 group-hover/f:bg-white/12 group-data-[hl=true]/f:bg-white/15 ${ring}`}>
+        <input ref={input} value={value} placeholder={placeholder} spellCheck={false} autoCapitalize="off" autoCorrect="off" inputMode="url"
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.stopPropagation(); e.currentTarget.blur() } else if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') e.stopPropagation() }}
+          className="min-w-0 flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-white/30" />
+      </div>
+    </Focusable>
+  )
+}
+
+function LiveSettings() {
+  const { settings, update } = useSettings()
+  const live = useLive()
+  const [url, setUrl] = useState(settings.liveUrl)
+  const [epg, setEpg] = useState(settings.liveEpgUrl)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string }>()
+  const has = !!settings.liveUrl
+  const changed = url.trim() !== settings.liveUrl || epg.trim() !== settings.liveEpgUrl
+  // Added only once it works: the address is read first, and Live TV appears only if there were channels in it.
+  const save = async () => {
+    const u = url.trim()
+    if (!u) return
+    setBusy(true); setMsg(undefined)
+    await loadLive(u, true)
+    const r = getLive()
+    if (r.url === u && r.status === 'ready' && r.channels.length) {
+      update({ liveUrl: u, liveEpgUrl: epg.trim() })
+      void loadEpg(epg.trim(), true)
+      setMsg({ ok: true, text: `${r.channels.length} channels added.` })
+    } else setMsg({ ok: false, text: r.error ?? 'That playlist couldn’t be read.' })
+    setBusy(false)
+  }
+  const remove = () => { update({ liveUrl: '', liveEpgUrl: '' }); setUrl(''); setEpg(''); setMsg(undefined); void loadLive('') }
+  return (
+    <>
+      <p className="px-4 pb-3 text-sm text-white/55">Watch channels from an M3U playlist you already have. Live TV appears in the menu once one is added, and goes away if you remove it. Chezzflix doesn’t provide any channels.</p>
+      <Heading>Playlist address</Heading>
+      <div className="px-4 py-2"><AddressField value={url} onChange={(v) => { setUrl(v); setMsg(undefined) }} placeholder="https://example.com/channels.m3u" /></div>
+      <Heading>Guide address (optional)</Heading>
+      <div className="px-4 py-2"><AddressField value={epg} onChange={(v) => { setEpg(v); setMsg(undefined) }} placeholder={live.epgUrl && has ? 'Using the guide named in the playlist' : 'XMLTV guide, e.g. https://example.com/guide.xml.gz'} /></div>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <Focusable onEnter={() => { if (!busy && url.trim() && (changed || !has)) void save() }} title="Add playlist">
+          <div className={`flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold transition-colors group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black ${url.trim() && (changed || !has) ? 'bg-accent text-black' : 'bg-white/12 text-white/50'}`}>{busy && <Loader2 size={16} className="animate-spin" />}{has && !changed ? 'Saved' : has ? 'Save changes' : 'Add playlist'}</div>
+        </Focusable>
+        {has && (
+          <Focusable onEnter={() => { void loadLive(settings.liveUrl, true).then(() => loadEpg(settings.liveEpgUrl, true)); setMsg({ ok: true, text: 'Refreshing…' }) }} title="Refresh now">
+            <div className="rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-black">Refresh now</div>
+          </Focusable>
+        )}
+        {has && (
+          <Focusable onEnter={remove} title="Remove playlist">
+            <div className="flex items-center gap-2 rounded-full bg-white/12 px-5 py-2.5 text-sm font-semibold text-red-300 transition-colors group-hover/f:bg-white/25 group-data-[hl=true]/f:bg-white group-data-[hl=true]/f:text-red-700"><Trash2 size={15} />Remove</div>
+          </Focusable>
+        )}
+        <span className={`min-w-0 text-sm ${msg ? (msg.ok ? 'text-emerald-300' : 'text-red-300') : 'text-white/45'}`}>{msg?.text ?? (has && live.status === 'ready' ? `${live.channels.length} channels${live.epgStatus === 'ready' ? ', guide loaded' : live.epgStatus === 'none' ? ', no guide' : ''}` : '')}</span>
+      </div>
+      <p className="px-4 pb-3 text-sm text-white/55">The address is saved with your settings, so it follows you to your other devices when settings sync is on. The playlist is read by the app itself and refreshed every 12 hours. Channels play straight from their own sources; nothing goes through your Plex server.</p>
     </>
   )
 }
@@ -555,6 +623,7 @@ const PANELS = [
   { id: 'libraries', label: 'Libraries', icon: Film }, { id: 'home', label: 'Home', icon: Home }, { id: 'content', label: 'Content', icon: Eye },
   { id: 'recs', label: 'Recommendations', icon: Sparkles },
   { id: 'guide', label: 'TV Guide', icon: Radio },
+  { id: 'live', label: 'Live TV', icon: MonitorPlay },
   { id: 'requests', label: 'Requests', icon: Inbox },
   { id: 'about', label: 'About', icon: Info },
 ] as const
@@ -630,6 +699,7 @@ export function SettingsModal({ server, token, sections, profileName, profileThu
           {panel === 'content' && <Content />}
           {panel === 'recs' && <Recommendations />}
           {panel === 'guide' && <GuideSettings />}
+          {panel === 'live' && <LiveSettings />}
           {panel === 'requests' && <Requests token={token} />}
           {panel === 'about' && <About server={server} />}
           <div className="mt-6 rounded-xl bg-white/5 px-4 py-3 text-sm text-white/55">Connected to <b className="text-white">{server.name}</b>. These settings belong to <b className="text-white">{profileName}</b>.</div>

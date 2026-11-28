@@ -3,7 +3,7 @@ import { reveal } from '../lib/scroll'
 import { UpdateDot, useUpdatePending } from './UpdateDot'
 import { SwapText } from './SwapText'
 import { useBooted } from '../lib/boot'
-import { Bookmark, Film, Radio, RefreshCw, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
+import { Bookmark, Film, MonitorPlay, Radio, RefreshCw, Library as LibraryIcon, Home, LayoutDashboard, Search, Tv } from 'lucide-react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { Focusable } from './Focusable'
 import { useFocusedKey, useInputMode, useTyping } from '../lib/input'
@@ -18,7 +18,7 @@ import type { HomeTab } from '../lib/settings'
 export type ListSource = { kind: 'genre'; tab: HomeTab; genre: string; sectionKey?: string } | { kind: 'collection'; id: string } | { kind: 'seasonal'; id: string } | { kind: 'actor'; name: string; id?: string }
 import type { HolidayId } from '../lib/holidayEpisodes'
 export type View =
-  | { type: 'home'; tab?: HomeTab } | { type: 'libraries' } | { type: 'search' } | { type: 'watchlist' } | { type: 'guide'; /** Start watching this channel as the guide opens. */ tune?: string } | { type: 'dashboard' } | { type: 'holiday'; id: HolidayId; show?: string } | { type: 'library'; section: PlexSection }
+  | { type: 'home'; tab?: HomeTab } | { type: 'libraries' } | { type: 'search' } | { type: 'watchlist' } | { type: 'guide'; /** Start watching this channel as the guide opens. */ tune?: string } | { type: 'live' } | { type: 'dashboard' } | { type: 'holiday'; id: HolidayId; show?: string } | { type: 'library'; section: PlexSection }
   | { type: 'browse'; kind: 'genres' | 'collections'; tab: HomeTab; section?: PlexSection }
   | { type: 'list'; title: string; subtitle?: string; source: ListSource }
 
@@ -55,11 +55,13 @@ interface Props {
   streams?: number
   /** The TV Guide is switched on in Settings. */
   tvGuide?: boolean
+  /** A Live TV playlist has been added in Settings. */
+  live?: boolean
   /** Ask the server to scan a library for new content. */
   onScan?: (s: PlexSection) => void
 }
 
-export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, streams, tvGuide, onScan }: Props) {
+export function Sidebar({ sections, everySection, view, onNavigate, profileName, profileThumb, brand, avatarLogo, onProfile, showDashboard, streams, tvGuide, live, onScan }: Props) {
   const mode = useInputMode()
   const update = useUpdatePending()
   const booted = useBooted()
@@ -103,6 +105,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           <NavItem focusKey="nav-search" icon={<Search size={22} />} label="Search" active={view.type === 'search'} onEnter={() => onNavigate({ type: 'search' })} />
           <NavItem focusKey="nav-watchlist" icon={<Bookmark size={22} />} label="Watchlist" active={view.type === 'watchlist'} onEnter={() => onNavigate({ type: 'watchlist' })} />
           {tvGuide && <NavItem focusKey="nav-guide" icon={<Radio size={22} />} label="TV Guide" active={view.type === 'guide'} onEnter={() => onNavigate({ type: 'guide' })} />}
+          {live && <NavItem focusKey="nav-live" icon={<MonitorPlay size={22} />} label="Live TV" active={view.type === 'live'} onEnter={() => onNavigate({ type: 'live' })} />}
         </div>
 
         {/* Libraries scroll on their own so a long list never pushes the profile button off screen */}
@@ -147,6 +150,7 @@ export function Sidebar({ sections, everySection, view, onNavigate, profileName,
           { label: 'Search', icon: <Search size={22} />, active: view.type === 'search', go: () => onNavigate({ type: 'search' }) },
           { label: 'Watchlist', icon: <Bookmark size={22} />, active: view.type === 'watchlist', go: () => onNavigate({ type: 'watchlist' }) },
           ...(tvGuide ? [{ label: 'TV Guide', icon: <Radio size={22} />, active: view.type === 'guide', go: () => onNavigate({ type: 'guide' }) }] : []),
+          ...(live ? [{ label: 'Live TV', icon: <MonitorPlay size={22} />, active: view.type === 'live', go: () => onNavigate({ type: 'live' }) }] : []),
           ...sections.map((s) => ({ label: s.title, icon: s.type === 'movie' ? <Film size={22} /> : <Tv size={22} />, active: isLib(s.key), go: () => onNavigate({ type: 'library', section: s }) })),
           ...(showDashboard ? [{ label: 'Dashboard', icon: <span className="relative"><LayoutDashboard size={22} />{!!streams && <CountBadge n={streams} />}</span>, active: view.type === 'dashboard', go: () => onNavigate({ type: 'dashboard' }) }] : []),
           { label: 'You', icon: <span className="relative"><Avatar name={profileName} thumb={profileThumb} size={24} />{update && <UpdateDot className="absolute -right-1.5 -top-1.5" />}</span>, active: false, go: onProfile },

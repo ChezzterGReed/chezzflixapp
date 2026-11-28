@@ -1,0 +1,9 @@
+{
+  "name": "chezzflix-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serves a Plex library to IPTV apps through the Xtream Codes API (movies and shows, original files, no transcoding).",
+  "type": "module",
+  "scripts": { "start": "node server.mjs", "test": "node test/smoke.mjs" },
+  "engines": { "node": ">=20" }
+}

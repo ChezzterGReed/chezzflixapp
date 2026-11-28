@@ -212,7 +212,7 @@ pub fn run() {
         .manage(MediaState::default())
         .manage(UpdateHolder::default())
         .manage(net::NetState::default())
-        .invoke_handler(tauri::generate_handler![play, stop, keep_awake, mpv_start, mpv_cmd, mpv_set, mpv_get, mpv_tracks, media_init, media_meta, media_playback, update_check, update_install, net::requests_http])
+        .invoke_handler(tauri::generate_handler![play, stop, keep_awake, mpv_start, mpv_cmd, mpv_set, mpv_get, mpv_tracks, media_init, media_meta, media_playback, update_check, update_install, net::requests_http, net::live_fetch, net::live_epg])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }

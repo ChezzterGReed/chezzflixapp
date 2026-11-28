@@ -49,6 +49,10 @@ export interface Settings {
   seasonal: boolean
   /** The TV Guide (channels built from your library). */
   tvGuide: boolean
+  /** Live TV: the address of an M3U playlist (empty = Live TV is off and hidden), an optional XMLTV guide address that replaces the playlist's own, and the channels marked as favourites. */
+  liveUrl: string
+  liveEpgUrl: string
+  liveFavs: string[]
   /** How many hours ahead the guide is built. */
   guideHours: number
   /** TV Guide defaults: subtitles on/off, their language, and the preferred audio language ('' = whatever the file defaults to). Channels can override them. */
@@ -161,7 +165,7 @@ export interface Settings {
 export const DEFAULT_BRAND = 'CHEZZ'
 const DEFAULTS: Settings = {
   accent: ACCENTS[0].value, hero: true, heroRotate: true, hideWatched: false, hideWatchedTabs: {}, hideSpoilers: false, brand: DEFAULT_BRAND, avatarLogo: false,
-  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: false, guideSession: false, layout: 'classic', trackPrefs: {}, levels: {}, libView: {}, showInfo: true, minimalTypeRows: true, guideZap: 'updown', seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: true, dialogueBoost: false, autoplayNext: true, resumePrompt: true, screensaver: true, screensaverMins: 10, waitForScenes: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false, subLift: 0,
+  hiddenLibraries: [], homeRows: {}, seasonal: true, tvGuide: true, liveUrl: '', liveEpgUrl: '', liveFavs: [], guideHours: 12, guideSubs: 'off', guideSubLang: 'en', guideAudioLang: '', guideLeveling: false, guideSession: false, layout: 'classic', trackPrefs: {}, levels: {}, libView: {}, showInfo: true, minimalTypeRows: true, guideZap: 'updown', seasonalPrefs: {}, channels: [], guideOffered: false, lightEffects: false, setupDone: false, genres: [], requests: true, recs: true, notInterested: {}, overseerrUrl: '', tmdbKey: '', dismissedContinue: {}, pinned: {}, continueDays: 90, collapseCollections: {}, player: 'app', autoLevel: false, syncSettings: true, recapNudge: true, recapNudgeDays: 9, recapNudgeOff: {}, recapNudgeSkipped: {}, holidayStyle: 'festive', spoilerFreeShows: {}, quietHintOff: true, dialogueBoost: false, autoplayNext: true, resumePrompt: true, screensaver: true, screensaverMins: 10, waitForScenes: true, nextCountdown: 10, seekBack: 10, seekForward: 30, continueStyle: 'episode', continueOpen: 'play', movieSuggestions: true, navSounds: true, infoStyle: 'full', unwatchedOnly: {}, autoSkipIntro: false, subSize: 'medium', subFont: 'sans', subColor: 'white', subEdge: 'outline', subBackground: false, subLift: 0,
 }
 
 export const PUMPKIN = '#ff7a1a'

@@ -8,7 +8,7 @@ import { Avatar } from './Avatar'
 import { UpdateDot, useUpdatePending } from './UpdateDot'
 import type { View } from './Sidebar'
 
-export type TopTab = 'search' | 'home' | 'trending' | 'libraries' | 'watchlist' | 'guide' | 'settings'
+export type TopTab = 'search' | 'home' | 'trending' | 'libraries' | 'watchlist' | 'guide' | 'live' | 'settings'
 
 /** Which top tab a screen belongs to. */
 export function tabOf(view: View): TopTab | undefined {
@@ -17,6 +17,7 @@ export function tabOf(view: View): TopTab | undefined {
   if (view.type === 'libraries' || view.type === 'library') return 'libraries'
   if (view.type === 'watchlist') return 'watchlist'
   if (view.type === 'guide') return 'guide'
+  if (view.type === 'live') return 'live'
   return undefined
 }
 
@@ -39,7 +40,7 @@ function Tab({ id, active, icon, label, onEnter, round }: { id: TopTab; active: 
 }
 
 /** The Minimal layout's navigation: one centred row of tabs along the top. */
-export function TopBar({ view, tvGuide, trending, watchlist, onGo, onSettings }: { view: View; tvGuide: boolean; trending: boolean; /** Something is on the Watchlist. */ watchlist: boolean; onGo: (v: View) => void; onSettings: () => void }) {
+export function TopBar({ view, tvGuide, live, trending, watchlist, onGo, onSettings }: { view: View; tvGuide: boolean; live: boolean; trending: boolean; /** Something is on the Watchlist. */ watchlist: boolean; onGo: (v: View) => void; onSettings: () => void }) {
   const { ref, focusKey } = useFocusable({ focusKey: 'TOPBAR', saveLastFocusedChild: true, trackChildren: true })
   const cur = tabOf(view)
   tabNow.k = cur ? `mtab-${cur}` : ''
@@ -74,6 +75,7 @@ export function TopBar({ view, tvGuide, trending, watchlist, onGo, onSettings }:
           <Tab id="libraries" active={cur === 'libraries'} label="Libraries" onEnter={() => onGo({ type: 'libraries' })} />
           {watchlist && <Tab id="watchlist" active={cur === 'watchlist'} label="Watchlist" onEnter={() => onGo({ type: 'watchlist' })} />}
           {tvGuide && <Tab id="guide" active={cur === 'guide'} label="TV Guide" onEnter={() => onGo({ type: 'guide' })} />}
+          {live && <Tab id="live" active={cur === 'live'} label="Live TV" onEnter={() => onGo({ type: 'live' })} />}
           <Tab id="settings" round active={false} icon={<Cog size={21} />} onEnter={onSettings} />
         </div>
       </nav>
